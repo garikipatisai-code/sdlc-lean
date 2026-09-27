@@ -12,7 +12,7 @@ otherwise `executing-plans`.
 ## Dispatch
 
 - Group tasks by failure domain (shared files = same stream). See
-  `dispatching-parallel-agents` for the independence rule.
+  `dispatching-parallel-agents` for the fan-out/fan-in contract.
 - Each implementer gets: task brief (exact files, signatures, tests,
   `Expected:`), repo conventions, lean constraints. Nothing else — fresh
   context per agent avoids cross-task contamination.

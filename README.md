@@ -89,6 +89,15 @@ to pages actually fetched, confidence labels, honest "insufficient data"
 instead of invented sources, and hard search budgets. Adapted from
 dzhng/deep-research, LangChain `open_deep_research`, and gpt-researcher.
 
+## Parallel work (fan-out / fan-in)
+
+Independent work fans out — one worker per independent task, all dispatched in
+a single message — and results fan back in through a merge contract: validate
+against the output schema, dedupe by key, merge in dependency order, resolve
+conflicts by a stated rule (never silently), handle partial failures, then one
+review over the merged result. `dispatching-parallel-agents` owns the contract;
+`subagent-driven-development` and `deep-research` reuse it.
+
 ## Safety
 
 Trust-boundary validation, data-loss handling, security, accessibility, and

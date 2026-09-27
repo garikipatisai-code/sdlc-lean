@@ -43,9 +43,10 @@ ambiguous — otherwise state your interpretation and proceed.
   official docs, papers, filings, first-party sites, maintainers' own pages.
   See `references/source-quality.md` (evidence hierarchy + SIFT + red flags).
 - For independent sub-questions, dispatch the `researcher` subagent — **all in
-  one message** so they run in parallel. Give each: objective, the output
-  schema, the source boundary, and its search budget. Subagents return
-  distilled findings, **never raw pages** (keeps context small).
+  one message** so they run in parallel (fan-out; contract in
+  `dispatching-parallel-agents`). Give each: objective, the output schema, the
+  source boundary, and its search budget. Subagents return distilled findings,
+  **never raw pages** (keeps context small).
 - Reuse `acquiring-capabilities` trust rules: no random blogs, no unsourced
   forums, no AI-generated listicles.
 
@@ -56,10 +57,12 @@ supported, what is still missing, what sources conflict. Generate the next
 round's queries from **angles, not synonyms**, and shrink breadth as depth
 increases (a follow-up round uses fewer, sharper queries).
 
-## 4. Compress
+## 4. Compress (fan-in)
 
 Dedupe by URL; merge duplicate facts; keep only claims that carry a citation;
 preserve citation numbers. Never drop a source that supports a kept claim.
+Resolve conflicts per `dispatching-parallel-agents` (stated rule or escalate),
+and list what remains unanswered.
 
 ## 5. Synthesize + verify
 

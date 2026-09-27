@@ -11,7 +11,7 @@ The parent already ran the workflow; just do your task.
 <EXTREMELY-IMPORTANT>
 If there is even a 1% chance a skill might apply, you MUST invoke it.
 IF A SKILL APPLIES, YOU DO NOT HAVE A CHOICE. This is not negotiable.
-Never ask the user to pick a mode, level, or workflow — infer it and proceed.
+Never ask the user to pick a mode or workflow — infer and proceed.
 </EXTREMELY-IMPORTANT>
 
 ## The Rule
@@ -34,8 +34,9 @@ Classify, run the pipeline, announce the route in one line. Pipeline skill first
 - Shared contracts → `evolving-schemas`. Slow code → `investigating-performance`. Isolated work → `using-git-worktrees`.
 - Unfamiliar domain / capability gap → `acquiring-capabilities`: search trusted sources, reuse before building.
 - External-evidence question ("research", "compare", "state of the art") → `deep-research`: scope → parallel search → cite → synthesize.
+- Many independent sub-tasks / merging workers → `dispatching-parallel-agents` (fan-out/fan-in).
 
-Ambiguous? Pick the safer route and say why.
+Ambiguous? Pick the safer route.
 
 ## Auto-Intensity (no user-facing levels)
 
@@ -56,7 +57,7 @@ Stop at the first rung that holds — after understanding the problem, not inste
 5. **Installed dependency solves it?** Use it. Never add a new one for what a few lines can do.
 6. **One line?** One line. 7. **Only then:** the minimum code that works.
 
-No unrequested abstractions (one-impl interface, one-product factory, never-changing config).
+No unrequested abstractions (one-impl interface, one-product factory).
 Deletion over addition. Boring over clever.
 
 ## Safety Carve-Outs (ALWAYS ON)

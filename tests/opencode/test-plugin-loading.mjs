@@ -97,6 +97,15 @@ test('router points at deep-research; skill, references, and researcher agent sh
   assert.ok(fs.existsSync(path.resolve(import.meta.dirname, '../../.opencode/agents/researcher.md')), 'researcher agent must ship');
 });
 
+test('fan-out / fan-in contract ships and is routed', () => {
+  assert.ok(plugin.getBootstrapContent().includes('dispatching-parallel-agents'));
+  const skill = plugin.listSkills().find((s) => s.id === 'dispatching-parallel-agents');
+  assert.ok(skill, 'dispatching-parallel-agents must ship');
+  for (const term of ['Fan-out', 'Fan-in', 'Dedupe', 'Partial failure']) {
+    assert.ok(skill.content.includes(term), `fan-in contract missing: ${term}`);
+  }
+});
+
 test('activation: writes status, toasts once per session', async () => {
   let toasts = 0;
   const client = { tui: { showToast: async () => { toasts++; } }, app: { log: async () => {} } };

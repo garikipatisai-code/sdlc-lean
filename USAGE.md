@@ -111,7 +111,7 @@ Every pipeline also has an explicit slash command when you want determinism:
 | `test-driven-development` · `systematic-debugging` · `verification-before-completion` | Correctness gates |
 | `requesting-code-review` · `receiving-code-review` · `lean-review` | Review in/out + over-engineering audit |
 | `reviewing-security` · `investigating-performance` · `evolving-schemas` · `writing-release-notes` | Rigor skills |
-| `using-git-worktrees` · `dispatching-parallel-agents` · `managing-tasks` | Isolation, parallelism, persistence |
+| `using-git-worktrees` · `dispatching-parallel-agents` · `managing-tasks` | Isolation, parallel work (fan-out/fan-in), persistence |
 | `exploring-codebase` · `acquiring-capabilities` · `deep-research` · `communicating-concisely` | Orientation, reuse, research, output |
 | `writing-skills` · `diagnosing-sdlc` | Meta: author skills, debug the suite |
 

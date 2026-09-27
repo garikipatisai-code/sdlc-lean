@@ -31,7 +31,13 @@ cp .opencode/plugins/sdlc-lean.js ~/.config/opencode/plugins/
 ```
 
 Restart OpenCode after installing. No dependencies. Works on OpenCode V1
-(1.18.x, verified) and V2 (dual export).
+(1.18.x) and V2 (2.0.x, verified). V2 auto-loads the global plugin from
+`~/.config/opencode/plugins/`; the plugin registers safety guards on both
+flavors (V1 `tool.execute.before`, V2 `ctx.tool.hook("execute.before")`).
+
+> **V2 tip:** when scripting checks with `opencode run` while a TUI session is
+> open, pass `--standalone` — otherwise `run` attaches to the shared background
+> service and can collide with your live session.
 
 ## 2. Verify it is live
 

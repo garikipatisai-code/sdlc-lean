@@ -300,20 +300,44 @@ async function setup(ctx) {
     await ctx.session.hook('context', async (event) => {
       try {
         const bootstrap = getBootstrapContent();
-        if (!bootstrap || !event.messages || !event.messages.length) return;
-        const firstUser = event.messages.find((m) => m.role === 'user');
-        if (firstUser && (!firstUser.content || !firstUser.content.length)) return;
-        if (firstUser?.content.some((p) => p.type === 'text' && p.text && p.text.includes('EXTREMELY_IMPORTANT'))) return;
-        if (typeof ctx.session.get === 'function' && (await isChildSession((id) => ctx.session.get({ sessionID: id }), event.sessionID))) return;
-        if (firstUser) firstUser.content.unshift({ type: 'text', text: bootstrap });
-        else event.messages.push({ role: 'user', content: [{ type: 'text', text: bootstrap }] });
-        await announceActivation(ctx.client || ctx, event.sessionID);
+        if (!bootstrap) return;
+        // Preferred: inject into the first user message (persisted once, no
+        // per-turn system bloat). V2 exposes event.messages; V1 never reaches here.
+        if (event.messages && event.messages.length) {
+          const firstUser = event.messages.find((m) => m.role === 'user');
+          if (firstUser && (!firstUser.content || !firstUser.content.length)) return;
+          if (firstUser?.content.some((p) => p.type === 'text' && p.text && p.text.includes('EXTREMELY_IMPORTANT'))) return;
+          if (typeof ctx.session.get === 'function' && (await isChildSession((id) => ctx.session.get({ sessionID: id }), event.sessionID))) return;
+          if (firstUser) firstUser.content.unshift({ type: 'text', text: bootstrap });
+          else event.messages.push({ role: 'user', content: [{ type: 'text', text: bootstrap }] });
+          await announceActivation(ctx.client || ctx, event.sessionID);
+          return;
+        }
+        // Fallback: V2 system array (ephemeral per call; guard against repeat).
+        if (Array.isArray(event.system)) {
+          const present = event.system.some((p) => p && p.type === 'text' && p.text && p.text.includes('EXTREMELY_IMPORTANT'));
+          if (!present) {
+            event.system.push({ type: 'text', text: bootstrap });
+            await announceActivation(ctx.client || ctx, event.sessionID);
+          }
+        }
       } catch (err) {
         console.error('[sdlc-lean] context hook failed:', err);
       }
     });
   } catch (err) {
     console.error('[sdlc-lean] session hook registration failed:', err);
+  }
+  // V2 safety net: V1 hooks are not bridged to V2, so register the same guards
+  // through the V2 tool hook. Throwing blocks the tool call.
+  try {
+    if (ctx.tool && typeof ctx.tool.hook === 'function') {
+      await ctx.tool.hook('execute.before', (event) => {
+        checkSafety(event.tool, event.input || {});
+      });
+    }
+  } catch (err) {
+    console.error('[sdlc-lean] tool hook registration failed:', err);
   }
 }
 

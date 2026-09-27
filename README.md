@@ -42,9 +42,11 @@ mkdir -p ~/.config/opencode/plugins
 cp .opencode/plugins/sdlc-lean.js ~/.config/opencode/plugins/
 ```
 
-Restart OpenCode. Zero dependencies. Works on OpenCode V1 (1.18.x, verified)
-and V2 (dual export). Pair with [snip](https://github.com/edouard-claude/snip)
-for 60–90% shell-output token savings — complementary, not bundled.
+Restart OpenCode after installing. No dependencies. Works on OpenCode V1
+(1.18.x) and V2 (2.0.x, verified) — V2 auto-loads the global plugin from
+`~/.config/opencode/plugins/`. Pair with
+[snip](https://github.com/edouard-claude/snip) for 60–90% shell-output token
+savings — complementary, not bundled.
 
 ## What's inside
 

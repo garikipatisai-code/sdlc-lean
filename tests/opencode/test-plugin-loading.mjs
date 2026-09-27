@@ -111,3 +111,27 @@ test('activation: toast suppressed by SDLC_LEAN_NO_TOAST', async () => {
   delete process.env.SDLC_LEAN_NO_TOAST;
   assert.equal(toasts, 0);
 });
+
+test('V2 setup registers skills, context injection, and the safety tool hook', async () => {
+  const captured = {};
+  const ctx = {
+    skill: { transform: async (cb) => cb({ add: () => {} }) },
+    session: {
+      hook: async (name, cb) => { captured[name] = cb; },
+      get: async () => ({ id: 'sess-v2' }),
+    },
+    tool: { hook: async (name, cb) => { captured['tool:' + name] = cb; } },
+  };
+  await plugin.default.setup(ctx);
+  assert.equal(typeof captured['tool:execute.before'], 'function', 'V2 tool hook must register');
+
+  // V2 context injection into first user message
+  const event = { sessionID: 'sess-v2', messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }] };
+  await captured.context(event);
+  assert.ok(event.messages[0].content[0].text.includes('EXTREMELY_IMPORTANT'), 'bootstrap injected (V2)');
+
+  // V2 safety guard blocks destructive input and passes benign input
+  assert.throws(() => captured['tool:execute.before']({ tool: 'bash', input: { command: 'rm -rf /' } }), /destructive/);
+  assert.throws(() => captured['tool:execute.before']({ tool: 'read', input: { filePath: '.env' } }), /sensitive/);
+  captured['tool:execute.before']({ tool: 'bash', input: { command: 'git status' } }); // must not throw
+});

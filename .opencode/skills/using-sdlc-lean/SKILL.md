@@ -20,22 +20,20 @@ Never ask the user to pick a mode, level, or workflow — infer it and proceed.
 clarifying questions and codebase exploration. Announce
 "Using [skill] to [purpose]" and follow it exactly. Never ask the user to
 pick a mode, level, or workflow — infer it below and proceed.
+Every human-facing word follows `communicating-concisely` (30s budget, visuals over walls).
 
 ## Auto-Routing (infer intent, do not ask)
 
 Classify the request, then run the pipeline. Announce the route in one line and proceed.
-Even when a domain skill matches (frontend-design, etc.), run the pipeline
-skill FIRST for new features and behavior changes — the domain skill executes
-inside the pipeline, never instead of it.
+Run the pipeline skill FIRST even when a domain skill (frontend-design, etc.) matches — domain skills execute inside the pipeline, not instead of it.
 
-- New idea / feature / behavior change / vague "let's build X" → **feature pipeline** (`/feature`): explore → `brainstorming` (design approval HARD GATE) → `writing-plans` → execute → review → verify.
-- Bug / failing test / unexpected behavior → **bugfix pipeline** (`/bugfix`): `systematic-debugging` first, no speculative fixes.
-- Restructure / cleanup / "make this better" with no behavior change → **refactor pipeline** (`/refactor`): impact analysis first; improvements found along the way go to the debt ledger, not the diff.
-- "Is this safe / review for security" or auth/input/data-access changes → **security-audit pipeline** (read-only) + `reviewing-security`.
+- New idea / feature / behavior change / vague "let's build X" → **feature pipeline**: explore → `brainstorming` (design approval HARD GATE) → `writing-plans` → execute → review → verify.
+- Bug / failing test / unexpected behavior → **bugfix pipeline**: `systematic-debugging` first, no speculative fixes.
+- Restructure / cleanup, no behavior change → **refactor pipeline**: impact analysis first; incidental improvements go to the debt ledger, not the diff.
+- "Is this safe?" or auth/input/data-access changes → **security-audit pipeline** (read-only) + `reviewing-security`.
 - Approved spec in hand → `writing-plans`, then `executing-plans` (inline) or `subagent-driven-development` (independent tasks).
-- About to say done/passing → `verification-before-completion` first (fresh evidence, no exceptions).
-- Diff feels big → `lean-review`. Starting isolated feature work → `using-git-worktrees`.
-- Touching shared contracts → `evolving-schemas`. Slow code → `investigating-performance`.
+- About to claim done → `verification-before-completion` (fresh evidence). Big diff → `lean-review`.
+- Shared contracts → `evolving-schemas`. Slow code → `investigating-performance`. Isolated work → `using-git-worktrees`.
 
 Ambiguous? Pick the safer route and say why.
 
@@ -76,3 +74,4 @@ accessibility, explicit requests, one runnable check for non-trivial logic.
 | "I remember this skill" | Skills evolve. Read the current version. |
 | "The skill is overkill / one thing first" | Simple things become complex. Check BEFORE acting. |
 | "Ask which workflow they want" | Never. Infer the route and proceed. |
+| Long reply with no diagram/table | 30s budget breached — cut or visualize. |

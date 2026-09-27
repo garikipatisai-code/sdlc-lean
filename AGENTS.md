@@ -17,4 +17,5 @@ keep this file short — it loads as context.
 - New skill? Follow `writing-skills`: minimal, pressure-test the trigger, run the lint.
 - Plugin changes must stay V1+V2 compatible and fail open (never break activation).
 - Safety guards only grow by exact-known destructive patterns; benign must pass (add a test).
-- Bootstrap budget: <5KB. Skill bodies stay on-demand, never injected.
+- Bootstrap budget: <5KB (enforced by test). Skill bodies stay on-demand, never injected.
+- All human-facing output follows `communicating-concisely`: 30s budget, visuals (mermaid/tables) over prose walls.

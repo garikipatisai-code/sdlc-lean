@@ -23,9 +23,11 @@ and constraints (stack, perf, existing patterns to reuse — lean rung 2).
 ## 3. Design document (present in sections, get approval per section)
 
 Write the design where the project keeps docs (`docs/` or equivalent), or
-present inline for small tasks. Sections: Goal, Non-goals, Alternatives
-considered (with why rejected), Architecture/interfaces, Lean check (which
-rung each part stops at), Open questions.
+present inline for small tasks. Visual-first: lead with a mermaid `flowchart`
+(or `erDiagram` for data, `sequenceDiagram` for interactions), then a compact
+table of components/interfaces. Sections: Goal, Non-goals, Alternatives
+considered (a table: option | why rejected), Architecture (diagram + interfaces),
+Lean check (which rung each part stops at), Open questions.
 
 **HARD GATE**: do not write code, plans, or tests until the human approves
 the design. Approval of one section does not imply approval of the next.

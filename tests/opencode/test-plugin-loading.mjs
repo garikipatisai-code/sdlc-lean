@@ -57,3 +57,15 @@ test('bootstrap content stable and cached', () => {
   assert.equal(a, b);
   assert.ok(a.includes('Auto-Routing'));
 });
+
+test('bootstrap stays within the 5KB budget', () => {
+  const bytes = Buffer.byteLength(plugin.getBootstrapContent());
+  assert.ok(bytes < 5120, `bootstrap is ${bytes} bytes; trim the router skill`);
+});
+
+test('bootstrap carries the 30s communication contract', () => {
+  assert.ok(plugin.getBootstrapContent().includes('communicating-concisely'));
+  const skill = plugin.listSkills().find((s) => s.id === 'communicating-concisely');
+  assert.ok(skill, 'communicating-concisely skill must ship');
+  assert.ok(skill.description.includes('30-second') || skill.description.includes('30s'));
+});

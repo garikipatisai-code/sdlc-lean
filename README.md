@@ -36,10 +36,18 @@ for 60–90% shell-output token savings — complementary, not bundled.
 
 | Area | Contents |
 |---|---|
-| Skills (22) | router, brainstorming, writing-plans, worktrees, sdd/executing-plans, TDD, debugging, verification, review in/out, finish-branch, parallel-agents, writing-skills, diagnosing, lean-review, security, performance, schemas, release-notes, exploring-codebase, managing-tasks |
+| Skills (23) | router, brainstorming, writing-plans, worktrees, sdd/executing-plans, TDD, debugging, verification, review in/out, finish-branch, parallel-agents, writing-skills, diagnosing, lean-review, security, performance, schemas, release-notes, exploring-codebase, managing-tasks, communicating-concisely |
 | Agents (6) | implementer, planner, code-reviewer, test-writer, explorer, security-reviewer |
 | Commands (4) | `/feature`, `/bugfix`, `/security-audit`, `/refactor` — pre-wired pipelines the router invokes automatically |
 | Plugin | per-session bootstrap, auto-routing, safety guards |
+
+## Human-facing output contract
+
+Every response and generated doc follows `communicating-concisely`: a ~30-second
+attention budget (~120 words default), answer-first, and **visuals over walls** —
+mermaid for flows/architecture/schemas, tables for comparisons and task lists,
+progressive disclosure for detail. Generated plans and designs are a diagram
+plus a table, not an essay.
 
 ## Auto-routing
 

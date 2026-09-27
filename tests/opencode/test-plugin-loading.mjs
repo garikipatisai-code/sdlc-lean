@@ -2,6 +2,7 @@
 // Mocks the V1 client + message envelope; exercises the real plugin module.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'fs';
 import path from 'path';
 import { pathToFileURL } from 'url';
 
@@ -68,4 +69,13 @@ test('bootstrap carries the 30s communication contract', () => {
   const skill = plugin.listSkills().find((s) => s.id === 'communicating-concisely');
   assert.ok(skill, 'communicating-concisely skill must ship');
   assert.ok(skill.description.includes('30-second') || skill.description.includes('30s'));
+});
+
+test('router points at the reuse-before-rebuild capability', () => {
+  assert.ok(plugin.getBootstrapContent().includes('acquiring-capabilities'));
+  const skill = plugin.listSkills().find((s) => s.id === 'acquiring-capabilities');
+  assert.ok(skill, 'acquiring-capabilities skill must ship');
+  assert.ok(skill.content.includes('Trust tiers') || skill.content.includes('Trusted'));
+  const ref = path.resolve(import.meta.dirname, '../../.opencode/skills/acquiring-capabilities/references/trusted-sources.md');
+  assert.ok(fs.existsSync(ref), 'trusted-sources reference must ship');
 });

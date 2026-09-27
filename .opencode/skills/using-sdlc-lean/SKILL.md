@@ -18,14 +18,13 @@ Never ask the user to pick a mode, level, or workflow — infer it and proceed.
 
 **Check for a relevant skill BEFORE any response or action** — including
 clarifying questions and codebase exploration. Announce
-"Using [skill] to [purpose]" and follow it exactly. Never ask the user to
-pick a mode, level, or workflow — infer it below and proceed.
+"Using [skill] to [purpose]" and follow it exactly.
 Every human-facing word follows `communicating-concisely` (30s budget, visuals over walls).
 
 ## Auto-Routing (infer intent, do not ask)
 
 Classify the request, then run the pipeline. Announce the route in one line and proceed.
-Run the pipeline skill FIRST even when a domain skill (frontend-design, etc.) matches — domain skills execute inside the pipeline, not instead of it.
+Run the pipeline FIRST even when a domain skill matches; domain skills execute inside it, not instead of it.
 
 - New idea / feature / behavior change / vague "let's build X" → **feature pipeline**: explore → `brainstorming` (design approval HARD GATE) → `writing-plans` → execute → review → verify.
 - Bug / failing test / unexpected behavior → **bugfix pipeline**: `systematic-debugging` first, no speculative fixes.
@@ -34,6 +33,7 @@ Run the pipeline skill FIRST even when a domain skill (frontend-design, etc.) ma
 - Approved spec in hand → `writing-plans`, then `executing-plans` (inline) or `subagent-driven-development` (independent tasks).
 - About to claim done → `verification-before-completion` (fresh evidence). Big diff → `lean-review`.
 - Shared contracts → `evolving-schemas`. Slow code → `investigating-performance`. Isolated work → `using-git-worktrees`.
+- Unfamiliar domain, or a gap the suite can't cover → `acquiring-capabilities`: search trusted sources and reuse/install before building.
 
 Ambiguous? Pick the safer route and say why.
 
@@ -72,6 +72,7 @@ accessibility, explicit requests, one runnable check for non-trivial logic.
 | Any prep before skill check ("need context", "explore first", "gather info") | Skills tell you HOW to prepare. Check first. |
 | "Doesn't need a formal skill" | If a skill exists, use it. |
 | "I remember this skill" | Skills evolve. Read the current version. |
+| "I'll just build it myself" | Search trusted sources first — reuse beats reimplementation. |
 | "The skill is overkill / one thing first" | Simple things become complex. Check BEFORE acting. |
 | "Ask which workflow they want" | Never. Infer the route and proceed. |
 | Long reply with no diagram/table | 30s budget breached — cut or visualize. |

@@ -48,7 +48,7 @@ for 60–90% shell-output token savings — complementary, not bundled.
 
 | Area | Contents |
 |---|---|
-| Skills (23) | router · brainstorming · writing-plans · worktrees · sdd / executing-plans · TDD · debugging · verification · review in/out · finish-branch · parallel-agents · writing-skills · diagnosing · lean-review · security · performance · schemas · release-notes · exploring-codebase · managing-tasks · communicating-concisely |
+| Skills (24) | router · brainstorming · writing-plans · worktrees · sdd / executing-plans · TDD · debugging · verification · review in/out · finish-branch · parallel-agents · writing-skills · diagnosing · lean-review · security · performance · schemas · release-notes · exploring-codebase · managing-tasks · communicating-concisely · acquiring-capabilities |
 | Agents (6) | implementer · planner · code-reviewer · test-writer · explorer · security-reviewer |
 | Pipelines (4) | `/feature` · `/bugfix` · `/security-audit` · `/refactor` — invoked automatically by the router |
 | Plugin | per-session bootstrap, auto-routing, always-on safety guards |
@@ -60,6 +60,19 @@ Every response and generated doc follows `communicating-concisely`: a
 over walls — mermaid for flows/architecture/schemas, tables for comparisons
 and task lists, progressive disclosure for detail. Plans and designs are a
 diagram plus a table, not an essay.
+
+## Reuse before rebuild
+
+When the suite hits a capability gap or an unfamiliar domain, the router runs
+`acquiring-capabilities`: search curated marketplaces and authoritative sources
+(the OpenCode ecosystem, `anthropics/skills`, wshobson/agents, upstreams this
+suite vendors), then reuse or install instead of reimplementing.
+
+Trust is tiered — **verified** (official/curated) installs directly,
+**established** (popular, active, permissive license) needs approval after a
+security review, **unknown** is inspect-only. Third-party code is a trust
+boundary: no obfuscated source, no rogue lifecycle hooks, pinned versions.
+Sources and install paths: `.opencode/skills/acquiring-capabilities/references/trusted-sources.md`.
 
 ## Safety
 

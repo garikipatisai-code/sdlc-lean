@@ -19,3 +19,4 @@ keep this file short — it loads as context.
 - Safety guards only grow by exact-known destructive patterns; benign must pass (add a test).
 - Bootstrap budget: <5KB (enforced by test). Skill bodies stay on-demand, never injected.
 - All human-facing output follows `communicating-concisely`: 30s budget, visuals (mermaid/tables) over prose walls.
+- Trusted-source list lives in `.opencode/skills/acquiring-capabilities/references/trusted-sources.md`; grow it deliberately, never auto-install unknown code.

@@ -3,8 +3,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { pathToFileURL } from 'url';
+
+// Isolate the activation status file before importing the plugin (the module
+// computes the status path from XDG_STATE_HOME at load time).
+process.env.XDG_STATE_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'sdlc-lean-state-'));
 
 const pluginURL = pathToFileURL(path.resolve(import.meta.dirname, '../../.opencode/plugins/sdlc-lean.js')).href;
 const plugin = await import(pluginURL);
@@ -78,4 +83,31 @@ test('router points at the reuse-before-rebuild capability', () => {
   assert.ok(skill.content.includes('Trust tiers') || skill.content.includes('Trusted'));
   const ref = path.resolve(import.meta.dirname, '../../.opencode/skills/acquiring-capabilities/references/trusted-sources.md');
   assert.ok(fs.existsSync(ref), 'trusted-sources reference must ship');
+});
+
+test('activation: writes status, toasts once per session', async () => {
+  let toasts = 0;
+  const client = { tui: { showToast: async () => { toasts++; } }, app: { log: async () => {} } };
+  await plugin.announceActivation(client, 'sess-a');
+  await plugin.announceActivation(client, 'sess-a'); // deduped
+  assert.equal(toasts, 1);
+  const status = plugin.getStatus();
+  assert.equal(status.sessionID, 'sess-a');
+  assert.equal(status.active, true);
+  assert.equal(status.skills, plugin.listSkills().length);
+});
+
+test('activation: fail-open when client/tui missing or throwing', async () => {
+  await plugin.announceActivation(undefined, 'sess-none');
+  const boom = { tui: { showToast: async () => { throw new Error('no tui'); } }, app: { log: async () => { throw new Error('no log'); } } };
+  await plugin.announceActivation(boom, 'sess-boom'); // must not throw
+  assert.ok(plugin.getStatus().sessionID);
+});
+
+test('activation: toast suppressed by SDLC_LEAN_NO_TOAST', async () => {
+  process.env.SDLC_LEAN_NO_TOAST = '1';
+  let toasts = 0;
+  await plugin.announceActivation({ tui: { showToast: async () => { toasts++; } } }, 'sess-quiet');
+  delete process.env.SDLC_LEAN_NO_TOAST;
+  assert.equal(toasts, 0);
 });

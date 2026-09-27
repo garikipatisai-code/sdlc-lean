@@ -53,6 +53,7 @@ for 60–90% shell-output token savings — complementary, not bundled.
 | Skills (24) | router · brainstorming · writing-plans · worktrees · sdd / executing-plans · TDD · debugging · verification · review in/out · finish-branch · parallel-agents · writing-skills · diagnosing · lean-review · security · performance · schemas · release-notes · exploring-codebase · managing-tasks · communicating-concisely · acquiring-capabilities |
 | Agents (6) | implementer · planner · code-reviewer · test-writer · explorer · security-reviewer |
 | Pipelines (4) | `/feature` · `/bugfix` · `/security-audit` · `/refactor` — invoked automatically by the router |
+| Status | `/sdlc-lean` — activation proof + installed skills/agents/commands |
 | Plugin | per-session bootstrap, auto-routing, always-on safety guards |
 
 ## Human-facing output contract

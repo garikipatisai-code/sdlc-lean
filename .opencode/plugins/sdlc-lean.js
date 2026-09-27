@@ -24,6 +24,7 @@
 
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -151,6 +152,67 @@ export const listSkills = () => {
   return out;
 };
 
+// --- Activation signal -------------------------------------------------------
+// Deterministic proof the suite is live:
+//  1. a status file (always, version-independent) the /sdlc-lean command reads;
+//  2. a structured log entry (best effort);
+//  3. a one-time TUI toast (best effort; only when a TUI is attached).
+// Disable the toast with SDLC_LEAN_NO_TOAST=1.
+const statusDir = path.join(
+  process.env.XDG_STATE_HOME || path.join(os.homedir(), '.local', 'state'),
+  'sdlc-lean',
+);
+const statusPath = path.join(statusDir, 'status.json');
+
+export const activationMessage = () => `sdlc-lean active - ${listSkills().length} skills`;
+
+export const writeStatus = (sessionID) => {
+  try {
+    fs.mkdirSync(statusDir, { recursive: true });
+    fs.writeFileSync(statusPath, JSON.stringify({
+      at: new Date().toISOString(),
+      sessionID: sessionID || 'default',
+      skills: listSkills().length,
+      active: true,
+    }));
+  } catch (err) {
+    // Best effort only; never break the request pipeline.
+  }
+};
+
+// Announce at most once per session (bounded set, like the child-session cache).
+const ANNOUNCED_MAX = 512;
+const _announced = new Set();
+
+export const announceActivation = async (client, sessionID = 'default') => {
+  if (_announced.has(sessionID)) return;
+  if (_announced.size >= ANNOUNCED_MAX) {
+    for (const key of _announced) { _announced.delete(key); break; }
+  }
+  _announced.add(sessionID);
+  const message = activationMessage();
+  writeStatus(sessionID);
+  try {
+    await client?.app?.log?.({ body: { service: 'sdlc-lean', level: 'info', message } });
+  } catch (err) {
+    // Best effort only.
+  }
+  if (process.env.SDLC_LEAN_NO_TOAST === '1') return;
+  try {
+    await client?.tui?.showToast?.({ body: { title: 'sdlc-lean', message, variant: 'info', duration: 4000 } });
+  } catch (err) {
+    // Best effort only; never break the request pipeline.
+  }
+};
+
+export const getStatus = () => {
+  try {
+    return JSON.parse(fs.readFileSync(statusPath, 'utf8'));
+  } catch (err) {
+    return null;
+  }
+};
+
 // --- Safety guards (ALWAYS ON) --------------
 // Fail-open: only exact-known destructive patterns throw; everything else
 // passes untouched. Errors explain the safe alternative.
@@ -205,6 +267,7 @@ export const SdlcLeanPlugin = async ({ client } = {}) => {
       if (client && (await isChildSession((id) => client.session.get({ path: { id } }), firstUser.info.sessionID))) return;
       const ref = firstUser.parts[0];
       firstUser.parts.unshift({ ...ref, type: 'text', text: bootstrap });
+      await announceActivation(client, firstUser.info.sessionID);
     },
 
     // Safety net: destructive commands + sensitive files. Always on.
@@ -244,6 +307,7 @@ async function setup(ctx) {
         if (typeof ctx.session.get === 'function' && (await isChildSession((id) => ctx.session.get({ sessionID: id }), event.sessionID))) return;
         if (firstUser) firstUser.content.unshift({ type: 'text', text: bootstrap });
         else event.messages.push({ role: 'user', content: [{ type: 'text', text: bootstrap }] });
+        await announceActivation(ctx.client || ctx, event.sessionID);
       } catch (err) {
         console.error('[sdlc-lean] context hook failed:', err);
       }

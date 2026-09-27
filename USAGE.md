@@ -35,14 +35,29 @@ Restart OpenCode after installing. No dependencies. Works on OpenCode V1
 
 ## 2. Verify it is live
 
-Start a session and send any message. The agent should announce a skill
-(e.g. *"Using brainstorming to…"*). Quick probes:
+The suite augments the built-in **Build** (and **Plan**) agents — it is not a
+separate agent, so switch with <kbd>Tab</kbd> to Build and work as usual.
+
+How you know it is triggered (four independent signals):
+
+| Signal | Where |
+|---|---|
+| One-time toast **"sdlc-lean active — N skills"** | TUI, first message of a session |
+| `Using <skill> to …` announce line | Agent's reply |
+| Skill tool call (`→ Skill "brainstorming"`) | TUI activity under the reply |
+| Activation status file | `/sdlc-lean` command, or `~/.local/state/sdlc-lean/status.json` |
+
+Quick probes:
 
 | Say this | Expected |
 |---|---|
 | `Let's add a date picker` | Routes to `brainstorming` (feature pipeline) |
 | `This test is failing` | Routes to `systematic-debugging` (bugfix pipeline) |
 | `Explain how X works` | Uses `communicating-concisely` (diagram + short prose) |
+| `/sdlc-lean` | Prints activation timestamp, install path, and counts |
+
+In headless `opencode run` there is no TUI, so the toast is skipped — the
+status file and the announce line still prove activation.
 
 ## 3. Everyday use
 
@@ -66,6 +81,7 @@ Every pipeline also has an explicit slash command when you want determinism:
 | `/bugfix <what>` | explore → investigate → fix → review → confirm |
 | `/refactor <what>` | impact → decompose → implement → verify |
 | `/security-audit [scope]` | audit → scan → dead-code → report (read-only) |
+| `/sdlc-lean` | Status: activation proof + installed skills/agents/commands |
 
 ## 4. What happens automatically
 

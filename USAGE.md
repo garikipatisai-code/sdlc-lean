@@ -76,6 +76,7 @@ Nothing to select — describe the work and the router runs the pipeline.
 | A cleanup | *"Split this 600-line module"* | impact analysis → behavior-preserving steps |
 | A security check | *"Is the upload endpoint safe?"* | read-only traced-path audit |
 | A capability you lack | *"We need OCR — find a trusted option"* | trusted-source search → reuse/install |
+| External research | *"Compare Postgres vs SQLite for this"* | scope → parallel search → cite → synthesize |
 
 ### Pipelines as commands
 
@@ -103,7 +104,7 @@ Every pipeline also has an explicit slash command when you want determinism:
 
 ## 5. Skills & agents reference
 
-| Skills (24) | Purpose |
+| Skills (25) | Purpose |
 |---|---|
 | `using-sdlc-lean` | Router: infers pipeline + scrutiny |
 | `brainstorming` · `writing-plans` · `executing-plans` · `subagent-driven-development` | Feature flow: design → plan → execute |
@@ -111,12 +112,13 @@ Every pipeline also has an explicit slash command when you want determinism:
 | `requesting-code-review` · `receiving-code-review` · `lean-review` | Review in/out + over-engineering audit |
 | `reviewing-security` · `investigating-performance` · `evolving-schemas` · `writing-release-notes` | Rigor skills |
 | `using-git-worktrees` · `dispatching-parallel-agents` · `managing-tasks` | Isolation, parallelism, persistence |
-| `exploring-codebase` · `acquiring-capabilities` · `communicating-concisely` | Orientation, reuse, output |
+| `exploring-codebase` · `acquiring-capabilities` · `deep-research` · `communicating-concisely` | Orientation, reuse, research, output |
 | `writing-skills` · `diagnosing-sdlc` | Meta: author skills, debug the suite |
 
-| Agents (6) | What it does |
+| Agents (7) | What it does |
 |---|---|
 | `explorer` | Read-only codebase reconnaissance |
+| `researcher` | Web research on one sub-question, returns cited findings |
 | `planner` | Produces bite-sized implementation plans |
 | `implementer` | Executes one task with TDD |
 | `test-writer` | Adds failing-first tests |

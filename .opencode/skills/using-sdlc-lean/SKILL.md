@@ -23,17 +23,17 @@ Every human-facing word follows `communicating-concisely` (30s budget, visuals o
 
 ## Auto-Routing (infer intent, do not ask)
 
-Classify the request, then run the pipeline. Announce the route in one line and proceed.
-Run the pipeline FIRST even when a domain skill matches; domain skills execute inside it, not instead of it.
+Classify, run the pipeline, announce the route in one line. Pipeline skill first, even when a domain skill matches.
 
-- New idea / feature / behavior change / vague "let's build X" → **feature pipeline**: explore → `brainstorming` (design approval HARD GATE) → `writing-plans` → execute → review → verify.
-- Bug / failing test / unexpected behavior → **bugfix pipeline**: `systematic-debugging` first, no speculative fixes.
-- Restructure / cleanup, no behavior change → **refactor pipeline**: impact analysis first; incidental improvements go to the debt ledger, not the diff.
-- "Is this safe?" or auth/input/data-access changes → **security-audit pipeline** (read-only) + `reviewing-security`.
-- Approved spec in hand → `writing-plans`, then `executing-plans` (inline) or `subagent-driven-development` (independent tasks).
+- New feature / behavior change / "let's build X" → **feature**: explore → `brainstorming` (HARD GATE) → `writing-plans` → execute → review → verify.
+- Bug / failing test / unexpected behavior → **bugfix**: `systematic-debugging` first, no speculative fixes.
+- Restructure / cleanup → **refactor**: impact analysis first; side improvements go to the debt ledger, not the diff.
+- "Is this safe?" or auth/input/data-access changes → **security-audit** (read-only) + `reviewing-security`.
+- Approved spec → `writing-plans`, then `executing-plans` or `subagent-driven-development` (independent tasks).
 - About to claim done → `verification-before-completion` (fresh evidence). Big diff → `lean-review`.
 - Shared contracts → `evolving-schemas`. Slow code → `investigating-performance`. Isolated work → `using-git-worktrees`.
-- Unfamiliar domain, or a gap the suite can't cover → `acquiring-capabilities`: search trusted sources and reuse/install before building.
+- Unfamiliar domain / capability gap → `acquiring-capabilities`: search trusted sources, reuse before building.
+- External-evidence question ("research", "compare", "state of the art") → `deep-research`: scope → parallel search → cite → synthesize.
 
 Ambiguous? Pick the safer route and say why.
 
@@ -69,10 +69,11 @@ accessibility, explicit requests, one runnable check for non-trivial logic.
 | Thought | Reality |
 |---------|---------|
 | "Just a simple question" | Questions are tasks. Check for skills. |
-| Any prep before skill check ("need context", "explore first", "gather info") | Skills tell you HOW to prepare. Check first. |
+| Any prep before the skill check | Skills tell you HOW to prepare. Check first. |
 | "Doesn't need a formal skill" | If a skill exists, use it. |
 | "I remember this skill" | Skills evolve. Read the current version. |
 | "I'll just build it myself" | Search trusted sources first — reuse beats reimplementation. |
+| "I'll answer from memory" | Claims about the world need fetched sources — use deep-research. |
 | "The skill is overkill / one thing first" | Simple things become complex. Check BEFORE acting. |
 | "Ask which workflow they want" | Never. Infer the route and proceed. |
 | Long reply with no diagram/table | 30s budget breached — cut or visualize. |

@@ -22,7 +22,7 @@ SOFTWARE.
 
 ---
 
-Third-party attributions (ideas/patterns adapted under their MIT licenses):
+Third-party attributions (ideas/patterns adapted under their licenses):
 
 - obra/superpowers by Jesse Vincent — https://github.com/obra/superpowers
   (workflow skills, Red-Flags table, plugin injection/skeleton patterns)
@@ -30,6 +30,12 @@ Third-party attributions (ideas/patterns adapted under their MIT licenses):
   (lean ladder, intensity modes, review/audit/debt patterns, mode persistence)
 - osmontero/opencode-skills — https://github.com/osmontero/opencode-skills
   ("one refusal" rigor-skill design)
+- dzhng/deep-research (MIT) — https://github.com/dzhng/deep-research
+  (recursive breadth/depth research loop, learnings + follow-up questions)
+- langchain-ai/open_deep_research (MIT) — https://github.com/langchain-ai/open_deep_research
+  (supervisor/parallel delegation, think_tool gap analysis, compression w/ citations)
+- assafelovic/gpt-researcher (Apache-2.0) — https://github.com/assafelovic/gpt-researcher
+  (source curation, citation discipline, depth/breadth config)
 - Concepts informed by wshobson/agents (tiers, orchestrators, plugin-eval),
   ClaudeTools/marketplace (hook taxonomy, 4-pass review, pipelines),
   opencode-snip/smartsnip (token routing), and the awesome-opencode ecosystem.

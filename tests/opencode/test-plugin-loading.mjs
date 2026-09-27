@@ -85,6 +85,18 @@ test('router points at the reuse-before-rebuild capability', () => {
   assert.ok(fs.existsSync(ref), 'trusted-sources reference must ship');
 });
 
+test('router points at deep-research; skill, references, and researcher agent ship', () => {
+  assert.ok(plugin.getBootstrapContent().includes('deep-research'));
+  const skill = plugin.listSkills().find((s) => s.id === 'deep-research');
+  assert.ok(skill, 'deep-research skill must ship');
+  assert.ok(skill.content.includes('Citation discipline'));
+  const base = path.resolve(import.meta.dirname, '../../.opencode/skills/deep-research');
+  for (const f of ['references/source-quality.md', 'references/report-format.md']) {
+    assert.ok(fs.existsSync(path.join(base, f)), `${f} must ship`);
+  }
+  assert.ok(fs.existsSync(path.resolve(import.meta.dirname, '../../.opencode/agents/researcher.md')), 'researcher agent must ship');
+});
+
 test('activation: writes status, toasts once per session', async () => {
   let toasts = 0;
   const client = { tui: { showToast: async () => { toasts++; } }, app: { log: async () => {} } };

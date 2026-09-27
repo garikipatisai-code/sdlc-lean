@@ -52,8 +52,8 @@ savings — complementary, not bundled.
 
 | Area | Contents |
 |---|---|
-| Skills (24) | router · brainstorming · writing-plans · worktrees · sdd / executing-plans · TDD · debugging · verification · review in/out · finish-branch · parallel-agents · writing-skills · diagnosing · lean-review · security · performance · schemas · release-notes · exploring-codebase · managing-tasks · communicating-concisely · acquiring-capabilities |
-| Agents (6) | implementer · planner · code-reviewer · test-writer · explorer · security-reviewer |
+| Skills (25) | router · brainstorming · writing-plans · worktrees · sdd / executing-plans · TDD · debugging · verification · review in/out · finish-branch · parallel-agents · writing-skills · diagnosing · lean-review · security · performance · schemas · release-notes · exploring-codebase · managing-tasks · communicating-concisely · acquiring-capabilities · deep-research |
+| Agents (7) | implementer · planner · code-reviewer · test-writer · explorer · security-reviewer · researcher |
 | Pipelines (4) | `/feature` · `/bugfix` · `/security-audit` · `/refactor` — invoked automatically by the router |
 | Status | `/sdlc-lean` — activation proof + installed skills/agents/commands |
 | Plugin | per-session bootstrap, auto-routing, always-on safety guards |
@@ -78,6 +78,16 @@ Trust is tiered — **verified** (official/curated) installs directly,
 security review, **unknown** is inspect-only. Third-party code is a trust
 boundary: no obfuscated source, no rogue lifecycle hooks, pinned versions.
 Sources and install paths: `.opencode/skills/acquiring-capabilities/references/trusted-sources.md`.
+
+## Deep research
+
+Questions that need external evidence route to `deep-research`: it scopes the
+question, runs breadth-first parallel searches (dispatching the `researcher`
+subagent per sub-question), assesses gaps, then synthesizes a cited report.
+Discipline is enforced — evidence hierarchy for sources, inline `[n]` citations
+to pages actually fetched, confidence labels, honest "insufficient data"
+instead of invented sources, and hard search budgets. Adapted from
+dzhng/deep-research, LangChain `open_deep_research`, and gpt-researcher.
 
 ## Safety
 

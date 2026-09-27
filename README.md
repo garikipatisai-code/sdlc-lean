@@ -5,6 +5,8 @@ filtered through ponytail's leanness, plus the best ideas from the wider agent
 ecosystem. You just describe the work — it infers the pipeline and runs the
 skills and subagents itself. No modes, no setup questions.
 
+**New here? See [USAGE.md](USAGE.md) for step-by-step install and workflows.**
+
 ```mermaid
 flowchart TD
     U[You describe the work] --> R{Router infers intent}

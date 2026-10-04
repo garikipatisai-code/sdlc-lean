@@ -84,7 +84,7 @@ test('V1 compaction hook fails open when output is hostile', async () => {
   await hooks['experimental.session.compacting']({}, frozen); // must not throw
 });
 
-test('V2 setup registers the compaction session hook', async () => {
+test('V2 setup registers the compaction session hook (v2.0.22 name) and appends system parts', async () => {
   const captured = {};
   const ctx = {
     skill: { transform: async (cb) => cb({ add: () => {} }) },
@@ -95,8 +95,15 @@ test('V2 setup registers the compaction session hook', async () => {
     tool: { hook: async (name, cb) => { captured['tool:' + name] = cb; } },
   };
   await plugin.default.setup(ctx);
-  assert.equal(typeof captured['experimental.session.compacting'], 'function', 'V2 compaction hook must register');
-  const output = {};
-  await captured['experimental.session.compacting']({}, output);
-  assert.ok(Array.isArray(output.context) && output.context.length >= 1);
+  assert.equal(typeof captured['compaction'], 'function', 'V2 must register the "compaction" session hook');
+  assert.equal(captured['experimental.session.compacting'], undefined, 'V1 hook name must not be used in V2');
+  const event = { system: [] };
+  await captured['compaction'](event);
+  assert.ok(event.system.length >= 1, 'compaction context must land in event.system');
+  assert.ok(event.system.every((p) => p.type === 'text' && typeof p.text === 'string'));
+  // Defensive alternate shape + fail-open on a hostile event.
+  const alt = { context: [] };
+  await captured['compaction'](alt);
+  assert.ok(alt.context.length >= 1, 'event.context fallback must work');
+  await captured['compaction'](undefined); // must not throw
 });

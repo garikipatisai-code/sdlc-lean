@@ -421,15 +421,22 @@ async function setup(ctx) {
     console.error('[sdlc-lean] session hook registration failed:', err);
   }
   // Loop memory: inject durable state into V2 compaction summaries (fail-open).
+  // v2.0.22 registers session hooks as "context" | "compaction" | "generate"
+  // (verified in the runtime bundle; "experimental.session.compacting" is the
+  // V1 Hooks-object name and never fires here). Built-ins append text parts to
+  // event.system, so we do the same; event.context is accepted defensively.
   // ctx.directory is best-effort (V2 exposes it on some hosts); absent -> repo-root default.
   const projectRoot = typeof ctx.directory === 'string' && ctx.directory ? ctx.directory : undefined;
   try {
-    await ctx.session.hook('experimental.session.compacting', async (_input, output) => {
+    await ctx.session.hook('compaction', async (event) => {
       try {
         const parts = compactionContext(projectRoot);
         if (!parts.length) return;
-        if (!Array.isArray(output.context)) output.context = [];
-        output.context.push(...parts);
+        if (event && Array.isArray(event.system)) {
+          for (const text of parts) event.system.push({ type: 'text', text });
+        } else if (event && Array.isArray(event.context)) {
+          event.context.push(...parts);
+        }
       } catch (err) {
         console.error('[sdlc-lean] compaction hook failed:', err);
       }

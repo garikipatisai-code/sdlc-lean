@@ -54,7 +54,19 @@ Spec: [`../spikes/2026-10-04-autonomous-orchestration.md`](../spikes/2026-10-04-
 | Lexicographic sort implicit | nit | **Fixed** — comment added |
 | verify-recipe hardcodes test counts | nit | **Fixed** — "as of 2026-10-04" |
 
-Open question (not a verdict): V2 `ctx.session.hook('experimental.session.compacting', …)`
-registration — tests mock the hook channel, so a host-level miss would only
-show in a live V2 run. Fail-open means worst case is the feature silently
-no-ops; watch the first live V2 session.
+Open question RESOLVED (2026-10-04, installed OpenCode v2.0.22): the runtime
+bundle registers session hooks as `session.hook("context" | "compaction" |
+"generate" | "title", cb)` — `"experimental.session.compacting"` is the V1
+Hooks-object name and never fires in V2. The V2 registration was corrected to
+`"compaction"` and now appends `{type:"text"}` parts to `event.system`, exactly
+as the runtime's own built-in plugins do. Static verification: grep of
+`~/.opencode/bin/opencode`; unit tests updated to the v2.0.22 contract.
+
+## Live probe evidence (opt-in, 2026-10-04, OpenCode v2.0.22)
+
+- `routing-autonomous` → 1/1 structural (skill `autonomous-loop` captured)
+- `routing-option` → 1/1 structural (skill `option-selection` captured)
+- `routing-best-way` → 1/1 structural (skill `option-selection` captured)
+- Artifacts: `eval/results/2026-10-04-routing-{autonomous,option,best-way}-eval.{json,md}`
+  (redacted, with per-run token usage; e.g. autonomous: in 31572 / out 405 /
+  cache-read 9728).

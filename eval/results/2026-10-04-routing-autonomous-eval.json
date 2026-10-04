@@ -1,0 +1,41 @@
+{
+  "date": "2026-10-04",
+  "model": null,
+  "probes": 1,
+  "results": [
+    {
+      "id": "routing-autonomous",
+      "group": "routing",
+      "advisory": false,
+      "ok": true,
+      "expect": [
+        {
+          "kind": "skill",
+          "value": "autonomous-loop",
+          "ok": true
+        }
+      ],
+      "text": "Using **autonomous-loop** to run the suite to green with an honest verify-correct cycle.\n<skill_content name=\"autonomous-loop\">\n# Skill: autonomous-loop\n\n# Autonomous Loop\n\nDrive a goal to done **without asking**. Each iteration is a full SDLC pass.\nStop only when acceptance criteria are met with fresh evidence, or a budget\nrule fires.\n\n## Setup (once)\n\n- Restate the goal + **acceptance criteria** (observable, verifiable).\n- Declare the **budget**: 3 iterations unless the human set one.\n- Create the progress ledger `docs/plans/<slug>-progress.md` (format and\n  handover rules per `managing-tasks`) — it survives compaction and drives\n  the give-up-honestly report.\n\n## Loop (repeat until a stop rule fires)\n\n```mermaid\nflowchart LR\n  R[route] --> D[decision? option-selection, research-first]\n  D --> P[plan: writing-plans if multi-step]\n  P --> E[execute: TDD / systematic-debugging]\n  E --> V[verify: fresh evidence]\n  V --> C{criteria met?}\n  C -- yes --> K[critic pass: code-review + security-review]\n  K --> O[completion report: evidence + decisions]\n  C -- no --> B{budget left? progress?}\n  B -- yes --> F[fix: systematic-debugging, never speculative]\n  F --> E\n  B -- no --> H[give up honestly: state + remaining work]\n```\n\n1. **Route** with `using-sdlc-lean` (feature/bugfix/refactor/research) and\n   invoke the pipeline skill first.\n2. **Decide** every fork via `option-selection`: research, matrix, pick,\n   record. Never ask the human to choose.\n3. **Plan** with `writing-plans` for multi-step work; skip for one-liners.\n4. **Execute** with `test-driven-development`, or `systematic-debugging` for\n   bugs.\n5. **Verify** with `verification-before-completion`: run the repo's commands,\n   reuse `docs/verify-recipe.md` if it exists, else write it.\n6. **Correct**: on failure, one fix round via `systematic-debugging`; record\n   what changed each round in the ledger.\n\n## Stop rules (first that fires wins)\n\n| Rule | Action |\n|---|---|\n| Criteria met, fresh evidence | critic pass → c",
+      "usage": {
+        "cost": 0,
+        "tokens": {
+          "input": 31572,
+          "output": 405,
+          "reasoning": 0,
+          "cache": {
+            "read": 9728,
+            "write": 0
+          }
+        }
+      }
+    }
+  ],
+  "totals": {
+    "cost": 0,
+    "input": 31572,
+    "output": 405,
+    "reasoning": 0,
+    "cacheRead": 9728,
+    "cacheWrite": 0
+  }
+}

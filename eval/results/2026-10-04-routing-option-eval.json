@@ -1,0 +1,41 @@
+{
+  "date": "2026-10-04",
+  "model": null,
+  "probes": 1,
+  "results": [
+    {
+      "id": "routing-option",
+      "group": "routing",
+      "advisory": false,
+      "ok": true,
+      "expect": [
+        {
+          "kind": "skill",
+          "value": "option-selection",
+          "ok": true
+        }
+      ],
+      "text": "Using `option-selection` to pick between libraries and record the decision.\n<skill_content name=\"option-selection\">\n# Skill: option-selection\n\n# Option Selection\n\nWhen more than one option could satisfy a requirement: **research first, then\ncommit**. Never pick from memory or vibes. Skip the whole protocol only when\nexactly one option exists after the lean ladder (need it / reuse / stdlib /\nplatform / installed dep).\n\n## Protocol\n\n1. **Define**: the decision question in one line + the criteria that matter\n   (fit, effort, maintenance, license, risk).\n2. **Identify options**: reuse before rebuild (`acquiring-capabilities`); always\n   include \"do nothing / delete\" as option 1 (lean rung 1).\n3. **Research, effort scaled to impact** (`deep-research` + fan-out via\n   researcher subagents): trivial → zero research, pick boring; standard → 1\n   researcher, 3–5 searches; architectural → 2–4 parallel researchers.\n4. **Matrix**: ≥2 options × criteria × tradeoffs. Every claim carries a\n   citation [n] to a page you fetched and read.\n5. **Pick**: winner + Y-statement — \"in context X, facing Y, I chose Z to\n   achieve W, accepting tradeoff T\". One line why each loser lost.\n6. **Record**: architectural → `adr` skill; otherwise record the decision in the\n   plan/progress doc. Later work consults it, never silently relitigates.\n\n## Rules\n\n- Insufficient evidence → say \"insufficient data\", do not pad. A rejected\n  option with evidence beats a gut-picked winner.\n- Ties → prefer: less code, no new dependency, native platform.\n- Never auto-install unknown code — trust tiers from `acquiring-capabilities`.\n\nBase directory for this skill: ~/Documents/Projects/sdlc-lean/.opencode/skills/option-selection\nRelative paths in this skill (e.g., scripts/, reference/) are relative to this base directory.\nNote: file list is sampled.\n\n<skill_files>\n</skill_files>\n</skill_content>\nTo run this properly I need the actual options — \"library A/B\" are placeholders.\nCan't ask interactively — stating assump",
+      "usage": {
+        "cost": 0,
+        "tokens": {
+          "input": 12136,
+          "output": 561,
+          "reasoning": 0,
+          "cache": {
+            "read": 11264,
+            "write": 0
+          }
+        }
+      }
+    }
+  ],
+  "totals": {
+    "cost": 0,
+    "input": 12136,
+    "output": 561,
+    "reasoning": 0,
+    "cacheRead": 11264,
+    "cacheWrite": 0
+  }
+}

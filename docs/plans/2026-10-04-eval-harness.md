@@ -65,9 +65,9 @@ Approved brainstorming design (this session) + spike
 
 | # | Task | Files | Test | Expected | Verify |
 |---|------|-------|------|----------|--------|
-| 1 | Probe schema + seed data (activation, safety, routing) | `eval/probes.mjs` | `tests/eval/test-probes.mjs`: every probe has id/group/prompt/expect; ids unique | valid seed set | `node --test tests/eval/` |
-| 2 | Event parser | `eval/lib/parse.mjs` | `tests/eval/test-parse.mjs`: JSONL fixture → text joined, skills/tools collected, unknown lines ignored, partial line tolerated | tolerant parse | `node --test tests/eval/` |
-| 3 | Assertion engine | `eval/lib/assert.mjs` | `tests/eval/test-assert.mjs`: contains / not-contains / skill / activated / blocked, pass + fail cases | correct scoring | `node --test tests/eval/` |
+| 1 | Probe schema + seed data (activation, safety, routing) | `eval/probes.mjs` | `tests/eval/test-probes.mjs`: every probe has id/group/prompt/expect; ids unique | valid seed set | `node --test "tests/eval/*.mjs"` |
+| 2 | Event parser | `eval/lib/parse.mjs` | `tests/eval/test-parse.mjs`: JSONL fixture → text joined, skills/tools collected, unknown lines ignored, partial line tolerated | tolerant parse | `node --test "tests/eval/*.mjs"` |
+| 3 | Assertion engine | `eval/lib/assert.mjs` | `tests/eval/test-assert.mjs`: contains / not-contains / skill / activated / blocked, pass + fail cases | correct scoring | `node --test "tests/eval/*.mjs"` |
 | 4 | Planner + runner skeleton (dry default) | `eval/lib/plan.mjs`, `eval/run.mjs` | `tests/eval/test-plan.mjs`: default = dry, `--run` required, `--max-probes` caps, filter selects | no spend by default | add script `eval`: `node eval/run.mjs` to `package.json`; `npm run eval` prints dry plan |
 | 5 | Live path + telemetry + report | `eval/run.mjs` | covered by dry unit tests + one manual `--run` evidence | scratch run, JSON+MD written, tokens/cost attached | manual `node eval/run.mjs --run --max-probes 1` |
 | 6 | Docs + wiring | `README.md`, `USAGE.md`, `package.json`, `CHANGELOG.md`, `AGENTS.md` | `npm run verify` still green | harness documented and opt-in | `npm run verify` |

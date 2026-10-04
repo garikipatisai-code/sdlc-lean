@@ -13,7 +13,7 @@ and add STE-lite to improve human-facing readability.
 flowchart TD
     subgraph V1[V1 trust core]
       CI[.github/workflows/ci.yml] --> LINT[validate-skills.mjs]
-      CI --> TESTS[node --test tests/opencode/]
+      CI --> TESTS[node --test "tests/opencode/*.mjs"]
       PKG[root package.json v1.0.0] --> CH[CHANGELOG.md]
       LED[debt-ledger reference + template] --> LR[lean-review] & RF[refactor command]
       SG[checkSafety: +patch/apply_patch, +bash secret reads]
@@ -71,10 +71,10 @@ Approved brainstorming design (this session) + cited research report:
 |---|------|-------|------|----------|--------|
 | 1 | Root `package.json` (name `sdlc-lean`, version `1.0.0`, scripts `lint`/`test`/`verify`) + `CHANGELOG.md` (Keep a Changelog, backfilled from git log) | `package.json`, `CHANGELOG.md` | `npm run verify` exits 0 | one source of version; one verify command | `npm run verify` |
 | 2 | CI workflow: push/PR to main; Node 20/22/24; checkout + setup-node + `npm run verify` | `.github/workflows/ci.yml`, README.md:115-120, USAGE.md:181-186 | workflow runs green on the PR | lint + tests gate every change | push branch; check Actions |
-| 3 | Debt ledger: add `references/debt-ledger.md` (format + fill-in template: id·date·area·finding·trigger·est-savings·status) to `lean-review`; link it from `lean-review/SKILL.md:25`, `commands/refactor.md:11`, `using-sdlc-lean/SKILL.md:30` | `.opencode/skills/lean-review/references/debt-ledger.md`, `lean-review/SKILL.md`, `commands/refactor.md`, `using-sdlc-lean/SKILL.md` | new plugin-loading assertion: reference ships and router text names it | no dangling "debt ledger" references | `node --test tests/opencode/` |
-| 4 | Safety — file ops: extend the sensitive-file branch to `patch` and `apply_patch` (in addition to `read`/`edit`/`write`); confirm the arg field per flavor | `.opencode/plugins/sdlc-lean.js:227-235`, `tests/opencode/test-safety-guards.mjs` | failing-first: `checkSafety('patch', {filePath:'.env'})` throws; benign `patch` of `src/x.ts` passes | V2 edits can't read secrets | `node --test tests/opencode/` |
-| 5 | Safety — bash reads: add exact patterns blocking display of secrets (`cat`/`head`/`tail`/`less`/`more`/`strings`/`xxd`/`base64`/`od`/`hexdump` on `.env` or key files); exclude `.env.example|sample|template` | `sdlc-lean.js:219-247`, `test-safety-guards.mjs` | failing-first: `cat .env` / `strings id_rsa` throw; `cat src/x.ts`, `cat .env.example`, `grep -rn env src/` pass | closes the `cat .env` bypass | `node --test tests/opencode/` |
-| 6 | STE-lite skill: `simplified-technical-english/SKILL.md` — the ~20 curated rules, explicit "preserve conditions/modality/facts", "STE-informed, not compliant", structure-before-STE; wire from router + `communicating-concisely`; no dictionary copy | `.opencode/skills/simplified-technical-english/SKILL.md`, `using-sdlc-lean/SKILL.md`, `communicating-concisely/SKILL.md` | new plugin-loading assertion: skill ships, router references it, content includes the no-copy caveat | readable output guidance without a legal claim | `node --test tests/opencode/` |
+| 3 | Debt ledger: add `references/debt-ledger.md` (format + fill-in template: id·date·area·finding·trigger·est-savings·status) to `lean-review`; link it from `lean-review/SKILL.md:25`, `commands/refactor.md:11`, `using-sdlc-lean/SKILL.md:30` | `.opencode/skills/lean-review/references/debt-ledger.md`, `lean-review/SKILL.md`, `commands/refactor.md`, `using-sdlc-lean/SKILL.md` | new plugin-loading assertion: reference ships and router text names it | no dangling "debt ledger" references | `node --test "tests/opencode/*.mjs"` |
+| 4 | Safety — file ops: extend the sensitive-file branch to `patch` and `apply_patch` (in addition to `read`/`edit`/`write`); confirm the arg field per flavor | `.opencode/plugins/sdlc-lean.js:227-235`, `tests/opencode/test-safety-guards.mjs` | failing-first: `checkSafety('patch', {filePath:'.env'})` throws; benign `patch` of `src/x.ts` passes | V2 edits can't read secrets | `node --test "tests/opencode/*.mjs"` |
+| 5 | Safety — bash reads: add exact patterns blocking display of secrets (`cat`/`head`/`tail`/`less`/`more`/`strings`/`xxd`/`base64`/`od`/`hexdump` on `.env` or key files); exclude `.env.example|sample|template` | `sdlc-lean.js:219-247`, `test-safety-guards.mjs` | failing-first: `cat .env` / `strings id_rsa` throw; `cat src/x.ts`, `cat .env.example`, `grep -rn env src/` pass | closes the `cat .env` bypass | `node --test "tests/opencode/*.mjs"` |
+| 6 | STE-lite skill: `simplified-technical-english/SKILL.md` — the ~20 curated rules, explicit "preserve conditions/modality/facts", "STE-informed, not compliant", structure-before-STE; wire from router + `communicating-concisely`; no dictionary copy | `.opencode/skills/simplified-technical-english/SKILL.md`, `using-sdlc-lean/SKILL.md`, `communicating-concisely/SKILL.md` | new plugin-loading assertion: skill ships, router references it, content includes the no-copy caveat | readable output guidance without a legal claim | `node --test "tests/opencode/*.mjs"` |
 | 7 | Docs sync: skill count 25→26, add STE + debt-ledger to README/USAGE tables, update verify command, note V1 scope | README.md, USAGE.md | lint + tests still pass; counts match disk | docs match reality | `npm run verify` |
 
 ## Notes / edge cases
@@ -83,7 +83,7 @@ Approved brainstorming design (this session) + cited research report:
   not required (no root JS is imported), but harmless — decide at implement
   time and keep `npm run verify` working.
 - **Task 2**: `node --test "tests/opencode/*.mjs"` (quoted glob) fails on Node
-  20; use `node --test tests/opencode/` in the script and docs.
+  20; use `node --test "tests/opencode/*.mjs"` in the script and docs.
 - **Task 4/5**: pattern must be exact-known; add the benign counterparts to the
   same test so a future edit cannot regress fail-open.
 - **Task 6**: rules are independently worded from the standard's *principles*;

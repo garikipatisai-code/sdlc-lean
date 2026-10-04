@@ -64,6 +64,7 @@ savings — complementary, not bundled.
 | Pipelines (4) | `/feature` · `/bugfix` · `/security-audit` · `/refactor` — invoked automatically by the router |
 | Status | `/sdlc-lean` — activation proof + installed skills/agents/commands |
 | Plugin | per-session bootstrap, auto-routing, always-on safety guards |
+| Eval | `npm run eval` — opt-in live harness, dry by default, with token/cost telemetry |
 
 ## Human-facing output contract
 
@@ -118,8 +119,9 @@ review over the merged result. `dispatching-parallel-agents` owns the contract;
 
 Trust-boundary validation, data-loss handling, security, accessibility, and
 one runnable check for non-trivial logic are **never** cut by the lean ladder.
-The plugin also blocks known-destructive shell commands and refuses to read
-`.env` / private keys, at every level.
+The plugin also blocks known-destructive shell commands and refuses to open
+`.env` / private keys — through the read/edit/patch tools or common shell
+readers — at every level.
 
 ## Verify
 

@@ -42,6 +42,13 @@ mkdir -p ~/.config/opencode/plugins
 cp .opencode/plugins/sdlc-lean.js ~/.config/opencode/plugins/
 ```
 
+> **Do not double-install inside this repo:** OpenCode loads both
+> `~/.config/opencode/plugins/` and `<project>/.opencode/plugins/`. With the
+> global copy present, opening this repo loads `sdlc-lean` twice under one ID
+> and fails with "failed to load plugin sdlc-lean". When hacking on sdlc-lean
+> itself, remove the global copy (`rm ~/.config/opencode/plugins/sdlc-lean.js`)
+> — the project-local plugin already covers this directory.
+
 Restart OpenCode after installing. No dependencies. Works on OpenCode V1
 (1.18.x) and V2 (2.0.x, verified) — V2 auto-loads the global plugin from
 `~/.config/opencode/plugins/`. Pair with
@@ -52,7 +59,7 @@ savings — complementary, not bundled.
 
 | Area | Contents |
 |---|---|
-| Skills (25) | router · brainstorming · writing-plans · worktrees · sdd / executing-plans · TDD · debugging · verification · review in/out · finish-branch · parallel-agents · writing-skills · diagnosing · lean-review · security · performance · schemas · release-notes · exploring-codebase · managing-tasks · communicating-concisely · acquiring-capabilities · deep-research |
+| Skills (30) | router · brainstorming · writing-plans · worktrees · sdd / executing-plans · TDD · debugging · verification · review in/out · finish-branch · parallel-agents · writing-skills · diagnosing · lean-review · security · performance · schemas · release-notes · exploring-codebase · managing-tasks · communicating-concisely · simplified-technical-english · acquiring-capabilities · deep-research · incident-postmortem · dependency-upgrade · threat-model · adr |
 | Agents (7) | implementer · planner · code-reviewer · test-writer · explorer · security-reviewer · researcher |
 | Pipelines (4) | `/feature` · `/bugfix` · `/security-audit` · `/refactor` — invoked automatically by the router |
 | Status | `/sdlc-lean` — activation proof + installed skills/agents/commands |
@@ -64,7 +71,16 @@ Every response and generated doc follows `communicating-concisely`: a
 ~30-second attention budget (~120 words default), answer-first, and visuals
 over walls — mermaid for flows/architecture/schemas, tables for comparisons
 and task lists, progressive disclosure for detail. Plans and designs are a
-diagram plus a table, not an essay.
+diagram plus a table, not an essay. Long prose and generated docs also apply
+`simplified-technical-english` — an ASD-STE100-informed subset (~80%), never
+claimed as certified.
+
+## Debt ledger
+
+Deliberate shortcuts and deferred work are recorded in a debt ledger
+(`docs/debt-ledger.md`; format ships in the `lean-review` skill). `refactor`
+and `lean-review` read and write it, so a side improvement never grows an
+unrelated diff.
 
 ## Reuse before rebuild
 
@@ -108,11 +124,23 @@ The plugin also blocks known-destructive shell commands and refuses to read
 ## Verify
 
 ```sh
-node scripts/validate-skills.mjs   # static skill lint
-node --test "tests/opencode/*.mjs" # plugin, budget, and safety tests
+npm run verify                     # static skill lint + plugin/budget/safety tests
+node scripts/validate-skills.mjs   # lint only
+node --test                        # tests only
+npm run eval                       # live eval harness — DRY by default
 ```
 
-Live-harness verification: [`eval/results/2026-09-27-dogfood.md`](eval/results/2026-09-27-dogfood.md).
+The live harness (`eval/run.mjs`) runs probes through a real OpenCode session
+in a throwaway project and records tokens/cost. It spends nothing unless you
+pass `--run`, and is capped by `--max-probes`, so it never runs in CI:
+
+```sh
+npm run eval                              # print the plan, spend nothing
+node eval/run.mjs --run --max-probes 4    # run at most 4 probes
+node eval/run.mjs --run --filter safety   # one group
+```
+
+Live-harness verification: [`eval/results/`](eval/results/).
 
 ## Credits
 

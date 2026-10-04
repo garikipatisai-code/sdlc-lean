@@ -11,3 +11,4 @@ Each entry answers: what changes for the reader (upgrade? action? break?).
 Sections: Breaking (with migration), Added, Fixed, Deprecated (with removal date).
 Derive from merged diffs/PRs, propose a version bump (breaking → major), and
 provide the copy-pasteable release command. No internals, no file lists.
+A version bump driven by a dependency? See `dependency-upgrade`.

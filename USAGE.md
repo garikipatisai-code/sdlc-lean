@@ -30,6 +30,13 @@ mkdir -p ~/.config/opencode/plugins
 cp .opencode/plugins/sdlc-lean.js ~/.config/opencode/plugins/
 ```
 
+> **Do not double-install inside this repo:** OpenCode loads both
+> `~/.config/opencode/plugins/` and `<project>/.opencode/plugins/`. With the
+> global copy present, opening this repo loads `sdlc-lean` twice under one ID
+> and fails with "failed to load plugin sdlc-lean". When hacking on sdlc-lean
+> itself, remove the global copy (`rm ~/.config/opencode/plugins/sdlc-lean.js`)
+> — the project-local plugin already covers this directory.
+
 Restart OpenCode after installing. No dependencies. Works on OpenCode V1
 (1.18.x) and V2 (2.0.x, verified). V2 auto-loads the global plugin from
 `~/.config/opencode/plugins/`; the plugin registers safety guards on both
@@ -100,19 +107,23 @@ Every pipeline also has an explicit slash command when you want determinism:
   keys are refused, always. Trust-boundary validation, data-loss handling,
   security, and accessibility are never cut.
 - **Output contract** — replies respect a ~30-second budget and prefer mermaid
-  diagrams and tables over prose walls.
+  diagrams and tables over prose walls. Long prose also applies
+  `simplified-technical-english` (STE-informed, not certified).
+- **Debt ledger** — deferred shortcuts are logged in `docs/debt-ledger.md`
+  (format in the `lean-review` skill) instead of expanding an unrelated diff.
 
 ## 5. Skills & agents reference
 
-| Skills (25) | Purpose |
+| Skills (30) | Purpose |
 |---|---|
 | `using-sdlc-lean` | Router: infers pipeline + scrutiny |
 | `brainstorming` · `writing-plans` · `executing-plans` · `subagent-driven-development` | Feature flow: design → plan → execute |
 | `test-driven-development` · `systematic-debugging` · `verification-before-completion` | Correctness gates |
 | `requesting-code-review` · `receiving-code-review` · `lean-review` | Review in/out + over-engineering audit |
 | `reviewing-security` · `investigating-performance` · `evolving-schemas` · `writing-release-notes` | Rigor skills |
+| `incident-postmortem` · `dependency-upgrade` · `threat-model` · `adr` | Lifecycle: postmortems, safe bumps, design-time threat modeling, decision records |
 | `using-git-worktrees` · `dispatching-parallel-agents` · `managing-tasks` | Isolation, parallel work (fan-out/fan-in), persistence |
-| `exploring-codebase` · `acquiring-capabilities` · `deep-research` · `communicating-concisely` | Orientation, reuse, research, output |
+| `exploring-codebase` · `acquiring-capabilities` · `deep-research` · `communicating-concisely` · `simplified-technical-english` | Orientation, reuse, research, output |
 | `writing-skills` · `diagnosing-sdlc` | Meta: author skills, debug the suite |
 
 | Agents (7) | What it does |
@@ -168,13 +179,20 @@ the plugin entry from `opencode.json` if you added one.
 | No skill announced | Confirm `.opencode/skills/*/SKILL.md` exists and restart |
 | `/feature` missing | Commands must be in `.opencode/commands/` or `~/.config/opencode/commands/` |
 | Plugin not loading | Check the file is `.opencode/plugins/sdlc-lean.js`; V2 needs the repo root to contain `index.js` only if installed as a package |
+| "failed to load plugin sdlc-lean" | Duplicate ID: same file in both `~/.config/opencode/plugins/` and `.opencode/plugins/` — remove the global copy when working inside this repo |
 | Wrong pipeline chosen | Be explicit (`/bugfix …`) — free-text routing is model-dependent |
 
 ## 10. Develop / verify
 
 ```sh
-node scripts/validate-skills.mjs   # static skill lint
-node --test "tests/opencode/*.mjs" # plugin, budget, and safety tests
+npm run verify                     # static skill lint + plugin/budget/safety tests
+node scripts/validate-skills.mjs   # lint only
+node --test                        # tests only
+npm run eval                       # live eval harness — DRY by default
 ```
+
+The live harness spends nothing without `--run` (capped by `--max-probes`) and
+never runs in CI. Results land in `eval/results/` as JSON + markdown, including
+tokens and USD cost per run.
 
 Live-harness evidence: [`eval/results/`](eval/results/).

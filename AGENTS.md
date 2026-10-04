@@ -11,6 +11,9 @@ keep this file short — it loads as context.
 - `.opencode/plugins/sdlc-lean.js` — zero-dep plugin. Keep it dependency-free.
 - `scripts/validate-skills.mjs` — static lint, must pass on every skill change.
 - `tests/opencode/*.mjs` — `node --test`, must pass on every plugin change.
+- `tests/eval/*.mjs` — unit tests for the eval harness (pure functions).
+- `eval/run.mjs` — opt-in live harness; dry by default (`--run` to spend),
+  never invoked by `npm run verify` or CI.
 
 ## Rules for edits
 

@@ -17,3 +17,4 @@ description: Use when changing APIs, database schemas, or shared contracts. Expa
 - No required-field additions, renames, or type changes without a compat window.
 - SQL: additive migrations only per deploy; backfill before enforcing NOT NULL.
 - Version the contract (or changelog it) with every change; note the removal date for deprecated parts.
+- A contract choice that is hard to reverse? Record it with `adr`.

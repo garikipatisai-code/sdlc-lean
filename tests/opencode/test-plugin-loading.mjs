@@ -106,6 +106,39 @@ test('fan-out / fan-in contract ships and is routed', () => {
   }
 });
 
+test('debt ledger reference ships and is routed', () => {
+  assert.ok(plugin.getBootstrapContent().includes('debt ledger'), 'router must mention the debt ledger');
+  const ref = path.resolve(import.meta.dirname, '../../.opencode/skills/lean-review/references/debt-ledger.md');
+  assert.ok(fs.existsSync(ref), 'debt-ledger reference must ship');
+  const skill = plugin.listSkills().find((s) => s.id === 'lean-review');
+  assert.ok(skill.content.includes('debt-ledger'), 'lean-review must link the ledger format');
+});
+
+test('STE-lite skill ships, is routed, and claims no compliance', () => {
+  assert.ok(plugin.getBootstrapContent().includes('STE-lite'), 'router must signal STE-lite');
+  const skill = plugin.listSkills().find((s) => s.id === 'simplified-technical-english');
+  assert.ok(skill, 'simplified-technical-english skill must ship');
+  assert.ok(skill.content.includes('STE-informed'), 'must be labelled STE-informed');
+  assert.match(skill.content, /preserve[^\n]*conditions/i, 'must require preserving conditions/modality');
+  assert.match(skill.content, /not[^.\n]*reproduced/i, 'must state the dictionary is not reproduced');
+  const comms = plugin.listSkills().find((s) => s.id === 'communicating-concisely');
+  assert.ok(comms.content.includes('simplified-technical-english'), 'comms must route to STE');
+});
+
+test('lifecycle skills ship, are description-triggered, and add no bootstrap bytes', () => {
+  const ids = ['incident-postmortem', 'dependency-upgrade', 'threat-model', 'adr'];
+  const skills = plugin.listSkills();
+  for (const id of ids) {
+    const s = skills.find((x) => x.id === id);
+    assert.ok(s, `${id} skill must ship`);
+    assert.match(s.description, /^Use when/i, `${id} description must be a trigger`);
+  }
+  assert.ok(
+    Buffer.byteLength(plugin.getBootstrapContent()) <= 5116,
+    'router bootstrap must not grow for lifecycle skills',
+  );
+});
+
 test('activation: writes status, toasts once per session', async () => {
   let toasts = 0;
   const client = { tui: { showToast: async () => { toasts++; } }, app: { log: async () => {} } };

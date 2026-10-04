@@ -19,3 +19,4 @@ path while sibling callers stay broken is the opposite of lazy.
 
 - Two-strike rule: two failed fix attempts → stop, re-trace, restate the hypothesis. Never stack speculative fixes.
 - Symptom-only patches are rejected. If the true fix is out of scope, say so and file it — do not smuggle it in.
+- A production incident rather than a local bug? After the fix, run `incident-postmortem`.

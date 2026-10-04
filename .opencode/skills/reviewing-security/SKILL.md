@@ -16,3 +16,5 @@ impact is not a finding.** Uncertain items are questions.
 - Injection: queries/commands/shell built from untrusted parts flagged with the exact concatenation.
 
 Report ranked by exploitability: `path:line` + attack path + concrete fix.
+
+Designing it, before code exists? Pair with `threat-model`.

@@ -7,6 +7,7 @@
   "scripts": {
     "lint": "node scripts/validate-skills.mjs",
     "test": "node --test",
+    "eval": "node eval/run.mjs",
     "verify": "npm run lint && npm run test"
   }
 }

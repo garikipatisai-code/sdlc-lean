@@ -19,7 +19,7 @@ Never ask the user to pick a mode or workflow — infer and proceed.
 **Check for a relevant skill BEFORE any response or action** — including
 clarifying questions and codebase exploration. Announce
 "Using [skill] to [purpose]" and follow it exactly.
-Every human-facing word follows `communicating-concisely` (30s budget, visuals over walls).
+Every human-facing word follows `communicating-concisely` (STE-lite, 30s budget, visuals over walls).
 
 ## Auto-Routing (infer intent, do not ask)
 

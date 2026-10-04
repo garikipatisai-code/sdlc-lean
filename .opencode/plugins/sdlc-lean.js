@@ -224,13 +224,44 @@ const DESTRUCTIVE_PATTERNS = [
   /\bdd\s+.*of=\/dev\/(sd|hd|nvme)/,
 ];
 
+// Files whose contents must not enter the model context. Templates
+// (`.env.example`/`.sample`/`.template`) are not secrets.
+const SENSITIVE_PATH_RE = /(^|\/)\.env(?:\.(?!example$|sample$|template$)[^/]*)?$|(^|\/)(id_rsa|id_ed25519)$|\.pem$|\.key$/;
+
+const FILE_TOOLS = new Set(['read', 'edit', 'write', 'patch', 'apply_patch']);
+
+// apply_patch/patch carry no filePath; recover targets from the diff body.
+const pathsFromPatch = (text) => {
+  const out = [];
+  for (const re of [/^\*\*\* (?:Add|Update|Delete|Move to) File: (.+)$/gm, /^\*\*\* Move to: (.+)$/gm, /^\+\+\+ [ab]\/(.+)$/gm]) {
+    for (const m of text.matchAll(re)) out.push(m[1].trim());
+  }
+  return out;
+};
+
+// Shell readers that would print a secret file into the model context. A reader
+// only counts at the start of a simple command (optionally after sudo/env), so
+// benign prose such as `git commit -m "remove cat .env"` still passes.
+const SECRET_READ_RE = new RegExp(
+  `(?:^|[;&|\\n]\\s*)(?:sudo\\s+|env\\s+|command\\s+)?`
+  + `(?:cat|bat|tac|head|tail|less|more|strings|xxd|od|hexdump|base64|nl)\\b[^\\n|;&]*`
+  + `(?:\\.env(?:\\.(?!example\\b|sample\\b|template\\b)[\\w.-]+)?|id_rsa|id_ed25519|[\\w.-]+\\.(?:pem|key))`
+  + `(?=[\\s'"]|$)`,
+  'i',
+);
+
 export const checkSafety = (tool, args = {}) => {
-  if (tool === 'read' || tool === 'edit' || tool === 'write') {
-    const p = String(args.filePath || args.path || '');
-    if (/(^|\/)\.env(\.|$)/.test(p) || /\.pem$|\.key$|id_rsa/.test(p)) {
-      throw new Error(
-        `[sdlc-lean] Refusing to open sensitive file "${p}". Inspect keys/fingerprints via a safe command instead; never load secrets into context.`,
-      );
+  if (FILE_TOOLS.has(tool)) {
+    const candidates = [args.filePath, args.path];
+    const body = args.patchText || args.diff || args.patch;
+    if (typeof body === 'string' && body) candidates.push(...pathsFromPatch(body));
+    for (const raw of candidates) {
+      const p = String(raw || '');
+      if (p && SENSITIVE_PATH_RE.test(p)) {
+        throw new Error(
+          `[sdlc-lean] Refusing to open sensitive file "${p}". Inspect keys/fingerprints via a safe command instead; never load secrets into context.`,
+        );
+      }
     }
   }
   if (tool === 'bash' || tool === 'shell') {
@@ -242,6 +273,11 @@ export const checkSafety = (tool, args = {}) => {
           `[sdlc-lean] Refusing destructive command. Narrow the target path or confirm intent explicitly with #nosafety.`,
         );
       }
+    }
+    if (SECRET_READ_RE.test(cmd)) {
+      throw new Error(
+        `[sdlc-lean] Refusing to read a sensitive file into context. Inspect metadata (e.g. \`ls -l\`, key fingerprints) instead; use #nosafety only if you accept exposure.`,
+      );
     }
   }
 };

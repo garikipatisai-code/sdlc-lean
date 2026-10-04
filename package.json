@@ -1,0 +1,12 @@
+{
+  "name": "sdlc-lean",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Lean SDLC suite for OpenCode: auto-routing skills, subagents, and always-on safety guards.",
+  "license": "MIT",
+  "scripts": {
+    "lint": "node scripts/validate-skills.mjs",
+    "test": "node --test",
+    "verify": "npm run lint && npm run test"
+  }
+}

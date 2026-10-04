@@ -22,4 +22,4 @@ If clean: `Lean already. Ship.`
 
 Genuine shortcuts get a ceiling comment so they stay greppable:
 `# scope: <ceiling>, <upgrade path>` (e.g. `# scope: single-region, extract provider interface at second region`).
-Track them in the debt ledger; flag `no-trigger` rot (a ceiling already hit).
+Track them in the debt ledger (`references/debt-ledger.md`); flag `no-trigger` rot (a ceiling already hit).

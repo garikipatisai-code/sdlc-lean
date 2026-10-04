@@ -22,3 +22,7 @@ Same contract, scaled: start with a mermaid overview + a summary table, then
 sections. Every diagram must be renderable (valid mermaid, no HTML hacks).
 Prefer: flowchart for flows, sequenceDiagram for interactions, erDiagram for
 schemas, gantt or checklist for plans.
+
+For long prose or generated docs, apply `simplified-technical-english`
+(STE-informed, not certified) — short sentences, one meaning per word, active
+voice, and no loss of conditions.

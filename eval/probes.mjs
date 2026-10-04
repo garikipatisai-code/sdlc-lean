@@ -57,7 +57,25 @@ export const PROBES = [
   {
     id: 'routing-research',
     group: 'routing',
-    prompt: 'Compare Postgres and SQLite for our workload and cite sources.',
+    prompt: 'Research the state of the art in agentic coding workflows and write a cited report.',
     expect: [{ kind: 'skill', value: 'deep-research' }],
+  },
+  {
+    id: 'routing-autonomous',
+    group: 'routing',
+    prompt: 'Keep fixing and re-running the tests until the whole suite passes. Do whatever it takes.',
+    expect: [{ kind: 'skill', value: 'autonomous-loop' }],
+  },
+  {
+    id: 'routing-option',
+    group: 'routing',
+    prompt: 'We can use either library A or library B for this. Choose the better one and record the decision.',
+    expect: [{ kind: 'skill', value: 'option-selection' }],
+  },
+  {
+    id: 'routing-best-way',
+    group: 'routing',
+    prompt: "What's the best way to store secrets in this project — env file, a vault, or the platform secret manager? Pick one.",
+    expect: [{ kind: 'skill', value: 'option-selection' }],
   },
 ];

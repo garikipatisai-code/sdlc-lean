@@ -213,6 +213,48 @@ export const getStatus = () => {
   }
 };
 
+// --- Compaction memory (experimental.session.compacting) ---------------------
+// Autonomous loops must survive context compaction. Inject the durable state
+// files — the debt ledger and the newest plan progress ledger — into the
+// compaction summary prompt so the continuation model carries them forward.
+// Fail-open: missing files, unreadable docs, or a hostile host never break
+// compaction. `root` is overridable for tests.
+const MAX_INJECT = 1500; // chars per file — keeps compaction prompts lean
+
+// Never follow symlinks: a repo may plant docs/debt-ledger.md -> ~/.ssh/id_rsa
+// (this plugin runs globally too, so repos are untrusted input).
+const safeReadDoc = (p) => {
+  try {
+    const st = fs.lstatSync(p);
+    if (st.isSymbolicLink() || !st.isFile()) return null;
+    return fs.readFileSync(p, 'utf8').slice(0, MAX_INJECT);
+  } catch (err) {
+    return null;
+  }
+};
+
+export const compactionContext = (root = path.resolve(__dirname, '..', '..')) => {
+  const parts = [];
+  try {
+    const debtPath = path.join(root, 'docs', 'debt-ledger.md');
+    const debt = safeReadDoc(debtPath);
+    if (debt) parts.push(`## Debt ledger (docs/debt-ledger.md)\n${debt}`);
+    const plansDir = path.join(root, 'docs', 'plans');
+    if (fs.existsSync(plansDir)) {
+      // Names are date-prefixed, so a reverse lexicographic sort = newest first.
+      const progress = fs.readdirSync(plansDir).filter((f) => f.endsWith('-progress.md')).sort().reverse();
+      if (progress[0]) {
+        const p = path.join(plansDir, progress[0]);
+        const body = safeReadDoc(p);
+        if (body) parts.push(`## Latest plan progress (docs/plans/${progress[0]})\n${body}`);
+      }
+    }
+  } catch (err) {
+    return []; // fail open — never break compaction
+  }
+  return parts;
+};
+
 // --- Safety guards (ALWAYS ON) --------------
 // Fail-open: only exact-known destructive patterns throw; everything else
 // passes untouched. Errors explain the safe alternative.
@@ -283,7 +325,7 @@ export const checkSafety = (tool, args = {}) => {
 };
 
 /** V1 plugin (named export, OpenCode 1.x). */
-export const SdlcLeanPlugin = async ({ client } = {}) => {
+export const SdlcLeanPlugin = async ({ client, directory } = {}) => {
   return {
     config: async (config) => {
       if (Array.isArray(config.skills)) return; // V2 shape — setup() handles it
@@ -309,6 +351,20 @@ export const SdlcLeanPlugin = async ({ client } = {}) => {
     // Safety net: destructive commands + sensitive files. Always on.
     'tool.execute.before': async (input, output) => {
       checkSafety(input.tool, output.args);
+    },
+
+    // Loop memory: carry durable state across compaction summaries.
+    // Prefer the host-provided project directory (works for global installs);
+    // fall back to the repo-root default when it is absent.
+    'experimental.session.compacting': async (_input, output) => {
+      try {
+        const parts = compactionContext(directory);
+        if (!parts.length) return;
+        if (!Array.isArray(output.context)) output.context = [];
+        output.context.push(...parts);
+      } catch (err) {
+        console.error('[sdlc-lean] compaction hook failed:', err);
+      }
     },
   };
 };
@@ -363,6 +419,23 @@ async function setup(ctx) {
     });
   } catch (err) {
     console.error('[sdlc-lean] session hook registration failed:', err);
+  }
+  // Loop memory: inject durable state into V2 compaction summaries (fail-open).
+  // ctx.directory is best-effort (V2 exposes it on some hosts); absent -> repo-root default.
+  const projectRoot = typeof ctx.directory === 'string' && ctx.directory ? ctx.directory : undefined;
+  try {
+    await ctx.session.hook('experimental.session.compacting', async (_input, output) => {
+      try {
+        const parts = compactionContext(projectRoot);
+        if (!parts.length) return;
+        if (!Array.isArray(output.context)) output.context = [];
+        output.context.push(...parts);
+      } catch (err) {
+        console.error('[sdlc-lean] compaction hook failed:', err);
+      }
+    });
+  } catch (err) {
+    console.error('[sdlc-lean] compaction hook registration failed:', err);
   }
   // V2 safety net: V1 hooks are not bridged to V2, so register the same guards
   // through the V2 tool hook. Throwing blocks the tool call.

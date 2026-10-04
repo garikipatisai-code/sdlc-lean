@@ -43,6 +43,9 @@ Trust tiers (see the reference for the list):
 - **Unknown** — anything else → inspect read-only, surface it to the human,
   never auto-install.
 
+When several eligible options remain, choose with `option-selection`
+(research-scaled matrix → pick → record the decision) — do not guess.
+
 ## 3. Security review before any install (mandatory)
 
 Third-party code is a trust boundary. Reject if: obfuscated/minified source,

@@ -6,7 +6,7 @@ keep this file short — it loads as context.
 ## Structure
 
 - `.opencode/skills/<name>/SKILL.md` — one skill per dir, `name` == dir, `Use when...` descriptions only.
-- `.opencode/agents/*.md` — subagents (`mode: subagent`), no hardcoded models (inherit).
+- `.opencode/agents/*.md` — agents (`mode: subagent` workers; `orchestrator` is the `mode: primary` autonomous runner), no hardcoded models (inherit).
 - `.opencode/commands/*.md` — slash commands, `$ARGUMENTS` for input.
 - `.opencode/plugins/sdlc-lean.js` — zero-dep plugin. Keep it dependency-free.
 - `scripts/validate-skills.mjs` — static lint, must pass on every skill change.

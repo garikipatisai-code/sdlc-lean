@@ -26,14 +26,15 @@ Every human-facing word follows `communicating-concisely` (STE-lite, 30s budget,
 Classify, run the pipeline, announce the route in one line. Pipeline skill first, even when a domain skill matches.
 
 - New feature / behavior change / "let's build X" → **feature**: explore → `brainstorming` (HARD GATE) → `writing-plans` → execute → review → verify.
+- Goal-driven autonomy ("keep going until", acceptance criteria) → `orchestrator` agent (`autonomous-loop`).
 - Bug / failing test / unexpected behavior → **bugfix**: `systematic-debugging` first, no speculative fixes.
 - Restructure / cleanup → **refactor**: impact analysis first; side improvements go to the debt ledger, not the diff.
 - "Is this safe?" or auth/input/data-access changes → **security-audit** (read-only) + `reviewing-security`.
-- Approved spec → `writing-plans`, then `executing-plans` or `subagent-driven-development` (independent tasks).
+- Approved spec → `writing-plans`, then `executing-plans` or `subagent-driven-development`.
 - About to claim done → `verification-before-completion` (fresh evidence). Big diff → `lean-review`.
 - Shared contracts → `evolving-schemas`. Slow code → `investigating-performance`. Isolated work → `using-git-worktrees`.
 - Unfamiliar domain / capability gap → `acquiring-capabilities`: search trusted sources, reuse before building.
-- External-evidence question ("research", "compare", "state of the art") → `deep-research`: scope → parallel search → cite → synthesize.
+- External-evidence question (research/compare/SOTA) → `deep-research`. Comparing options → `option-selection`.
 - Many independent sub-tasks / merging workers → `dispatching-parallel-agents` (fan-out/fan-in).
 
 Ambiguous? Pick the safer route.
@@ -69,12 +70,12 @@ accessibility, explicit requests, one runnable check for non-trivial logic.
 
 | Thought | Reality |
 |---------|---------|
-| "Just a simple question" | Questions are tasks. Check for skills. |
-| Any prep before the skill check | Skills tell you HOW to prepare. Check first. |
+| "Just a question" | Questions are tasks — check skills. |
+| Prep before the skill check | Skills define the prep. Check first. |
 | "Doesn't need a formal skill" | If a skill exists, use it. |
 | "I remember this skill" | Skills evolve. Read the current version. |
-| "I'll just build it myself" | Search trusted sources first — reuse beats reimplementation. |
-| "I'll answer from memory" | Claims about the world need fetched sources — use deep-research. |
-| "The skill is overkill / one thing first" | Simple things become complex. Check BEFORE acting. |
-| "Ask which workflow they want" | Never. Infer the route and proceed. |
-| Long reply with no diagram/table | 30s budget breached — cut or visualize. |
+| "I'll build it myself" | Search trusted sources — reuse first. |
+| "Answer from memory" | World claims need sources — deep-research. |
+| "Overkill / one thing first" | Simple things become complex. Check. |
+| "Ask which workflow?" | Never. Infer and proceed. |
+| Long reply, no diagram/table | 30s budget breached — cut/visualize. |

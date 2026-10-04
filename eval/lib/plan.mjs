@@ -7,7 +7,7 @@ export function parseArgs(argv = []) {
     run: false,
     model: undefined,
     filter: undefined,
-    maxProbes: 10,
+    maxProbes: undefined, // dry plan lists every seed probe; --max-probes caps
     outDir: 'eval/results',
   };
   for (let i = 0; i < argv.length; i++) {

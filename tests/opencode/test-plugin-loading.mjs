@@ -139,6 +139,41 @@ test('lifecycle skills ship, are description-triggered, and add no bootstrap byt
   );
 });
 
+test('autonomy skills + orchestrator agent ship and are routed within budget', () => {
+  const boot = plugin.getBootstrapContent();
+  for (const term of ['orchestrator', 'autonomous-loop', 'option-selection']) {
+    assert.ok(boot.includes(term), `router must name ${term}`);
+  }
+  const skills = plugin.listSkills();
+  for (const id of ['autonomous-loop', 'option-selection']) {
+    const s = skills.find((x) => x.id === id);
+    assert.ok(s, `${id} skill must ship`);
+    assert.match(s.description, /^Use when/i, `${id} description must be a trigger`);
+  }
+  const loop = skills.find((x) => x.id === 'autonomous-loop');
+  for (const term of ['Stop rules', 'give up honestly', 'acceptance criteria']) {
+    assert.ok(loop.content.includes(term), `autonomous-loop missing: ${term}`);
+  }
+  const select = skills.find((x) => x.id === 'option-selection');
+  for (const term of ['Matrix', 'Y-statement', 'record the decision']) {
+    assert.ok(select.content.includes(term), `option-selection missing: ${term}`);
+  }
+  assert.ok(
+    fs.existsSync(path.resolve(import.meta.dirname, '../../.opencode/agents/orchestrator.md')),
+    'orchestrator agent must ship',
+  );
+  const v = skills.find((x) => x.id === 'verification-before-completion');
+  assert.ok(v.content.includes('verify-recipe'), 'verify recipe must be linked');
+  const dr = skills.find((x) => x.id === 'deep-research');
+  assert.ok(dr.content.includes('option-selection'), 'deep-research must hand off to option-selection');
+  const ac = skills.find((x) => x.id === 'acquiring-capabilities');
+  assert.ok(ac.content.includes('option-selection'), 'acquiring-capabilities must hand off to option-selection');
+  assert.ok(
+    Buffer.byteLength(boot) <= 5116,
+    'router bootstrap must not grow for autonomy skills',
+  );
+});
+
 test('activation: writes status, toasts once per session', async () => {
   let toasts = 0;
   const client = { tui: { showToast: async () => { toasts++; } }, app: { log: async () => {} } };

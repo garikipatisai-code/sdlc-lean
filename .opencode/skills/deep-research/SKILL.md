@@ -74,6 +74,9 @@ and list what remains unanswered.
   whose content you read — never the search engine, never a snippet-only hit,
   never an invented URL. If it can't be verified, cut the claim.
 - End with confidence labels, unresolved conflicts, and open questions.
+- When the report compares options, end with a decision: hand off to
+  `option-selection` (matrix → pick → record). A comparison with no choice is
+  an unfinished report.
 
 ## Citation discipline
 

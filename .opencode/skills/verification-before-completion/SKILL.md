@@ -18,3 +18,10 @@ description: Use when about to claim work is complete, fixed, or passing, before
 
 If any item fails, fix and re-run from step 1. Report evidence inline
 (command + outcome), never "should be passing" or "tests pass" without the run.
+
+## Verify recipe (write once, reuse every loop)
+
+If `docs/verify-recipe.md` exists, run its commands and cite results. If it
+does not, write it now from steps 1–3: the exact commands that must pass
+before any completion claim. Autonomous loops reuse it — never re-derive
+verification commands each round.

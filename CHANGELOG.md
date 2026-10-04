@@ -13,6 +13,14 @@ All notable changes to this project are documented here. Format follows
   scoring and token/cost telemetry; never runs in CI.
 - Lifecycle skills: `incident-postmortem`, `dependency-upgrade`,
   `threat-model`, and `adr` (description-triggered, no router growth).
+- Autonomous orchestration: `orchestrator` primary agent + `autonomous-loop`
+  skill (goal-driven loops with iteration budgets and honest stop rules) and
+  `option-selection` skill (research-first compare-then-commit decisions:
+  options matrix, Y-statement, ADR handoff).
+- Verify-recipe memory in `verification-before-completion` (write once, reuse
+  every loop) and compaction-state hook in the plugin (debt ledger + newest
+  plan progress survive context compaction, fail-open).
+- Eval probes for autonomous-routing and option-selection triggers.
 
 ## 1.0.0 - 2026-10-04
 

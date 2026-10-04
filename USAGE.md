@@ -48,8 +48,9 @@ flavors (V1 `tool.execute.before`, V2 `ctx.tool.hook("execute.before")`).
 
 ## 2. Verify it is live
 
-The suite augments the built-in **Build** (and **Plan**) agents — it is not a
-separate agent, so switch with <kbd>Tab</kbd> to Build and work as usual.
+The suite augments the built-in **Build** (and **Plan**) agents. It also ships
+an **orchestrator** primary agent for autonomous goal-driven runs — switch with
+<kbd>Tab</kbd> to it when you want the agent to loop on its own until done.
 
 How you know it is triggered (four independent signals):
 
@@ -67,6 +68,8 @@ Quick probes:
 | `Let's add a date picker` | Routes to `brainstorming` (feature pipeline) |
 | `This test is failing` | Routes to `systematic-debugging` (bugfix pipeline) |
 | `Explain how X works` | Uses `communicating-concisely` (diagram + short prose) |
+| `Keep going until all tests pass` | `orchestrator` + `autonomous-loop`: loops until criteria or an honest budget stop |
+| `Which library should we use — A or B?` | `option-selection`: research → matrix → pick → record |
 | `/sdlc-lean` | Prints activation timestamp, install path, and counts |
 
 In headless `opencode run` there is no TUI, so the toast is skipped — the
@@ -84,6 +87,8 @@ Nothing to select — describe the work and the router runs the pipeline.
 | A security check | *"Is the upload endpoint safe?"* | read-only traced-path audit |
 | A capability you lack | *"We need OCR — find a trusted option"* | trusted-source search → reuse/install |
 | External research | *"Compare Postgres vs SQLite for this"* | scope → parallel search → cite → synthesize |
+| Pick the best option | *"Which library should we use — A or B?"* | `option-selection`: research → matrix → pick → record |
+| An autonomous goal | *"Keep going until all tests pass"* | `orchestrator` → `autonomous-loop`: route → decide → execute → verify → self-correct |
 
 ### Pipelines as commands
 
@@ -114,9 +119,11 @@ Every pipeline also has an explicit slash command when you want determinism:
 
 ## 5. Skills & agents reference
 
-| Skills (30) | Purpose |
+| Skills (32) | Purpose |
 |---|---|
 | `using-sdlc-lean` | Router: infers pipeline + scrutiny |
+| `autonomous-loop` | Goal-driven loop protocol: budgets, stop rules, give-up-honestly report |
+| `option-selection` | Research-first decisions: options matrix → pick → record |
 | `brainstorming` · `writing-plans` · `executing-plans` · `subagent-driven-development` | Feature flow: design → plan → execute |
 | `test-driven-development` · `systematic-debugging` · `verification-before-completion` | Correctness gates |
 | `requesting-code-review` · `receiving-code-review` · `lean-review` | Review in/out + over-engineering audit |
@@ -126,8 +133,9 @@ Every pipeline also has an explicit slash command when you want determinism:
 | `exploring-codebase` · `acquiring-capabilities` · `deep-research` · `communicating-concisely` · `simplified-technical-english` | Orientation, reuse, research, output |
 | `writing-skills` · `diagnosing-sdlc` | Meta: author skills, debug the suite |
 
-| Agents (7) | What it does |
+| Agents (8) | What it does |
 |---|---|
+| `orchestrator` | **Primary** agent: drives goals to done in loops, dispatches workers below |
 | `explorer` | Read-only codebase reconnaissance |
 | `researcher` | Web research on one sub-question, returns cited findings |
 | `planner` | Produces bite-sized implementation plans |

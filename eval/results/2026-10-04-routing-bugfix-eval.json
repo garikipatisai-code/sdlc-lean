@@ -1,0 +1,41 @@
+{
+  "date": "2026-10-04",
+  "model": null,
+  "probes": 1,
+  "results": [
+    {
+      "id": "routing-bugfix",
+      "group": "routing",
+      "advisory": false,
+      "ok": true,
+      "expect": [
+        {
+          "kind": "skill",
+          "value": "systematic-debugging",
+          "ok": true
+        }
+      ],
+      "text": "Using `systematic-debugging` to find root cause before fixing.\n<skill_content name=\"systematic-debugging\">\n# Skill: systematic-debugging\n\n# Systematic Debugging\n\n**NO FIXES WITHOUT ROOT CAUSE.** A report names a symptom. Patching the named\npath while sibling callers stay broken is the opposite of lazy.\n\n## 4 phases\n\n1. **Reproduce**: write the failing test/script first. Confirm it fails for the reported reason.\n2. **Trace**: follow the real flow end to end. Grep every caller of the function you are about to touch. Fix it once, where all callers route through.\n3. **Hypothesize**: state the single root cause in one sentence. If you have two candidates, test both — do not fix both.\n4. **Fix + verify**: minimal fix (lean ladder), reproducing test goes green, full suite stays green.\n\n## Rules\n\n- Two-strike rule: two failed fix attempts → stop, re-trace, restate the hypothesis. Never stack speculative fixes.\n- Symptom-only patches are rejected. If the true fix is out of scope, say so and file it — do not smuggle it in.\n\nBase directory for this skill: ~/Documents/Projects/sdlc-lean/.opencode/skills/systematic-debugging\nRelative paths in this skill (e.g., scripts/, reference/) are relative to this base directory.\nNote: file list is sampled.\n\n<skill_files>\n</skill_files>\n</skill_content>\nAGENTS.md\nCHANGELOG.md\ndocs\neval\nLICENSE\npackage.json\nREADME.md\nscripts\ntests\nUSAGE.md\n✔ joins text and collects skills and tools (1.760764ms)\n✔ detects a guard block from any text (0.243218ms)\n✔ accepts an array of already-parsed events (0.149184ms)\n✔ sums per-step token usage and cost from the stream (1.155375ms)\n✔ detects skills from a skill_content marker in text (0.191491ms)\n✔ dry is the default; only --run spends (1.21027ms)\n✔ max-probes caps the selection (0.274545ms)\n✔ filter selects by id substring or group (1.245787ms)\n✔ args parse model, filter, and out dir (0.252271ms)\n✔ probes have a valid schema and unique ids (1.05441ms)\n✔ every group is represented (0.178287ms)\n✔ ",
+      "usage": {
+        "cost": 0,
+        "tokens": {
+          "input": 13970,
+          "output": 805,
+          "reasoning": 0,
+          "cache": {
+            "read": 72320,
+            "write": 0
+          }
+        }
+      }
+    }
+  ],
+  "totals": {
+    "cost": 0,
+    "input": 13970,
+    "output": 805,
+    "reasoning": 0,
+    "cacheRead": 72320,
+    "cacheWrite": 0
+  }
+}

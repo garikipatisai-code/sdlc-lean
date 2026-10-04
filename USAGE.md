@@ -20,7 +20,16 @@ flowchart LR
 cp -r .opencode /path/to/your-project/
 ```
 
-**Global** — applies to every project:
+**Global** — applies to every project, one command:
+
+```sh
+npm run install:global
+```
+
+The script copies skills/agents/commands/plugin into `~/.config/opencode/`
+(XDG_CONFIG_HOME honored) and prunes files a previous install placed that no
+longer exist in the repo. Your own skills and config are never touched. Manual
+equivalent:
 
 ```sh
 cp -r .opencode/skills/*   ~/.config/opencode/skills/
@@ -29,6 +38,23 @@ cp -r .opencode/commands/* ~/.config/opencode/commands/
 mkdir -p ~/.config/opencode/plugins
 cp .opencode/plugins/sdlc-lean.js ~/.config/opencode/plugins/
 ```
+
+### Updating (this PC and other PCs)
+
+After enhancements land on `main`, refresh any machine that has a clone:
+
+```sh
+git pull && npm run install:global
+```
+
+First time on a new machine:
+
+```sh
+git clone https://github.com/garikipatisai-code/sdlc-lean.git ~/sdlc-lean
+cd ~/sdlc-lean && npm run install:global
+```
+
+Then restart OpenCode (plugins and skills load at session start).
 
 > **Double-install note (inside this repo):** OpenCode loads both
 > `~/.config/opencode/plugins/` and `<project>/.opencode/plugins/`. On V1 this

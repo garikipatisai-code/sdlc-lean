@@ -10,7 +10,9 @@ keep this file short — it loads as context.
 - `.opencode/commands/*.md` — slash commands, `$ARGUMENTS` for input.
 - `.opencode/plugins/sdlc-lean.js` — zero-dep plugin. Keep it dependency-free.
 - `scripts/validate-skills.mjs` — static lint, must pass on every skill change.
+- `scripts/install-global.mjs` — global install/update (`npm run install:global`); manifest-pruned, never touches user files.
 - `tests/opencode/*.mjs` — `node --test`, must pass on every plugin change.
+- `tests/scripts/*.mjs` — installer tests, same gate.
 - `tests/eval/*.mjs` — unit tests for the eval harness (pure functions).
 - `eval/run.mjs` — opt-in live harness; dry by default (`--run` to spend),
   never invoked by `npm run verify` or CI.

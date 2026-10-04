@@ -8,6 +8,7 @@
     "lint": "node scripts/validate-skills.mjs",
     "test": "node --test",
     "eval": "node eval/run.mjs",
+    "install:global": "node scripts/install-global.mjs",
     "verify": "npm run lint && npm run test"
   }
 }

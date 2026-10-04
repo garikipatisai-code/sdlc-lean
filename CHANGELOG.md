@@ -21,6 +21,10 @@ All notable changes to this project are documented here. Format follows
   every loop) and compaction-state hook in the plugin (debt ledger + newest
   plan progress survive context compaction, fail-open).
 - Eval probes for autonomous-routing and option-selection triggers.
+- Global install/update script (`npm run install:global`): copies the suite to
+  `~/.config/opencode/`, prunes only previously-installed files that left the
+  repo (manifest-tracked; user files untouched). Refresh any PC with
+  `git pull && npm run install:global`.
 
 ## 1.0.0 - 2026-10-04
 

@@ -30,12 +30,13 @@ mkdir -p ~/.config/opencode/plugins
 cp .opencode/plugins/sdlc-lean.js ~/.config/opencode/plugins/
 ```
 
-> **Do not double-install inside this repo:** OpenCode loads both
-> `~/.config/opencode/plugins/` and `<project>/.opencode/plugins/`. With the
-> global copy present, opening this repo loads `sdlc-lean` twice under one ID
-> and fails with "failed to load plugin sdlc-lean". When hacking on sdlc-lean
-> itself, remove the global copy (`rm ~/.config/opencode/plugins/sdlc-lean.js`)
-> — the project-local plugin already covers this directory.
+> **Double-install note (inside this repo):** OpenCode loads both
+> `~/.config/opencode/plugins/` and `<project>/.opencode/plugins/`. On V1 this
+> failed with "failed to load plugin sdlc-lean"; on V2.0.22 both loading has
+> been verified working (TUI session + headless `opencode run`). If you ever
+> see the load failure, remove the global copy
+> (`rm ~/.config/opencode/plugins/sdlc-lean.js`) — the project-local plugin
+> already covers this directory.
 
 Restart OpenCode after installing. No dependencies. Works on OpenCode V1
 (1.18.x) and V2 (2.0.x, verified). V2 auto-loads the global plugin from

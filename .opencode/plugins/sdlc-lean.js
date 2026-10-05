@@ -166,7 +166,7 @@ const statusPath = path.join(statusDir, 'status.json');
 
 export const activationMessage = () => `sdlc-lean active - ${listSkills().length} skills`;
 
-export const writeStatus = (sessionID) => {
+export const writeStatus = (sessionID, ux) => {
   try {
     fs.mkdirSync(statusDir, { recursive: true });
     fs.writeFileSync(statusPath, JSON.stringify({
@@ -174,9 +174,22 @@ export const writeStatus = (sessionID) => {
       sessionID: sessionID || 'default',
       skills: listSkills().length,
       active: true,
+      ...(ux && typeof ux === 'object' ? { ux: { tier: ux.tier, confidence: ux.confidence } } : {}),
     }));
   } catch (err) {
     // Best effort only; never break the request pipeline.
+  }
+};
+
+// UX signal: autonomy tier + confidence, recorded best-effort in status file.
+// Fail-open: never throws, never breaks activation.
+export const uxStatus = (ux, sessionID = 'default') => {
+  try {
+    if (!ux || typeof ux !== 'object') return getStatus();
+    writeStatus(sessionID, ux);
+    return getStatus();
+  } catch (err) {
+    return null;
   }
 };
 

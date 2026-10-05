@@ -78,4 +78,22 @@ export const PROBES = [
     prompt: "What's the best way to store secrets in this project — env file, a vault, or the platform secret manager? Pick one.",
     expect: [{ kind: 'skill', value: 'option-selection' }],
   },
+  {
+    id: 'routing-frontend',
+    group: 'routing',
+    prompt: 'Build a new dashboard UI with distinctive visual design, not templated defaults.',
+    expect: [{ kind: 'skill', value: 'frontend-design' }],
+  },
+  {
+    id: 'routing-uireview',
+    group: 'routing',
+    prompt: 'Review my UI for accessibility and best practices.',
+    expect: [{ kind: 'skill', value: 'ui-review' }],
+  },
+  {
+    id: 'routing-preview',
+    group: 'routing',
+    prompt: 'Preview the plan for this change and wait for my approval before implementing.',
+    expect: [{ kind: 'skill', value: 'intent-preview' }],
+  },
 ];

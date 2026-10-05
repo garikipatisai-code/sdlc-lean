@@ -1,0 +1,9 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>sdlc-lean dashboard (read-only)</title>
+<style>:root{color-scheme:light dark}body{font-family:system-ui,sans-serif;max-width:60ch;margin:2rem auto;padding:0 1rem}pre{overflow:auto}</style>
+<h1>sdlc-lean dashboard</h1>
+<p>Read-only companion. No auth, no sync. Data from <code>/api/snapshot</code>.</p>
+<pre id="s">loading…</pre>
+<script>fetch('/api/snapshot').then(r=>r.json()).then(j=>{document.getElementById('s').textContent=JSON.stringify(j,null,2)}).catch(e=>{document.getElementById('s').textContent='snapshot failed: '+e})</script>

@@ -139,8 +139,7 @@ test('lifecycle skills ship, are description-triggered, and add no bootstrap byt
   );
 });
 
-test('autonomy skills + orchestrator agent ship and are routed within budget', () => {
-  const boot = plugin.getBootstrapContent();
+test('autonomy skills + orchestrator agent ship and are routed within budget', () => {  const boot = plugin.getBootstrapContent();
   for (const term of ['orchestrator', 'autonomous-loop', 'option-selection']) {
     assert.ok(boot.includes(term), `router must name ${term}`);
   }
@@ -171,6 +170,27 @@ test('autonomy skills + orchestrator agent ship and are routed within budget', (
   assert.ok(
     Buffer.byteLength(boot) <= 5116,
     'router bootstrap must not grow for autonomy skills',
+  );
+});
+
+test('ux skills ship and are routed within budget', () => {
+  const boot = plugin.getBootstrapContent();
+  for (const term of ['frontend-design', 'ui-review', 'intent-preview', 'autonomy-dial']) {
+    assert.ok(boot.includes(term), `router must name ${term}`);
+  }
+  const skills = plugin.listSkills();
+  for (const id of ['frontend-design', 'ui-review', 'intent-preview', 'autonomy-dial']) {
+    const s = skills.find((x) => x.id === id);
+    assert.ok(s, `${id} skill must ship`);
+    assert.match(s.description, /^Use when/i, `${id} description must be a trigger`);
+  }
+  const fd = skills.find((x) => x.id === 'frontend-design');
+  assert.ok(fd.content.includes('ATTRIBUTION'), 'frontend-design must attribute upstream');
+  const ur = skills.find((x) => x.id === 'ui-review');
+  assert.ok(ur.content.includes('file:line'), 'ui-review must emit terse findings');
+  assert.ok(
+    Buffer.byteLength(boot) <= 5120,
+    'router bootstrap must stay within 5KB budget',
   );
 });
 

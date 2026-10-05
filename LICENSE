@@ -39,3 +39,8 @@ Third-party attributions (ideas/patterns adapted under their licenses):
 - Concepts informed by wshobson/agents (tiers, orchestrators, plugin-eval),
   ClaudeTools/marketplace (hook taxonomy, 4-pass review, pipelines),
   opencode-snip/smartsnip (token routing), and the awesome-opencode ecosystem.
+- anthropics/skills#frontend-design by Anthropic (Apache-2.0, pinned 41bbe19) —
+  https://github.com/anthropics/skills (adapted as `frontend-design`)
+- vercel-labs/agent-skills (MIT, pinned 063bee9) + web-interface-guidelines
+  (pinned e3d624b) — https://github.com/vercel-labs/agent-skills
+  (adapted as `ui-review`)

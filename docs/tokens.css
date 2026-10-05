@@ -1,0 +1,6 @@
+/* Pinned UI tokens — record per-project values in DESIGN.md. No global defaults. */
+:root {
+  --font-sans: system-ui, sans-serif;
+  --font-serif: Georgia, serif;
+  --font-mono: ui-monospace, monospace;
+}

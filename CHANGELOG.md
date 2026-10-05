@@ -21,6 +21,7 @@ All notable changes to this project are documented here. Format follows
   every loop) and compaction-state hook in the plugin (debt ledger + newest
   plan progress survive context compaction, fail-open).
 - Eval probes for autonomous-routing and option-selection triggers.
+- UI/UX SOTA: `frontend-design` (adapted anthropics Apache-2.0), `ui-review` (vercel MIT, live-fetch), `intent-preview` + `/preview`, `autonomy-dial` + audit ledger, `uxStatus` plugin signal, `DESIGN.md` tokens pin, static `dashboard` (`npm run dashboard`), 3 routing probes. Router stays 5109B.
 - Global install/update script (`npm run install:global`): copies the suite to
   `~/.config/opencode/`, prunes only previously-installed files that left the
   repo (manifest-tracked; user files untouched). Refresh any PC with

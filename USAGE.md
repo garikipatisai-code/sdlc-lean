@@ -146,11 +146,15 @@ Every pipeline also has an explicit slash command when you want determinism:
 
 ## 5. Skills & agents reference
 
-| Skills (32) | Purpose |
+| Skills (36) | Purpose |
 |---|---|
 | `using-sdlc-lean` | Router: infers pipeline + scrutiny |
 | `autonomous-loop` | Goal-driven loop protocol: budgets, stop rules, give-up-honestly report |
 | `option-selection` | Research-first decisions: options matrix → pick → record |
+| `frontend-design` | Distinctive UI build (adapted anthropics, Apache-2.0) |
+| `ui-review` | UI/a11y/UX + React perf review, terse file-line |
+| `intent-preview` | Plan approval preview before implementation |
+| `autonomy-dial` | Observe→Auto tiers, audit-undo, escalation |
 | `brainstorming` · `writing-plans` · `executing-plans` · `subagent-driven-development` | Feature flow: design → plan → execute |
 | `test-driven-development` · `systematic-debugging` · `verification-before-completion` | Correctness gates |
 | `requesting-code-review` · `receiving-code-review` · `lean-review` | Review in/out + over-engineering audit |

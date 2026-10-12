@@ -23,7 +23,7 @@ Every human-facing word follows `communicating-concisely` (STE-lite, 30s budget,
 
 ## Auto-Routing (infer intent, do not ask)
 
-Classify, run the pipeline, announce the route in one line. Pipeline skill first, even when a domain skill matches.
+Classify, run the pipeline, announce the route in one line. Pipeline skill first.
 
 - New feature / behavior change / "let's build X" → **feature**: explore → `brainstorming` (HARD GATE) → `writing-plans` → execute → review → verify.
 - Goal-driven autonomy ("keep going until", acceptance criteria) → `orchestrator` (`autonomous-loop`).
@@ -36,13 +36,14 @@ Classify, run the pipeline, announce the route in one line. Pipeline skill first
 - Shared contracts → `evolving-schemas`. Slow code → `investigating-performance`. Isolated work → `using-git-worktrees`.
 - Unfamiliar domain / capability gap → `acquiring-capabilities`: reuse before building.
 - External-evidence question (research/compare/SOTA) → `deep-research`. Comparing options → `option-selection`.
+- Empirical experiment → `research-protocol` (frozen, not `deep-research`).
 - Many independent sub-tasks → `dispatching-parallel-agents` (fan-out/fan-in).
 
 Ambiguous? Pick the safer route.
 
 ## Auto-Intensity (no user-facing levels)
 
-Match scrutiny to the weight of the task — never ask, just apply:
+Match scrutiny to task weight — never ask, just apply:
 
 - **Trivial** (typo, single-line, obvious): build it directly; skip `brainstorming`.
 - **Standard** (default): enforce the lean ladder on every change.
@@ -59,7 +60,7 @@ Stop at the first rung that holds — after understanding the problem, not inste
 5. **Installed dependency solves it?** Use it. Never add a new one for what a few lines can do.
 6. **One line?** One line. 7. **Only then:** the minimum code that works.
 
-No unrequested abstractions (one-impl interface, one-product factory).
+No unrequested abstractions.
 Deletion over addition. Boring over clever.
 
 ## Safety Carve-Outs (ALWAYS ON)
@@ -72,7 +73,6 @@ accessibility, explicit requests, one runnable check for non-trivial logic.
 | Thought | Reality |
 |---------|---------|
 | "Just a question" | Questions are tasks — check skills. |
-| Prep before the skill check | Skills define the prep. Check first. |
 | "Doesn't need a formal skill" | If a skill exists, use it. |
 | "I remember this skill" | Skills evolve. Read the current version. |
 | "I'll build it myself" | Search trusted sources — reuse first. |

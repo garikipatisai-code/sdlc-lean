@@ -9,6 +9,8 @@ import { pathToFileURL } from 'url';
 
 const scriptURL = pathToFileURL(path.resolve(import.meta.dirname, '../../scripts/install-global.mjs')).href;
 const mod = await import(scriptURL);
+const protocolURL = pathToFileURL(path.resolve(import.meta.dirname, '../../scripts/research/protocol.mjs')).href;
+const { resolveProtocolModule } = await import(protocolURL);
 
 const mkTmp = (p) => fs.mkdtempSync(path.join(os.tmpdir(), p));
 const fakeRepo = (root, { skills = ['alpha'], agents = ['a.md'] } = {}) => {
@@ -95,4 +97,47 @@ test('defaultTarget honors XDG_CONFIG_HOME', () => {
   assert.equal(mod.defaultTarget(), path.join('/custom/conf', 'opencode'));
   if (prev === undefined) delete process.env.XDG_CONFIG_HOME;
   else process.env.XDG_CONFIG_HOME = prev;
+});
+
+test('installs scripts/research byte-identical and tracks it in the manifest', () => {
+  const target = mkTmp('sdlc-research-');
+  const summary = mod.installGlobal({ repo: mod.repoRoot, target });
+  assert.equal(summary.research, 2);
+  for (const f of ['protocol.mjs', 'cluster.mjs']) {
+    const installed = fs.readFileSync(path.join(target, 'scripts', 'research', f));
+    const repoCopy = fs.readFileSync(path.join(mod.repoRoot, 'scripts', 'research', f));
+    assert.ok(installed.equals(repoCopy), `${f} must be byte-identical`);
+  }
+  const manifest = JSON.parse(fs.readFileSync(path.join(target, mod.MANIFEST), 'utf8'));
+  assert.ok(manifest.files.includes(path.join('scripts', 'research', 'protocol.mjs')));
+  assert.ok(manifest.files.includes(path.join('scripts', 'research', 'cluster.mjs')));
+});
+
+test('prune removes stale research files but preserves user files', () => {
+  const target = mkTmp('sdlc-research-prune-');
+  const repo = fakeRepo(mkTmp('sdlc-repo-'));
+  const researchDir = path.join(repo, 'scripts', 'research');
+  fs.mkdirSync(researchDir, { recursive: true });
+  fs.writeFileSync(path.join(researchDir, 'protocol.mjs'), '// protocol');
+  fs.writeFileSync(path.join(researchDir, 'cluster.mjs'), '// cluster');
+  mod.installGlobal({ repo, target });
+  assert.ok(fs.existsSync(path.join(target, 'scripts', 'research', 'protocol.mjs')));
+  const userFile = path.join(target, 'notes', 'mine.md');
+  fs.mkdirSync(path.dirname(userFile), { recursive: true });
+  fs.writeFileSync(userFile, '# mine');
+  fs.rmSync(researchDir, { recursive: true });
+  const summary = mod.installGlobal({ repo, target });
+  assert.ok(!fs.existsSync(path.join(target, 'scripts', 'research', 'protocol.mjs')), 'stale research file must be pruned');
+  assert.ok(!fs.existsSync(path.join(target, 'scripts', 'research', 'cluster.mjs')), 'stale research file must be pruned');
+  assert.ok(fs.existsSync(userFile), 'unrelated user file must survive prune');
+  assert.ok(summary.pruned >= 2);
+});
+
+test('global tier discovery resolves the installed research protocol', () => {
+  const home = mkTmp('sdlc-research-home-');
+  const target = path.join(home, 'opencode');
+  mod.installGlobal({ repo: mod.repoRoot, target });
+  const bare = mkTmp('sdlc-research-cwd-');
+  const resolved = resolveProtocolModule({ cwd: bare, env: { XDG_CONFIG_HOME: home, HOME: home } });
+  assert.equal(resolved, path.join(target, 'scripts', 'research', 'protocol.mjs'));
 });

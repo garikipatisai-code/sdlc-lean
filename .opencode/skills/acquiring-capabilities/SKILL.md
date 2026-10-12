@@ -66,3 +66,26 @@ what you copied or adapted, and keep only the minimal part.
 
 Nothing trustworthy found → build the minimum (lean ladder) and add a one-line
 note: source searched, why reuse was rejected, and the ceiling/upgrade path.
+
+## Source-level capability audit
+
+For unfamiliar mechanisms worth adapting, audit before extracting:
+
+```mermaid
+flowchart LR
+  I[Inspect: shallow clone, pin commit, read source+tests, record identity/license] --> R[Reproduce: minimal read-only run; demonstrated behavior vs docs claims]
+  R --> E[Extract/Adapt: lean ladder; attribution + obligations]
+  E --> V[Verify: acceptance check + danger scan; adopt/adapt/reference/reject]
+```
+
+- **Inspect** — shallow read-only clone, pin the commit, read source + tests,
+  record identity (canonical URL, commit, date), license, maintenance.
+- **Reproduce** — minimal read-only run or import-free check; separate
+  demonstrated behavior from docs claims (note divergences).
+- **Extract/Adapt** — lean ladder: adapt the pattern first, licensed
+  mini-extraction only if needed, new code for the remaining gap; record
+  attribution + license obligations.
+- **Verify** — executable acceptance check + danger scan (no lifecycle hooks
+  run); decide adopt/adapt/reference/reject via `option-selection`.
+- Worked example: `docs/research/upstream-audits/` (Inspect AI + RD-Agent
+  adapted, MLflow/AI-Scientist-v2 reference-only, AgentLaboratory rejected).

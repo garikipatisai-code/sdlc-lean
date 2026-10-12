@@ -63,3 +63,17 @@ flowchart LR
 - Update the ledger every iteration; it is the memory that survives compaction.
 - Subagent work fans out per `dispatching-parallel-agents`; merge per its
   contract.
+
+## Research mode (empirical experiments via `research-protocol`)
+
+- **Completion = protocol completed.** Every stage ran to its end condition,
+  the evidence bundle exists, the report is written. Null/negative outcomes
+  still count as completed — "give up honestly" applies only to errored
+  protocol or budget-exhausted incomplete protocol.
+- **Tiered strategy change** (never silently mutate the protocol):
+  - **A (free):** implementation repair only — hash untouched.
+  - **B (gated):** protocol amendment — amendment record + approval; blocked
+    after final-test results until a new cycle starts.
+  - **C (stop):** change the question/goal — exit to `brainstorming`.
+- **Hash re-check each iteration**: `verifyProtocol` before further work;
+  drift stops the loop with a freeze-violation error.

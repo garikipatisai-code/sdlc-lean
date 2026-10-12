@@ -1,0 +1,189 @@
+diff --git a/.opencode/skills/acquiring-capabilities/SKILL.md b/.opencode/skills/acquiring-capabilities/SKILL.md
+index bd067ac..0488f11 100644
+--- a/.opencode/skills/acquiring-capabilities/SKILL.md
++++ b/.opencode/skills/acquiring-capabilities/SKILL.md
+@@ -66,3 +66,26 @@ what you copied or adapted, and keep only the minimal part.
+ 
+ Nothing trustworthy found → build the minimum (lean ladder) and add a one-line
+ note: source searched, why reuse was rejected, and the ceiling/upgrade path.
++
++## Source-level capability audit
++
++For unfamiliar mechanisms worth adapting, audit before extracting:
++
++```mermaid
++flowchart LR
++  I[Inspect: shallow clone, pin commit, read source+tests, record identity/license] --> R[Reproduce: minimal read-only run; demonstrated behavior vs docs claims]
++  R --> E[Extract/Adapt: lean ladder; attribution + obligations]
++  E --> V[Verify: acceptance check + danger scan; adopt/adapt/reference/reject]
++```
++
++- **Inspect** — shallow read-only clone, pin the commit, read source + tests,
++  record identity (canonical URL, commit, date), license, maintenance.
++- **Reproduce** — minimal read-only run or import-free check; separate
++  demonstrated behavior from docs claims (note divergences).
++- **Extract/Adapt** — lean ladder: adapt the pattern first, licensed
++  mini-extraction only if needed, new code for the remaining gap; record
++  attribution + license obligations.
++- **Verify** — executable acceptance check + danger scan (no lifecycle hooks
++  run); decide adopt/adapt/reference/reject via `option-selection`.
++- Worked example: `docs/research/upstream-audits/` (Inspect AI + RD-Agent
++  adapted, MLflow/AI-Scientist-v2 reference-only, AgentLaboratory rejected).
+diff --git a/.opencode/skills/autonomous-loop/SKILL.md b/.opencode/skills/autonomous-loop/SKILL.md
+index 6b93904..c9ba4cb 100644
+--- a/.opencode/skills/autonomous-loop/SKILL.md
++++ b/.opencode/skills/autonomous-loop/SKILL.md
+@@ -63,3 +63,17 @@ flowchart LR
+ - Update the ledger every iteration; it is the memory that survives compaction.
+ - Subagent work fans out per `dispatching-parallel-agents`; merge per its
+   contract.
++
++## Research mode (empirical experiments via `research-protocol`)
++
++- **Completion = protocol completed.** Every stage ran to its end condition,
++  the evidence bundle exists, the report is written. Null/negative outcomes
++  still count as completed — "give up honestly" applies only to errored
++  protocol or budget-exhausted incomplete protocol.
++- **Tiered strategy change** (never silently mutate the protocol):
++  - **A (free):** implementation repair only — hash untouched.
++  - **B (gated):** protocol amendment — amendment record + approval; blocked
++    after final-test results until a new cycle starts.
++  - **C (stop):** change the question/goal — exit to `brainstorming`.
++- **Hash re-check each iteration**: `verifyProtocol` before further work;
++  drift stops the loop with a freeze-violation error.
+diff --git a/.opencode/skills/using-sdlc-lean/SKILL.md b/.opencode/skills/using-sdlc-lean/SKILL.md
+index 5bd0430..e0824a8 100644
+--- a/.opencode/skills/using-sdlc-lean/SKILL.md
++++ b/.opencode/skills/using-sdlc-lean/SKILL.md
+@@ -23,7 +23,7 @@ Every human-facing word follows `communicating-concisely` (STE-lite, 30s budget,
+ 
+ ## Auto-Routing (infer intent, do not ask)
+ 
+-Classify, run the pipeline, announce the route in one line. Pipeline skill first, even when a domain skill matches.
++Classify, run the pipeline, announce the route in one line. Pipeline skill first.
+ 
+ - New feature / behavior change / "let's build X" → **feature**: explore → `brainstorming` (HARD GATE) → `writing-plans` → execute → review → verify.
+ - Goal-driven autonomy ("keep going until", acceptance criteria) → `orchestrator` (`autonomous-loop`).
+@@ -36,13 +36,14 @@ Classify, run the pipeline, announce the route in one line. Pipeline skill first
+ - Shared contracts → `evolving-schemas`. Slow code → `investigating-performance`. Isolated work → `using-git-worktrees`.
+ - Unfamiliar domain / capability gap → `acquiring-capabilities`: reuse before building.
+ - External-evidence question (research/compare/SOTA) → `deep-research`. Comparing options → `option-selection`.
++- Empirical experiment → `research-protocol` (frozen, not `deep-research`).
+ - Many independent sub-tasks → `dispatching-parallel-agents` (fan-out/fan-in).
+ 
+ Ambiguous? Pick the safer route.
+ 
+ ## Auto-Intensity (no user-facing levels)
+ 
+-Match scrutiny to the weight of the task — never ask, just apply:
++Match scrutiny to task weight — never ask, just apply:
+ 
+ - **Trivial** (typo, single-line, obvious): build it directly; skip `brainstorming`.
+ - **Standard** (default): enforce the lean ladder on every change.
+@@ -59,7 +60,7 @@ Stop at the first rung that holds — after understanding the problem, not inste
+ 5. **Installed dependency solves it?** Use it. Never add a new one for what a few lines can do.
+ 6. **One line?** One line. 7. **Only then:** the minimum code that works.
+ 
+-No unrequested abstractions (one-impl interface, one-product factory).
++No unrequested abstractions.
+ Deletion over addition. Boring over clever.
+ 
+ ## Safety Carve-Outs (ALWAYS ON)
+@@ -72,7 +73,6 @@ accessibility, explicit requests, one runnable check for non-trivial logic.
+ | Thought | Reality |
+ |---------|---------|
+ | "Just a question" | Questions are tasks — check skills. |
+-| Prep before the skill check | Skills define the prep. Check first. |
+ | "Doesn't need a formal skill" | If a skill exists, use it. |
+ | "I remember this skill" | Skills evolve. Read the current version. |
+ | "I'll build it myself" | Search trusted sources — reuse first. |
+diff --git a/scripts/install-global.mjs b/scripts/install-global.mjs
+index 99a2ec2..e757a0d 100644
+--- a/scripts/install-global.mjs
++++ b/scripts/install-global.mjs
+@@ -32,6 +32,7 @@ const SOURCES = [
+   { from: '.opencode/agents', to: 'agents', kind: 'dir', key: 'agents' },
+   { from: '.opencode/commands', to: 'commands', kind: 'dir', key: 'commands' },
+   { from: '.opencode/plugins/sdlc-lean.js', to: 'plugins/sdlc-lean.js', kind: 'file', key: 'plugin' },
++  { from: 'scripts/research', to: 'scripts/research', kind: 'dir', key: 'research' },
+ ];
+ 
+ // All files under a directory, relative to it.
+@@ -82,7 +83,7 @@ const pruneEmptyDirs = (dir, target) => {
+ export const installGlobal = ({ repo = repoRoot, target = defaultTarget() } = {}) => {
+   const previous = readManifest(target);
+   const installed = [];
+-  const summary = { skills: 0, agents: 0, commands: 0, plugin: 0, pruned: 0 };
++  const summary = { skills: 0, agents: 0, commands: 0, plugin: 0, research: 0, pruned: 0 };
+ 
+   for (const src of SOURCES) {
+     const from = path.join(repo, src.from);
+@@ -138,7 +139,7 @@ if (isMain) {
+   try {
+     const s = installGlobal({ target });
+     console.log(`sdlc-lean -> ${target}`);
+-    console.log(`  skills ${s.skills} · agents ${s.agents} · commands ${s.commands} · plugin ${s.plugin ? 'yes' : 'no'} · pruned ${s.pruned}`);
++    console.log(`  skills ${s.skills} · agents ${s.agents} · commands ${s.commands} · plugin ${s.plugin ? 'yes' : 'no'} · research ${s.research} · pruned ${s.pruned}`);
+     console.log('restart OpenCode to pick up changes');
+   } catch (err) {
+     console.error(`[sdlc-lean] install failed: ${err.message}`);
+diff --git a/tests/scripts/test-install-global.mjs b/tests/scripts/test-install-global.mjs
+index b461f35..92c134c 100644
+--- a/tests/scripts/test-install-global.mjs
++++ b/tests/scripts/test-install-global.mjs
+@@ -9,6 +9,8 @@ import { pathToFileURL } from 'url';
+ 
+ const scriptURL = pathToFileURL(path.resolve(import.meta.dirname, '../../scripts/install-global.mjs')).href;
+ const mod = await import(scriptURL);
++const protocolURL = pathToFileURL(path.resolve(import.meta.dirname, '../../scripts/research/protocol.mjs')).href;
++const { resolveProtocolModule } = await import(protocolURL);
+ 
+ const mkTmp = (p) => fs.mkdtempSync(path.join(os.tmpdir(), p));
+ const fakeRepo = (root, { skills = ['alpha'], agents = ['a.md'] } = {}) => {
+@@ -96,3 +98,46 @@ test('defaultTarget honors XDG_CONFIG_HOME', () => {
+   if (prev === undefined) delete process.env.XDG_CONFIG_HOME;
+   else process.env.XDG_CONFIG_HOME = prev;
+ });
++
++test('installs scripts/research byte-identical and tracks it in the manifest', () => {
++  const target = mkTmp('sdlc-research-');
++  const summary = mod.installGlobal({ repo: mod.repoRoot, target });
++  assert.equal(summary.research, 2);
++  for (const f of ['protocol.mjs', 'cluster.mjs']) {
++    const installed = fs.readFileSync(path.join(target, 'scripts', 'research', f));
++    const repoCopy = fs.readFileSync(path.join(mod.repoRoot, 'scripts', 'research', f));
++    assert.ok(installed.equals(repoCopy), `${f} must be byte-identical`);
++  }
++  const manifest = JSON.parse(fs.readFileSync(path.join(target, mod.MANIFEST), 'utf8'));
++  assert.ok(manifest.files.includes(path.join('scripts', 'research', 'protocol.mjs')));
++  assert.ok(manifest.files.includes(path.join('scripts', 'research', 'cluster.mjs')));
++});
++
++test('prune removes stale research files but preserves user files', () => {
++  const target = mkTmp('sdlc-research-prune-');
++  const repo = fakeRepo(mkTmp('sdlc-repo-'));
++  const researchDir = path.join(repo, 'scripts', 'research');
++  fs.mkdirSync(researchDir, { recursive: true });
++  fs.writeFileSync(path.join(researchDir, 'protocol.mjs'), '// protocol');
++  fs.writeFileSync(path.join(researchDir, 'cluster.mjs'), '// cluster');
++  mod.installGlobal({ repo, target });
++  assert.ok(fs.existsSync(path.join(target, 'scripts', 'research', 'protocol.mjs')));
++  const userFile = path.join(target, 'notes', 'mine.md');
++  fs.mkdirSync(path.dirname(userFile), { recursive: true });
++  fs.writeFileSync(userFile, '# mine');
++  fs.rmSync(researchDir, { recursive: true });
++  const summary = mod.installGlobal({ repo, target });
++  assert.ok(!fs.existsSync(path.join(target, 'scripts', 'research', 'protocol.mjs')), 'stale research file must be pruned');
++  assert.ok(!fs.existsSync(path.join(target, 'scripts', 'research', 'cluster.mjs')), 'stale research file must be pruned');
++  assert.ok(fs.existsSync(userFile), 'unrelated user file must survive prune');
++  assert.ok(summary.pruned >= 2);
++});
++
++test('global tier discovery resolves the installed research protocol', () => {
++  const home = mkTmp('sdlc-research-home-');
++  const target = path.join(home, 'opencode');
++  mod.installGlobal({ repo: mod.repoRoot, target });
++  const bare = mkTmp('sdlc-research-cwd-');
++  const resolved = resolveProtocolModule({ cwd: bare, env: { XDG_CONFIG_HOME: home, HOME: home } });
++  assert.equal(resolved, path.join(target, 'scripts', 'research', 'protocol.mjs'));
++});

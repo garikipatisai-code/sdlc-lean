@@ -1,0 +1,25 @@
+## revision
+a9470bda598e9d3fb2f9fa6d7d426f44d2c92651
+## log-1
+a9470bda598e9d3fb2f9fa6d7d426f44d2c92651 2026-10-04T20:49:50-05:00 docs: ledger D-006/D-007 deferred UX items
+## status
+ M .opencode/skills/acquiring-capabilities/SKILL.md
+ M .opencode/skills/autonomous-loop/SKILL.md
+ M .opencode/skills/using-sdlc-lean/SKILL.md
+ M scripts/install-global.mjs
+ M tests/scripts/test-install-global.mjs
+?? .opencode/skills/research-protocol/
+?? docs/plans/2026-10-11-empirical-research-enhancement.md
+?? docs/plans/2026-10-11-research-protocol-implementation.md
+?? docs/plans/empirical-research-enhancement-progress.md
+?? docs/research/
+?? docs/review/
+?? scripts/research/
+?? tests/scripts/research/
+## diffstat
+ .opencode/skills/acquiring-capabilities/SKILL.md | 23 ++++++++++++
+ .opencode/skills/autonomous-loop/SKILL.md        | 14 ++++++++
+ .opencode/skills/using-sdlc-lean/SKILL.md        |  8 ++---
+ scripts/install-global.mjs                       |  5 +--
+ tests/scripts/test-install-global.mjs            | 45 ++++++++++++++++++++++++
+ 5 files changed, 89 insertions(+), 6 deletions(-)

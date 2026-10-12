@@ -35,10 +35,17 @@ flowchart LR
    loop iteration re-runs `verifyProtocol`; hash drift = stop, no exceptions.
 2. **EXECUTE** — `acquireDeviceLock(lockRoot, device)` per scope (`gpu:N`,
    `cpu`); shared `lockRoot` (default `defaultLockRoot()`), which must be a
-   per-user trusted dir. Second holder
-   is refused, never queued. Holds have no expiry while the holder pid
-   lives (no heartbeat needed); stale locks from dead pids are reclaimed.
-   Stay inside protocol budgets (wall-clock,
+   per-user trusted dir. Hold one library-level lock around the ENTIRE
+   workload (acquire first, release last); never slice it per sub-step.
+   Second holder is refused, never queued. Holds have no expiry while the
+   holder pid lives (no heartbeat needed). `acquire()` never deletes
+   another lock: if a lockfile outlives its holder (crash), confirm no
+   live holder (`ps -p <pid>` or `kill -0 <pid>`), confirm no active
+   workload on that device, then `rm` the lockfile manually. CLI `lock`
+   is a connectivity probe only — it releases immediately (or after
+   `--hold-ms`) and protects NO later shell command; protection requires
+   the workload process itself to hold the lock via the library. Stay
+   inside protocol budgets (wall-clock,
    iterations). Classify with `classifyOutcome`: `completed ×
    {positive, null, negative, inconclusive}` + `errored`/`cancelled` —
    **null/negative = completed research**. Code-test green ≠ evidence.
@@ -52,6 +59,9 @@ flowchart LR
    Cache rule: `bindScore`/`cacheHit` over dataset + model + scorer +
    protocol digests (`digestArtifactSet`, `hashFile` streamed). Any
    mismatch = miss + recompute. Scorer settings live in the frozen protocol.
+   Statistical analysis stays project-local; this skill provides no
+   bootstrap/CI machinery — repeated observations are required, inference
+   is yours.
 4. **AMEND** — run log via `createRunLog` (+ `markFinalResults` when final
    tests are viewed). `recordAmendment(log, kind, detail, approver)`:
    - `repair` — implementation-only, always allowed, hash untouched;
@@ -76,7 +86,7 @@ flowchart LR
 ## Attribution (pinned, pattern adaptation, no code copied)
 
 - Inspect AI `UKGovernmentBEIS/inspect_ai@a1dbea8` (MIT) — outcome taxonomy,
-  cache-key partition, EvalLog shape, bootstrap CI formula.
+  cache-key partition, EvalLog shape.
 - RD-Agent `microsoft/RD-Agent@484776c` (MIT) — budget completion,
   repair/withdraw taxonomy, artifact binding.
 - MLflow, AgentLaboratory, AI-Scientist-v2 — reference-only (see design §3).

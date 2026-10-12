@@ -84,7 +84,7 @@ test('pairCohesion partial: one split pair of six gives 5/6', () => {
   assert.equal(mod.pairCohesion(assignments), 5 / 6);
 });
 
-test('resampling: pair cohesion holds across seeds 1..10', () => {
+test('multi-seed cohesion: pairs co-cluster for seeds 1..10 (assignment check, not statistical resampling)', () => {
   const questions = pairedFixture();
   for (let seed = 1; seed <= 10; seed += 1) {
     const out = mod.clusterQuestions(questions, { seed, k: 3 });
@@ -92,7 +92,7 @@ test('resampling: pair cohesion holds across seeds 1..10', () => {
   }
 });
 
-test('resampling: cohesion survives question subsampling', () => {
+test('subsample cohesion: pairs co-cluster after dropping 2 pairs', () => {
   const questions = pairedFixture().slice(0, 8);
   assert.equal(questions.length, 8, 'subsample drops 2 pairs (8 questions / 4 pairs)');
   const first = mod.clusterQuestions(questions, { seed: 7, k: 2 });

@@ -266,24 +266,34 @@ export function defaultLockRoot() {
 }
 
 /**
- * Whether a lock file is stale (reclaimable).
- * A live holder pid (kill succeeds or EPERM) is NEVER stale — age is ignored
- * and no heartbeat is needed while the holder lives. A dead pid (ESRCH) is
- * stale. Any other kill error (e.g. EINVAL for a garbage pid) falls back to
- * the maxAgeMs heartbeat check. Malformed/unparseable files fail CLOSED
- * (never stale — no automatic reclaim of ambiguous ownership); only a
- * missing file counts as stale.
- * @param {string} lockFile - path to the lock file
- * @param {{maxAgeMs?: number}} [opts]
- * @returns {Promise<boolean>} true iff the lock may be reclaimed
+ * Whether a value is a usable pid: a positive safe integer. Anything else
+ * (strings, negatives, zero, fractions, unsafe integers) fails closed.
+ * Module-private: exercised through isLockStale/acquire/release behavior.
+ * @param {unknown} v - candidate pid
+ * @returns {boolean} true iff v is a positive safe integer
  */
-export async function isLockStale(lockFile, { maxAgeMs = 600000 } = {}) {
+function isValidPid(v) {
+  return typeof v === 'number' && Number.isSafeInteger(v) && v > 0;
+}
+
+/**
+ * Whether a lock file's holder is verifiably dead (inspection only).
+ * Returns true ONLY when a valid pid is present and `kill(pid, 0)` throws
+ * ESRCH. Returns false for: missing file (ENOENT — nothing to reclaim),
+ * live pid, EPERM, EINVAL/uncertain kill errors, unparseable content,
+ * non-object content, or invalid pid.
+ *
+ * Informational only. acquire() never reclaims or deletes locks. Use output
+ * to guide documented manual recovery.
+ * @param {string} lockFile - path to the lock file
+ * @returns {Promise<boolean>} true iff the holder is verifiably dead
+ */
+export async function isLockStale(lockFile) {
   let raw;
   try {
     raw = await readFile(lockFile, 'utf8');
-  } catch (err) {
-    if (err?.code === 'ENOENT') return true;
-    throw err;
+  } catch {
+    return false; // missing or unreadable: nothing verifiable — fail closed
   }
   let stored;
   try {
@@ -292,121 +302,48 @@ export async function isLockStale(lockFile, { maxAgeMs = 600000 } = {}) {
     return false;
   }
   if (!stored || typeof stored !== 'object') return false;
-  const pid = stored.pid;
-  if (typeof pid !== 'number' || !Number.isFinite(pid)) return false;
-  if (!(pid > 0)) {
-    // Garbage pid (e.g. -1): no live holder — fall back to the age check below.
-  } else try {
-    process.kill(pid, 0);
+  if (!isValidPid(stored.pid)) return false;
+  try {
+    process.kill(stored.pid, 0);
     return false; // alive — holds have no expiry while the holder pid lives
   } catch (err) {
-    if (err?.code === 'ESRCH') return true; // dead pid — reclaimable
-    if (err?.code === 'EPERM') return false; // alive, no permission to signal
-    // any other error (e.g. EINVAL): fall back to age check below
+    return err?.code === 'ESRCH'; // dead pid only; EPERM/EINVAL/uncertain → false
   }
-  const heartbeat = stored.heartbeatAt ?? stored.acquiredAt;
-  if (typeof heartbeat !== 'number' || !Number.isFinite(heartbeat)) return false;
-  return Date.now() - heartbeat > maxAgeMs;
 }
 
 /**
- * Acquire an exclusive per-device lock (O_EXCL create). Reclaims a stale lock once.
+ * Acquire an exclusive per-device lock (O_EXCL create). NEVER reclaims,
+ * unlinks, or retries: on EEXIST the stored pid is read best-effort for the
+ * message (any failure → `unknown`) and LockBusyError is thrown, even when
+ * isLockStale() reports the holder dead (stale ≠ acquirable — recover
+ * manually after verifying no live holder).
  * The lockfile carries a random token and is created mode 0600; lockRoot is
- * created mode 0700. Stale reclaim uses compare-and-delete: the file is
- * re-read before unlink and unlinked only when byte-identical to the checked
- * content, else LockBusyError (another holder won the race).
+ * created mode 0700. Exclusive creation via O_EXCL is the single atomic
+ * shared-state mutation; everything else here is best-effort reads.
  * @param {string} lockRoot - directory holding lock files
  * @param {string} device - device scope, e.g. 'gpu:0'
  * @returns {Promise<{lockFile: string, holder: {pid: number, device: string, token: string, acquiredAt: number, heartbeatAt: number}}>}
- * @throws {LockBusyError} when a live holder owns the lock
+ * @throws {LockBusyError} when the lock file already exists (live or dead holder)
  */
 export async function acquireDeviceLock(lockRoot, device) {
   const safe = sanitizeDeviceName(device);
   await mkdir(lockRoot, { recursive: true, mode: 0o700 });
   const lockFile = path.join(lockRoot, `${safe}.lock`);
-  const attempt = async () => {
-    const now = Date.now();
-    const holder = { pid: process.pid, device: safe, token: randomUUID(), acquiredAt: now, heartbeatAt: now };
+  const now = Date.now();
+  const holder = { pid: process.pid, device: safe, token: randomUUID(), acquiredAt: now, heartbeatAt: now };
+  try {
     await writeFile(lockFile, JSON.stringify(holder), { flag: 'wx', mode: 0o600 });
     return { lockFile, holder };
-  };
-  try {
-    return await attempt();
   } catch (err) {
     if (err?.code !== 'EEXIST') throw err;
-    let checkedRaw = null;
+    let storedPid = 'unknown';
     try {
-      checkedRaw = await readFile(lockFile, 'utf8');
+      const parsed = JSON.parse(await readFile(lockFile, 'utf8'));
+      storedPid = isValidPid(parsed?.pid) ? parsed.pid : 'unknown';
     } catch {
-      checkedRaw = null;
+      // keep 'unknown'
     }
-    let stale = false;
-    try {
-      stale = await isLockStale(lockFile);
-    } catch {
-      stale = false;
-    }
-    if (!stale) {
-      let storedPid = 'unknown';
-      try {
-        storedPid = JSON.parse(await readFile(lockFile, 'utf8')).pid ?? 'unknown';
-      } catch {
-        // keep 'unknown'
-      }
-      throw new LockBusyError(lockFile, { pid: storedPid });
-    }
-    // Compare-and-delete: re-read; unlink only if byte-identical to checked content.
-    let currentRaw = null;
-    try {
-      currentRaw = await readFile(lockFile, 'utf8');
-    } catch (readErr) {
-      if (readErr?.code === 'ENOENT') currentRaw = null;
-      else throw readErr;
-    }
-    if (currentRaw === null) {
-      try {
-        return await attempt();
-      } catch (retryErr) {
-        if (retryErr?.code === 'EEXIST') {
-          let storedPid = 'unknown';
-          try {
-            storedPid = JSON.parse(await readFile(lockFile, 'utf8')).pid ?? 'unknown';
-          } catch {
-            // keep 'unknown'
-          }
-          throw new LockBusyError(lockFile, { pid: storedPid });
-        }
-        throw retryErr;
-      }
-    }
-    if (checkedRaw !== null && currentRaw !== checkedRaw) {
-      let storedPid = 'unknown';
-      try {
-        storedPid = JSON.parse(currentRaw).pid ?? 'unknown';
-      } catch {
-        // keep 'unknown'
-      }
-      throw new LockBusyError(lockFile, { pid: storedPid });
-    }
-    try {
-      await unlink(lockFile);
-    } catch (unlinkErr) {
-      if (unlinkErr?.code !== 'ENOENT') throw unlinkErr;
-    }
-    try {
-      return await attempt();
-    } catch (retryErr) {
-      if (retryErr?.code === 'EEXIST') {
-        let storedPid = 'unknown';
-        try {
-          storedPid = JSON.parse(await readFile(lockFile, 'utf8')).pid ?? 'unknown';
-        } catch {
-          // keep 'unknown'
-        }
-        throw new LockBusyError(lockFile, { pid: storedPid });
-      }
-      throw retryErr;
-    }
+    throw new LockBusyError(lockFile, { pid: storedPid });
   }
 }
 
@@ -432,6 +369,9 @@ export async function releaseDeviceLock(handle) {
     stored = JSON.parse(raw);
   } catch {
     throw new NotHolderError('lock file is malformed');
+  }
+  if (!isValidPid(stored?.pid)) {
+    throw new NotHolderError('stored pid is invalid');
   }
   if (!stored || stored.pid !== holder?.pid || typeof stored.token !== 'string' || stored.token !== holder?.token) {
     throw new NotHolderError('lock held by another holder');
@@ -507,10 +447,11 @@ export function resolveProtocolModule({ cwd = process.cwd(), env = process.env }
 // --- CLI (single executable surface; lazy cluster import keeps library light) ---
 const USAGE = `usage:
   node protocol.mjs hash <file>
-  node protocol.mjs lock <device> [--lock-root <dir>] [--hold-ms <n>]
+  node protocol.mjs lock <device> [--lock-root <dir>] [--hold-ms <n>]  (probe only; protects nothing after exit)
   node protocol.mjs unlock <device> [--lock-root <dir>]
   node protocol.mjs cluster <questions.json> [--seed <n>] [--k <n>]
-  node protocol.mjs status <run-dir>`;
+  node protocol.mjs status <run-dir>
+lock is a connectivity probe only: it releases immediately (or after --hold-ms) and protects NO later shell command.`;
 
 function parseCliArgs(args) {
   const positionals = [];
@@ -581,7 +522,7 @@ async function runCli(argv) {
       const handle = await acquireDeviceLock(lockRoot, device);
       if (holdMs > 0) await sleep(holdMs);
       await releaseDeviceLock(handle);
-      console.log(`held:${process.pid}`);
+      console.log(`held:${process.pid} (probe only)`);
     } catch (err) {
       if (err instanceof InvalidDeviceError) {
         console.error(err.message);

@@ -41,3 +41,7 @@ Explicit non-findings: device-name traversal (closed), discovery→code-exec (re
 ## F. Constraints observed throughout
 
 Zero new runtime dependencies · existing workflows compatible (default-mode skill text byte-untouched except additive sections + budget trims) · no global install run · no remote writes · no GPU workloads · no live research runs · no sudo.
+
+## G. Design-overclaim correction (2026-10-12)
+
+- Design §5/§10 referenced a bootstrap primitive that was never implemented (no CI machinery shipped in `protocol.mjs`); the claim is removed — skill attribution no longer cites a bootstrap CI formula, clustering tests are renamed to multi-seed/subsample pair-cohesion assignment checks, and statistical analysis stays project-local (repeated observations required, inference is the researcher's).

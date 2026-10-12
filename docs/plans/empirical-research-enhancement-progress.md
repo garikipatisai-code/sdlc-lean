@@ -70,6 +70,7 @@ Audit archives: `docs/research/upstream-audits/`.
 | 12 | T8 critic pass (code + security + research-validity) + 15 fixes | code-reviewer 12 findings + 5 Qs; security-reviewer 6 findings; research-validity: 7/7 scenarios executable (added checkEvidenceBundle). Fresh verify: lint 37/0, tests 132/0 | Review reports; test-t8-fixes.mjs 13/13; npm run verify exit 0 |
 | 13 | Closeout C1–C4 (fail-closed locks, incomplete/successor tests, resampling split) | 137/0; verify output preserved; review bundle assembled at docs/review/2026-10-12-closeout/ | test-lock.mjs + test-clustering.mjs; 05-verify-output.txt exit 0 |
 | 14 | Commit gate: bundle test-copies broke discovery (214/1) | Root cause: `node --test` ran `bundle-new/**/test-*.mjs` from wrong cwd. Fix: `.copy` suffix on bundle test files → 137/0. Secret scan: one grep hit = false positive (`task-identity`) | verify exit 0; commit + push |
+| 15 | Forward corrections atop afa33ee (no rewrite): SOTA file untracked-preserved; no auto-reclaim; honest stats; PID validation; lock lifetime | Verify exit 0: lint 37/0, tests 140/0. 9 files changed, uncommitted, ready for review | iteration log; 06-revision pattern |
 
 ## Decisions log (appended stage 2)
 | # | Decision | Basis |

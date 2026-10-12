@@ -125,7 +125,7 @@ function deadPid() {
   return child.pid;
 }
 
-test('acquire reclaims a lock file holding a dead pid', async (t) => {
+test('dead-pid lock: stale report is informational only; acquire refuses with pid + manual hint', async (t) => {
   const root = mkTmp('sdlc-lock-dead-');
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   fs.mkdirSync(root, { recursive: true });
@@ -133,31 +133,45 @@ test('acquire reclaims a lock file holding a dead pid', async (t) => {
   const lockFile = path.join(root, 'gpu:0.lock');
   const now = Date.now();
   fs.writeFileSync(lockFile, JSON.stringify({ pid, device: 'gpu:0', acquiredAt: now, heartbeatAt: now }));
-  assert.equal(await mod.isLockStale(lockFile), true, 'dead-pid lock must be stale');
-  const h = await mod.acquireDeviceLock(root, 'gpu:0');
-  assert.equal(h.holder.pid, process.pid);
-  await mod.releaseDeviceLock(h);
+  assert.equal(await mod.isLockStale(lockFile), true, 'dead-pid lock reports stale (informational only)');
+  const before = fs.readFileSync(lockFile, 'utf8');
+  await assert.rejects(() => mod.acquireDeviceLock(root, 'gpu:0'), (err) => {
+    assert.ok(err instanceof mod.LockBusyError, `expected LockBusyError, got ${err}`);
+    assert.match(err.message, new RegExp(String(pid)));
+    assert.match(err.message, /remove manually after verifying no live holder/);
+    return true;
+  });
+  assert.equal(fs.readFileSync(lockFile, 'utf8'), before, 'stale ≠ acquirable: file byte-identical');
 });
 
-test('isLockStale: live pids ignore age; EINVAL falls back to age; malformed is stale', async (t) => {
+test('isLockStale: live false; EPERM/EINVAL/uncertain false; malformed/non-object/unreadable/missing false; dead true', async (t) => {
   const root = mkTmp('sdlc-lock-age-');
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   fs.mkdirSync(root, { recursive: true });
-  // Fresh lock (live pid, fresh heartbeat) is not stale by default.
-  const fresh = path.join(root, 'gpu:0.lock');
   const now = Date.now();
-  fs.writeFileSync(fresh, JSON.stringify({ pid: process.pid, device: 'gpu:0', acquiredAt: now, heartbeatAt: now }));
-  assert.equal(await mod.isLockStale(fresh), false);
-  // Live pid ignores age: even an old heartbeat under a tight budget is NOT stale.
-  const slightlyOld = now - 50;
-  fs.writeFileSync(fresh, JSON.stringify({ pid: process.pid, device: 'gpu:0', acquiredAt: slightlyOld, heartbeatAt: slightlyOld }));
-  assert.equal(await mod.isLockStale(fresh), false, 'live holder must not be stale under the default budget');
-  assert.equal(await mod.isLockStale(fresh, { maxAgeMs: 10 }), false, 'live holder ignores maxAgeMs (no expiry while pid lives)');
-  // Old heartbeat with a live pid is NOT reclaimed, even under a small budget.
-  const old = path.join(root, 'cpu.lock');
-  fs.writeFileSync(old, JSON.stringify({ pid: process.pid, device: 'cpu', acquiredAt: now - 20 * 60 * 1000, heartbeatAt: now - 20 * 60 * 1000 }));
-  assert.equal(await mod.isLockStale(old, { maxAgeMs: 1000 }), false, 'live pid + ancient heartbeat is not stale');
-  // Malformed JSON fails closed: not stale, contender gets LockBusyError, file preserved.
+  // Live pid (fresh or ancient heartbeat) is never stale — no age parameter exists.
+  const live = path.join(root, 'gpu:0.lock');
+  fs.writeFileSync(live, JSON.stringify({ pid: process.pid, device: 'gpu:0', acquiredAt: now, heartbeatAt: now }));
+  assert.equal(await mod.isLockStale(live), false);
+  fs.writeFileSync(live, JSON.stringify({ pid: process.pid, device: 'gpu:0', acquiredAt: now - 3600000, heartbeatAt: now - 3600000 }));
+  assert.equal(await mod.isLockStale(live), false, 'live holder ignores age entirely');
+  // EPERM / uncertain kill errors fail closed.
+  const origKill = process.kill;
+  t.after(() => { process.kill = origKill; });
+  for (const code of ['EPERM', 'EINVAL', 'EAGAIN']) {
+    process.kill = () => { const e = new Error(code); e.code = code; throw e; };
+    assert.equal(await mod.isLockStale(live), false, `kill ${code} must fail closed`);
+  }
+  process.kill = origKill;
+  // Invalid pid (-1, once EINVAL-aged) is never stale, old or fresh — no age fallback.
+  for (const hb of [now, now - 3600000]) {
+    fs.writeFileSync(live, JSON.stringify({ pid: -1, device: 'gpu:0', acquiredAt: hb, heartbeatAt: hb }));
+    assert.equal(await mod.isLockStale(live), false, 'invalid pid is never stale');
+  }
+  // Non-object content is never stale.
+  const nonObj = path.join(root, 'cpu.lock');
+  fs.writeFileSync(nonObj, '42');
+  assert.equal(await mod.isLockStale(nonObj), false, 'non-object lock must fail closed (not stale)');
   const bad = path.join(root, 'gpu:1.lock');
   fs.writeFileSync(bad, 'not-json{{{');
   assert.equal(await mod.isLockStale(bad), false, 'malformed lock must fail closed (not stale)');
@@ -170,11 +184,16 @@ test('isLockStale: live pids ignore age; EINVAL falls back to age; malformed is 
     return true;
   });
   assert.equal(fs.readFileSync(bad, 'utf8'), badBefore, 'failed contention must not unlink the malformed file');
-  // Live-but-old lock is NOT reclaimed via the acquire path (no expiry while pid lives):
+  // Live-but-old lock is NOT acquirable via the acquire path (no expiry while pid lives):
   // contention must fail and leave the holder file byte-identical.
-  const before = fs.readFileSync(old, 'utf8');
-  await assert.rejects(() => mod.acquireDeviceLock(root, 'cpu'), mod.LockBusyError);
-  assert.equal(fs.readFileSync(old, 'utf8'), before, 'failed contention must not unlink the live holder file');
+  fs.writeFileSync(live, JSON.stringify({ pid: process.pid, device: 'gpu:0', acquiredAt: now - 3600000, heartbeatAt: now - 3600000 }));
+  const before = fs.readFileSync(live, 'utf8');
+  await assert.rejects(() => mod.acquireDeviceLock(root, 'gpu:0'), mod.LockBusyError);
+  assert.equal(fs.readFileSync(live, 'utf8'), before, 'failed contention must not unlink the live holder file');
+  // Missing file: nothing to reclaim → false.
+  assert.equal(await mod.isLockStale(path.join(root, 'absent.lock')), false);
+  // Unreadable-as-file (directory): fail closed → false.
+  assert.equal(await mod.isLockStale(root), false);
 });
 
 // --- 5. NotHolder ---
@@ -240,4 +259,55 @@ test('old owner release token never deletes a successor lock', async (t) => {
   fs.writeFileSync(handleA.lockFile, successorJson);
   await assert.rejects(() => mod.releaseDeviceLock(handleA), mod.NotHolderError);
   assert.equal(fs.readFileSync(handleA.lockFile, 'utf8'), successorJson, 'old owner release must not delete the successor lock');
+});
+
+// --- G3/G4 new semantics (RED first: these fail until reclaim is removed) ---
+
+test('G3 dead-pid lock is reported stale but acquire still refuses; file byte-identical', async (t) => {
+  const root = mkTmp('sdlc-lock-noreclaim-');
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fs.mkdirSync(root, { recursive: true });
+  const pid = deadPid();
+  const lockFile = path.join(root, 'gpu:0.lock');
+  const now = Date.now();
+  fs.writeFileSync(lockFile, JSON.stringify({ pid, device: 'gpu:0', acquiredAt: now, heartbeatAt: now }));
+  assert.equal(await mod.isLockStale(lockFile), true, 'dead pid is verifiably dead → stale (informational)');
+  const before = fs.readFileSync(lockFile, 'utf8');
+  await assert.rejects(() => mod.acquireDeviceLock(root, 'gpu:0'), (err) => {
+    assert.ok(err instanceof mod.LockBusyError, `expected LockBusyError, got ${err}`);
+    return true;
+  });
+  assert.equal(fs.readFileSync(lockFile, 'utf8'), before, 'stale ≠ acquirable: contender must not unlink');
+});
+
+test('G3 isLockStale: missing file is false (nothing to reclaim)', async (t) => {
+  const root = mkTmp('sdlc-lock-missing-');
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fs.mkdirSync(root, { recursive: true });
+  assert.equal(await mod.isLockStale(path.join(root, 'nope.lock')), false);
+});
+
+test('G4 invalid pids fail closed: acquire unknown, isLockStale false, release NotHolder + preserved', async (t) => {
+  const root = mkTmp('sdlc-lock-badpid-');
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fs.mkdirSync(root, { recursive: true });
+  const now = Date.now();
+  for (const [i, badPid] of ['abc', -5, 0, 1.5].entries()) {
+    const device = `gpu:${i}`;
+    const lockFile = path.join(root, `${device}.lock`);
+    fs.writeFileSync(lockFile, JSON.stringify({ pid: badPid, device, acquiredAt: now - 3600000, heartbeatAt: now - 3600000 }));
+    assert.equal(await mod.isLockStale(lockFile), false, `pid ${JSON.stringify(badPid)} must not be stale`);
+    const before = fs.readFileSync(lockFile, 'utf8');
+    await assert.rejects(() => mod.acquireDeviceLock(root, device), (err) => {
+      assert.ok(err instanceof mod.LockBusyError, `expected LockBusyError, got ${err}`);
+      assert.match(err.message, /held by pid unknown/);
+      return true;
+    });
+    assert.equal(fs.readFileSync(lockFile, 'utf8'), before, 'failed contention must preserve the file');
+    await assert.rejects(
+      () => mod.releaseDeviceLock({ lockFile, holder: { pid: process.pid, device, token: 'x' } }),
+      mod.NotHolderError,
+    );
+    assert.equal(fs.readFileSync(lockFile, 'utf8'), before, 'failed release must preserve the file');
+  }
 });

@@ -52,7 +52,7 @@ test('CLI lock/unlock: hold succeeds, contender blocked (7), non-holder unlock (
 
   const first = await runCli(['lock', 'gpu:0', '--lock-root', root, '--hold-ms', '100']);
   assert.equal(first.code, 0);
-  assert.match(first.stdout.trim(), /^held:\d+$/);
+  assert.match(first.stdout.trim(), /^held:\d+ \(probe only\)$/);
 
   // Concurrent contender: background holder, then contender must exit 7.
   const holder = spawn(process.execPath, [PROTOCOL, 'lock', 'gpu:1', '--lock-root', root, '--hold-ms', '1500'], { stdio: ['ignore', 'pipe', 'pipe'] });
@@ -154,4 +154,5 @@ test('CLI unknown subcommand exits 64 with usage on stderr', { timeout: 10000 },
   const res = await runCli(['frobnicate']);
   assert.equal(res.code, 64);
   assert.match(res.stderr.toLowerCase(), /usage/);
+  assert.match(res.stderr, /probe only/);
 });

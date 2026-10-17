@@ -416,32 +416,43 @@ export class DiscoveryError extends Error {
 }
 
 /**
- * Resolve the active protocol module path.
- * Precedence: SDLC_RESEARCH_PROTOCOL env → <cwd>/.opencode/... → global
- * (XDG_CONFIG_HOME honored) → repo-bundled self.
- * @param {{cwd?: string, env?: object}} [opts]
+ * Resolve the active research module path.
+ * Precedence: SDLC_RESEARCH_PROTOCOL env (protocol.mjs only) →
+ * <cwd>/.opencode/... → global (XDG_CONFIG_HOME honored) → repo-bundled self.
+ * @param {{cwd?: string, env?: object, file?: string}} [opts]
  * @returns {string|null} first existing path, else null
  * @throws {DiscoveryError} when SDLC_RESEARCH_PROTOCOL is set but missing
  */
-export function resolveProtocolModule({ cwd = process.cwd(), env = process.env } = {}) {
+export function resolveProtocolModule({ cwd = process.cwd(), env = process.env, file = 'protocol.mjs' } = {}) {
   const e = env ?? process.env;
-  const fromEnv = e?.SDLC_RESEARCH_PROTOCOL;
-  if (fromEnv) {
-    if (existsSync(fromEnv)) return fromEnv;
-    throw new DiscoveryError(fromEnv);
+  if (file === 'protocol.mjs') {
+    const fromEnv = e?.SDLC_RESEARCH_PROTOCOL;
+    if (fromEnv) {
+      if (existsSync(fromEnv)) return fromEnv;
+      throw new DiscoveryError(fromEnv);
+    }
   }
-  const local = path.join(cwd ?? process.cwd(), '.opencode', 'scripts', 'research', 'protocol.mjs');
+  const local = path.join(cwd ?? process.cwd(), '.opencode', 'scripts', 'research', file);
   if (existsSync(local)) return local;
   const configBase = e?.XDG_CONFIG_HOME || path.join(e?.HOME || os.homedir(), '.config');
-  const globalPath = path.join(configBase, 'opencode', 'scripts', 'research', 'protocol.mjs');
+  const globalPath = path.join(configBase, 'opencode', 'scripts', 'research', file);
   if (existsSync(globalPath)) return globalPath;
   try {
-    const self = fileURLToPath(import.meta.url);
+    const self = path.join(path.dirname(fileURLToPath(import.meta.url)), file);
     if (existsSync(self)) return self;
   } catch {
     // fall through to null
   }
   return null;
+}
+
+/**
+ * Resolve the phase-ledger module (`phase.mjs`) with the same precedence ladder.
+ * @param {{cwd?: string, env?: object}} [opts]
+ * @returns {string|null} first existing path, else null
+ */
+export function resolvePhaseModule(opts = {}) {
+  return resolveProtocolModule({ ...opts, file: 'phase.mjs' });
 }
 
 // --- CLI (single executable surface; lazy cluster import keeps library light) ---

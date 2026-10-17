@@ -43,14 +43,29 @@ flowchart LR
    bugs.
 5. **Verify** with `verification-before-completion`: run the repo's commands,
    reuse `docs/verify-recipe.md` if it exists, else write it.
-6. **Correct**: on failure, one fix round via `systematic-debugging`; record
-   what changed each round in the ledger.
+6. **Correct**: on failure, one *implementation* fix round via
+   `systematic-debugging` (allowed inside the phase); a failed dispatch or an
+   uncertain outcome stops for reconciliation and explicit recovery approval.
+   Record what changed each round in the ledger.
+
+## Authorized continuation
+
+Within an approved phase, a checkpoint is **informational** — never a renewed
+approval request. Continue until completion, a real blocker, a hard limit, an
+uncertain outcome, or an action outside the authorization. Never ask "reply
+continue" just because a chunk finished, and never read continuation as
+authorization for a new phase.
+
+If the runtime forces a turn/session boundary: persist a complete handoff
+(below), state the actual constraint, and never claim a background process
+exists or promise cross-session execution without a mechanism that does it.
 
 ## Stop rules (first that fires wins)
 
 | Rule | Action |
 |---|---|
 | Criteria met, fresh evidence | critic pass → completion report |
+| Failure or uncertain dispatch outcome | stop: reconcile evidence; retry only with explicit narrow approval |
 | 2 consecutive no-progress loops | change strategy (different approach), not the same fix again |
 | Budget exhausted | **give up honestly**: state, evidence, exact remaining work, next step |
 | Human interrupts | pause, report loop state from the ledger |
@@ -63,6 +78,28 @@ flowchart LR
 - Update the ledger every iteration; it is the memory that survives compaction.
 - Subagent work fans out per `dispatching-parallel-agents`; merge per its
   contract.
+
+## Deadlines, recovery, durable handoff
+
+- Launch eligibility uses the **live clock** and a persisted absolute UTC
+  deadline: `now + required observation allowance <= deadline`. Reports and
+  old messages are historical, never live time.
+- Resume never resets a deadline or cumulative usage; an expired phase stays
+  closed and a further phase needs its own approval record.
+- Default after failure or uncertain completion: **stop**. Reconcile evidence
+  before recovery; retry only under an explicit, narrowly scoped approval. A
+  step-zero crash never authorizes its own relaunch.
+- Handoff carries: task/phase identity + authorization reference, verified work
+  and artifact identities, exact next action, absolute deadline, limits and
+  usage, in-flight actions and reservations, deviations/blockers/stop reason,
+  allowed vs forbidden actions, and source/config identities. Keep secrets out;
+  a summary never replaces ledger reconciliation.
+- Deterministic helpers (`scripts/research/phase.mjs`, shipped with
+  `research-protocol`): `createLedger` → `openPhase` → `evaluateLaunch` /
+  `recordCheckpoint` → `resumePhase` / `closePhase`, plus `planRetry`,
+  `reconcileDispatch`, `assertDelegationWithin`, and `buildHandoff`. The
+  coordinator owns phase transitions; delegation narrows scope, never expands
+  it.
 
 ## Research mode (empirical experiments via `research-protocol`)
 

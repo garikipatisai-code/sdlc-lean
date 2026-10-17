@@ -149,7 +149,8 @@ Every pipeline also has an explicit slash command when you want determinism:
 | Skills (36) | Purpose |
 |---|---|
 | `using-sdlc-lean` | Router: infers pipeline + scrutiny |
-| `autonomous-loop` | Goal-driven loop protocol: budgets, stop rules, give-up-honestly report |
+| `research-protocol` | Empirical experiments: frozen protocol, device locks, evidence bundle, provenance (null counts as done); phase ledger (`scripts/research/phase.mjs`) for absolute UTC deadlines, observation allowance, cumulative limits, recovery authorization, delegation scope, durable handoff |
+| `autonomous-loop` | Goal-driven loop protocol: budgets, stop rules, give-up-honestly report; checkpoints stay informational inside an approved phase, continuation never opens a new phase |
 | `option-selection` | Research-first decisions: options matrix → pick → record |
 | `frontend-design` | Distinctive UI build (adapted anthropics, Apache-2.0) |
 | `ui-review` | UI/a11y/UX + React perf review, terse file-line |

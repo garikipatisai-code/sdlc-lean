@@ -71,6 +71,42 @@ flowchart LR
      after `markFinalResults`** (`assertAmendmentAllowed` throws
      `ProtocolAmendmentBlockedError`). Gate with `releaseDeviceLock` on exit.
 
+## Phases, deadlines, recovery (`scripts/research/phase.mjs`)
+
+Deterministic, stdlib-only sibling of `protocol.mjs` (installed with this
+skill). One durable ledger per task/authorization:
+
+- `createLedger` → `openPhase`: the first phase carries its own authorization;
+  every later phase needs a separate approval record scoped exactly to
+  `{taskId, phaseId, authorizationRef}`.
+- `evaluateLaunch({now})` gates on the live clock:
+  `now + observationAllowanceMs <= deadline`, plus phase and cumulative limits.
+  Blocked decisions return a reason; corrupt state throws (fail closed).
+- `recordCheckpoint` is informational — never a renewed approval request — and
+  accumulates per-phase + cumulative usage. `resumePhase` preserves deadline
+  and usage, and expires the phase when the live clock passes it. `closePhase`
+  preserves stop reason + evidence. Expired phases stay closed.
+- `beginDispatch` / `settleDispatch`
+  (`completed|failed|launch-failed|uncertain`) / `reconcileDispatch`: uncertain
+  outcomes block re-dispatch until evidence is reconciled, and failed launches
+  are counted separately from completed workloads.
+- `planRetry` defaults to denied; a retry needs an explicit approval scoped to
+  exactly task+phase+action. A step-zero failure is never self-authorizing.
+- `assertDelegationWithin(parent, child)` enforces child scope ⊆ parent scope.
+- `buildHandoff` / `writeHandoff` / `readHandoff` persist the durable record;
+  `saveLedger` / `loadLedger` are atomic, size-capped, and fail closed on
+  malformed state. `resolvePhaseModule` finds the installed module with the
+  same precedence ladder as `resolveProtocolModule`.
+- Action ids are phase-scoped: a new approved phase may repeat an action that
+  completed in an earlier phase; a failed attempt inside the phase still needs
+  its own narrow retry approval.
+- Deadlines are absolute UTC. A process-local monotonic clock may time elapsed
+  work inside one process; it does not survive a restart, so never derive
+  cross-session state from it.
+- The ledger is trusted local state, not tamper-evident: a writer with file
+  access can edit it. Malformed state fails closed; authenticity is out of
+  scope by design.
+
 ## Clustering + discovery
 
 - Group questions with `cluster.mjs`: `clusterQuestions(questions,

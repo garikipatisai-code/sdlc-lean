@@ -26,6 +26,20 @@ All notable changes to this project are documented here. Format follows
   `~/.config/opencode/`, prunes only previously-installed files that left the
   repo (manifest-tracked; user files untouched). Refresh any PC with
   `git pull && npm run install:global`.
+- Orchestration/reliability hardening: stdlib-only `scripts/research/phase.mjs`
+  phase ledger — checkpoints informational (no user-mediated "continue" per
+  chunk), launch gated on the live clock against persisted absolute UTC
+  deadlines and the required observation allowance, resume preserving deadline
+  and cumulative usage, expired phases staying closed (a further phase needs its
+  own approval record), cumulative/phase limits enforced, recovery denied by
+  default (explicit narrow task+phase+action approval required; step-zero crash
+  never self-authorizes; uncertain outcomes block re-dispatch until reconciled),
+  delegation scope subset rule, and an atomic durable handoff that fails closed
+  on malformed state (size-capped reads, credential-shape scan, strict phase
+  identity checks). Referenced by `autonomous-loop`, `research-protocol`,
+  `managing-tasks`, `dispatching-parallel-agents`, and the `orchestrator`
+  agent — instruction layer only; no runtime hook yet (D-011). 20 offline
+  scenarios in `tests/scripts/research/test-phase.mjs`.
 
 ## 1.0.0 - 2026-10-04
 

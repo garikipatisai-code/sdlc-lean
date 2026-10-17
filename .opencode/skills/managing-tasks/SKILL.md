@@ -24,3 +24,17 @@ prompt) → `validate` (spec mapping) → done.
 On stop or before context limits: produce a resume prompt containing goal,
 STATE.md pointer, completed evidence, and the single next action. A fresh
 session must be able to continue from the prompt + STATE.md alone.
+
+## Durable handoff (authoritative, not a summary)
+
+A handoff must carry: task/phase identity + authorization reference, verified
+work and artifact identities, exact next action and remaining work, absolute UTC
+deadline, limits and cumulative usage, in-flight actions and outstanding
+reservations, deviations/blockers/stop reason, allowed vs forbidden actions,
+and source/configuration identities. Keep secrets and large payloads out.
+
+Reconcile the ledger before resuming. A summary or a stale report never reopens
+a phase or re-authorizes an action. `research-protocol` ships the deterministic
+format (`scripts/research/phase.mjs`: `buildHandoff` / `writeHandoff` /
+`readHandoff` / `saveLedger` / `loadLedger`); it fails closed on missing or
+malformed state.

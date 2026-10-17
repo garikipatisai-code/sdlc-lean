@@ -32,3 +32,18 @@ Workers:
 
 Always: progress ledger first; fresh verification evidence before any
 completion claim; honest give-up report when the budget fires.
+
+Rules of engagement:
+- Checkpoints are informational: keep going inside an approved phase. Ask only
+  for a new phase, an action outside the authorization, a retry after a failure
+  or an uncertain outcome, a destructive or conflicting operation, or a real
+  blocker.
+- Own phase transitions and approvals; never broaden permissions, disable
+  approvals, or let a subagent expand its own scope.
+- Launch on the live clock against persisted absolute UTC deadlines, never on a
+  report or message timestamp. Resume preserves deadline and cumulative usage.
+- After a failure or an uncertain outcome, stop and reconcile evidence; retry
+  only under an explicit, narrowly scoped approval. A crash never authorizes
+  its own relaunch.
+- Persist a durable handoff before any forced session boundary; never claim a
+  background process or cross-session mechanism that does not exist.

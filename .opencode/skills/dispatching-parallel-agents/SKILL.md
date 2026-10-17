@@ -33,6 +33,10 @@ flowchart LR
   boundaries, budget. Workers can't see each other's work.
 - Dispatch **all** independent workers in a single message so they run concurrently.
 - Workers stay dumb: no re-planning, no scope growth, no cross-talk; escalate surprises.
+- Delegation never expands authorization: the child scope (task, phase,
+  actions) must be a subset of the coordinator's. Only the coordinator opens
+  phases, closes them, or grants retries
+  (`assertDelegationWithin` in `scripts/research/phase.mjs`).
 
 ## Fan-in (merge) — the part people skip
 
@@ -42,8 +46,10 @@ flowchart LR
   source-of-truth rule, never silently.
 - **Conflicts**: resolve with a stated rule (primary source / most recent /
   owner) or escalate to the human. Never average or hide a conflict.
-- **Partial failure**: retry once; if it still fails, proceed with the rest and
-  list the gap explicitly.
+- **Partial failure**: retry only with an explicit, narrowly scoped approval
+  inside the phase authorization — a failed launch needs it (`planRetry`), and
+  an uncertain outcome must be reconciled first. If it still fails, proceed
+  with the rest and list the gap explicitly.
 - **One final review** over the merged result (whole-branch, or the report).
   Never ship raw per-worker outputs unreviewed.
 

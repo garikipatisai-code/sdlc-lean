@@ -102,15 +102,16 @@ test('defaultTarget honors XDG_CONFIG_HOME', () => {
 test('installs scripts/research byte-identical and tracks it in the manifest', () => {
   const target = mkTmp('sdlc-research-');
   const summary = mod.installGlobal({ repo: mod.repoRoot, target });
-  assert.equal(summary.research, 2);
-  for (const f of ['protocol.mjs', 'cluster.mjs']) {
+  assert.equal(summary.research, 3);
+  for (const f of ['protocol.mjs', 'cluster.mjs', 'phase.mjs']) {
     const installed = fs.readFileSync(path.join(target, 'scripts', 'research', f));
     const repoCopy = fs.readFileSync(path.join(mod.repoRoot, 'scripts', 'research', f));
     assert.ok(installed.equals(repoCopy), `${f} must be byte-identical`);
   }
   const manifest = JSON.parse(fs.readFileSync(path.join(target, mod.MANIFEST), 'utf8'));
-  assert.ok(manifest.files.includes(path.join('scripts', 'research', 'protocol.mjs')));
-  assert.ok(manifest.files.includes(path.join('scripts', 'research', 'cluster.mjs')));
+  for (const f of ['protocol.mjs', 'cluster.mjs', 'phase.mjs']) {
+    assert.ok(manifest.files.includes(path.join('scripts', 'research', f)));
+  }
 });
 
 test('prune removes stale research files but preserves user files', () => {
@@ -140,4 +141,15 @@ test('global tier discovery resolves the installed research protocol', () => {
   const bare = mkTmp('sdlc-research-cwd-');
   const resolved = resolveProtocolModule({ cwd: bare, env: { XDG_CONFIG_HOME: home, HOME: home } });
   assert.equal(resolved, path.join(target, 'scripts', 'research', 'protocol.mjs'));
+});
+
+test('global tier discovery resolves the installed phase ledger', async () => {
+  const home = mkTmp('sdlc-phase-home-');
+  const target = path.join(home, 'opencode');
+  mod.installGlobal({ repo: mod.repoRoot, target });
+  const bare = mkTmp('sdlc-phase-cwd-');
+  const { resolvePhaseModule } = await import(protocolURL);
+  const resolved = resolvePhaseModule({ cwd: bare, env: { XDG_CONFIG_HOME: home, HOME: home } });
+  assert.equal(resolved, path.join(target, 'scripts', 'research', 'phase.mjs'));
+  assert.ok(fs.existsSync(resolved), 'the resolved phase module must exist');
 });

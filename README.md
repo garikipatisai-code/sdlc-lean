@@ -72,9 +72,10 @@ savings — complementary, not bundled.
 | Area | Contents |
 |---|---|
 | Skills (36) | router · brainstorming · writing-plans · worktrees · sdd / executing-plans · TDD · debugging · verification · review in/out · finish-branch · parallel-agents · writing-skills · diagnosing · lean-review · security · performance · schemas · release-notes · exploring-codebase · managing-tasks · communicating-concisely · simplified-technical-english · acquiring-capabilities · deep-research · incident-postmortem · dependency-upgrade · threat-model · adr · autonomous-loop · option-selection · frontend-design · ui-review · intent-preview · autonomy-dial |
+| Research helpers | `scripts/research/` (stdlib-only `protocol.mjs` + `cluster.mjs` + `phase.mjs`): protocol freeze + sha256, 4-field score-cache binding, outcome taxonomy (null counts as done), amendment gate, O_EXCL device locks, deterministic clustering, CLI — plus the phase ledger (authorized continuation, absolute UTC deadlines, observation allowance, cumulative limits, recovery authorization, delegation scope, durable handoff, fail-closed state) — ships globally; `resolveProtocolModule` / `resolvePhaseModule` use the same env → local → global → bundled ladder |
 | Agents (8) | orchestrator · implementer · planner · code-reviewer · test-writer · explorer · security-reviewer · researcher |
 | Pipelines (4) | `/feature` · `/bugfix` · `/security-audit` · `/refactor` — invoked automatically by the router |
-| Autonomy | `orchestrator` primary agent + `autonomous-loop` + `option-selection` — goal-driven loops (route → research → pick best option → execute → verify → self-correct) until acceptance criteria or an honest budget stop |
+| Autonomy | `orchestrator` primary agent + `autonomous-loop` + `option-selection` — goal-driven loops (route → research → pick best option → execute → verify → self-correct) until acceptance criteria or an honest budget stop; checkpoints are informational, deadlines are live-clock UTC, recovery needs explicit narrow approval, and phase state + handoff are durable |
 | Status | `/sdlc-lean` — activation proof + installed skills/agents/commands |
 | Plugin | per-session bootstrap, auto-routing, always-on safety guards |
 | Eval | `npm run eval` — opt-in live harness, dry by default, with token/cost telemetry |
@@ -118,6 +119,13 @@ Discipline is enforced — evidence hierarchy for sources, inline `[n]` citation
 to pages actually fetched, confidence labels, honest "insufficient data"
 instead of invented sources, and hard search budgets. Adapted from
 dzhng/deep-research, LangChain `open_deep_research`, and gpt-researcher.
+
+Long-running work is phased: the same `scripts/research/phase.mjs` ledger gates
+launches on the live clock and an absolute UTC deadline plus the required
+observation allowance, keeps checkpoints informational (no "reply continue" per
+chunk), preserves deadline and cumulative usage across resumes, expires phases
+for good, defaults to stopping after a failure or uncertain outcome (retry only
+under an explicit, narrowly scoped approval), and writes a durable handoff.
 
 ## Parallel work (fan-out / fan-in)
 

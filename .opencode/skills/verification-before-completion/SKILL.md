@@ -14,10 +14,14 @@ description: Use when about to claim work is complete, fixed, or passing, before
 2. Full suite (or the repo's agreed scope): command + pass result.
 3. Linters/type checks the repo uses: clean.
 4. Spec/plan mapping: every requirement traces to a task with evidence.
-5. Diff self-review: `git diff` read end to end — no strays, no secrets, no debug leftovers.
+5. Spec gate: `node scripts/spec-check.mjs verify --require-active` exits 0 with
+   the same plan hash approved at the start; no out-of-scope files in the diff.
+6. Diff self-review: `git diff` read end to end — no strays, no secrets, no debug leftovers.
 
 If any item fails, fix and re-run from step 1. Report evidence inline
 (command + outcome), never "should be passing" or "tests pass" without the run.
+Do not close the gate until the evidence above is recorded; do not report done
+while `spec-check verify` fails.
 
 ## Verify recipe (write once, reuse every loop)
 

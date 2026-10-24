@@ -22,9 +22,11 @@
  * No external dependencies — pure JS works on both flavors.
  */
 
+import crypto from 'crypto';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
+import { spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -286,12 +288,107 @@ const SENSITIVE_PATH_RE = /(^|\/)\.env(?:\.(?!example$|sample$|template$)[^/]*)?
 const FILE_TOOLS = new Set(['read', 'edit', 'write', 'patch', 'apply_patch']);
 
 // apply_patch/patch carry no filePath; recover targets from the diff body.
+// Both `--- a/` and `+++ b/` are parsed: a deletion (`+++ /dev/null`) or a
+// rename must check the source path too, not only the destination.
 const pathsFromPatch = (text) => {
   const out = [];
-  for (const re of [/^\*\*\* (?:Add|Update|Delete|Move to) File: (.+)$/gm, /^\*\*\* Move to: (.+)$/gm, /^\+\+\+ [ab]\/(.+)$/gm]) {
+  for (const re of [
+    /^\*\*\* (?:Add|Update|Delete|Move to) File: (.+)$/gm,
+    /^\*\*\* Move to: (.+)$/gm,
+    /^--- [ab]\/(.+)$/gm,
+    /^\+\+\+ [ab]\/(.+)$/gm,
+  ]) {
     for (const m of text.matchAll(re)) out.push(m[1].trim());
   }
   return out;
+};
+
+// --- Spec gate (opt-in, marker-driven) --------------------------------------
+// An approved plan writes .sdlc/spec-gate.json via scripts/spec-check.mjs. The
+// plugin delegates validation to that CLI (single contract implementation) and
+// blocks mutating file tools outside the approved scope. No marker = no-op, so
+// the suite stays usable in every repo. A present but invalid marker blocks.
+const SPEC_MUTATING_TOOLS = new Set(['edit', 'write', 'patch', 'apply_patch']);
+const SPEC_CHECK_CANDIDATES = [
+  path.resolve(__dirname, '..', '..', 'scripts', 'spec-check.mjs'), // repo layout
+  path.resolve(__dirname, '..', 'scripts', 'spec-check.mjs'), // global install layout
+];
+let _specCheckPath;
+const resolveSpecCheck = () => {
+  if (_specCheckPath !== undefined) return _specCheckPath;
+  for (const candidate of SPEC_CHECK_CANDIDATES) {
+    try {
+      if (fs.statSync(candidate).isFile()) {
+        _specCheckPath = candidate;
+        return candidate;
+      }
+    } catch (err) {
+      // try the next layout
+    }
+  }
+  _specCheckPath = null;
+  return null;
+};
+
+const specTargets = (tool, args = {}) => {
+  if (!SPEC_MUTATING_TOOLS.has(tool)) return [];
+  const targets = [];
+  for (const raw of [args.filePath, args.path]) {
+    if (typeof raw === 'string' && raw) targets.push(raw);
+  }
+  const body = args.patchText || args.diff || args.patch;
+  if (typeof body === 'string' && body) targets.push(...pathsFromPatch(body));
+  return [...new Set(targets)];
+};
+
+export const checkSpecGate = (tool, args = {}, root) => {
+  if (!root) return; // host did not provide a project root: fail open
+  const targets = specTargets(tool, args);
+  if (!targets.length) return;
+
+  const marker = path.join(root, '.sdlc', 'spec-gate.json');
+  try {
+    fs.lstatSync(marker);
+  } catch (err) {
+    if (err.code === 'ENOENT') return; // no gate: fail open
+    // Unreadable marker: let the CLI report it (fail closed for edits).
+  }
+
+  const cli = resolveSpecCheck();
+  if (!cli) return; // contract module not installed: fail open (documented)
+
+  // The CLI is in the plan scope in some repos; a marker written by a modified
+  // CLI must not be trusted. Malformed JSON is left to the CLI to report.
+  let markerData;
+  try {
+    markerData = JSON.parse(fs.readFileSync(marker, 'utf8'));
+  } catch (err) {
+    markerData = null;
+  }
+  if (markerData && typeof markerData === 'object' && !Array.isArray(markerData)) {
+    if (typeof markerData.cli_sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(markerData.cli_sha256)) {
+      throw new Error('[sdlc-lean] spec gate marker has no CLI hash. Run spec-check close && approve.');
+    }
+    const cliHash = crypto.createHash('sha256').update(fs.readFileSync(cli)).digest('hex');
+    if (cliHash !== markerData.cli_sha256) {
+      throw new Error('[sdlc-lean] spec gate CLI changed since approval. Run spec-check close && approve.');
+    }
+  }
+
+  const absTargets = targets.map((target) => (path.isAbsolute(target) ? target : path.resolve(root, target)));
+  const result = spawnSync(process.execPath, [cli, 'check', ...absTargets, '--root', root], {
+    encoding: 'utf8',
+    timeout: 5000,
+    windowsHide: true,
+  });
+  if (result.error) {
+    // Marker is active and the CLI resolved: a fault must not skip targets.
+    throw new Error(`[sdlc-lean] spec gate unavailable: ${result.error.message}`);
+  }
+  if (result.status === 0) return;
+  const detail = String(result.stderr || result.stdout || '').trim().split('\n').filter(Boolean).pop()
+    || 'outside the approved plan scope';
+  throw new Error(`[sdlc-lean] spec gate blocked: ${detail}`);
 };
 
 // Shell readers that would print a secret file into the model context. A reader
@@ -304,6 +401,32 @@ const SECRET_READ_RE = new RegExp(
   + `(?=[\\s'"]|$)`,
   'i',
 );
+
+// Colab lifecycle guards: killing the MCP bridge is not a release substitute
+// (the runtime stays allocated), and /content is VM-ephemeral — unexported
+// artifacts are lost with it. Literal patterns only, same style as above.
+// Like SECRET_READ_RE, each pattern only counts at the start of a simple
+// command (optionally after sudo/env/command), so quoted prose passes; the
+// trailing `(?![\w-])` keeps suffixed processes (colab-mcp-helper) benign.
+const COLAB_CMD = '(?:^|[;&|\\n]\\s*)(?:sudo\\s+|env\\s+|command\\s+)?';
+
+const COLAB_BRIDGE_MSG = 'Refusing to kill the Colab MCP bridge process. Killing the colab-mcp server is not a release substitute — the runtime stays allocated. Release compute with `google.colab.runtime.unassign()` in an approved notebook cell, then verify per the `colab-lifecycle` skill.';
+
+const COLAB_GUARDS = [
+  {
+    // `-0` is pkill/killall's liveness check: it never sends a signal
+    re: new RegExp(`${COLAB_CMD}(?:pkill|killall)\\b(?![^;\\n]*\\s-0\\b)[^;\\n]*\\bcolab[_-]mcp(?![\\w-])`),
+    msg: COLAB_BRIDGE_MSG,
+  },
+  {
+    re: new RegExp(`${COLAB_CMD}kill\\b[^;\\n]*\\$\\(\\s*(?:pgrep|ps)\\b[^)\\n]*\\bcolab[_-]mcp(?![\\w-])`),
+    msg: COLAB_BRIDGE_MSG,
+  },
+  {
+    re: new RegExp(`${COLAB_CMD}rm\\s+(?:-[^;\\s]*r[^;\\s]*\\s+)['"]?\\/content(?:\\/|\\s|$|;|['"])`),
+    msg: 'Refusing to delete /content. On a Colab VM /content is deleted with the runtime, so unexported artifacts are lost with it. Export artifacts to an approved destination and verify hashes/acks before deleting; use #nosafety only if the loss is intended.',
+  },
+];
 
 export const checkSafety = (tool, args = {}) => {
   if (FILE_TOOLS.has(tool)) {
@@ -334,6 +457,9 @@ export const checkSafety = (tool, args = {}) => {
         `[sdlc-lean] Refusing to read a sensitive file into context. Inspect metadata (e.g. \`ls -l\`, key fingerprints) instead; use #nosafety only if you accept exposure.`,
       );
     }
+    for (const { re, msg } of COLAB_GUARDS) {
+      if (re.test(cmd)) throw new Error(`[sdlc-lean] ${msg}`);
+    }
   }
 };
 
@@ -362,8 +488,10 @@ export const SdlcLeanPlugin = async ({ client, directory } = {}) => {
     },
 
     // Safety net: destructive commands + sensitive files. Always on.
+    // Spec gate: opt-in via .sdlc/spec-gate.json, checked after safety.
     'tool.execute.before': async (input, output) => {
       checkSafety(input.tool, output.args);
+      checkSpecGate(input.tool, output.args, directory);
     },
 
     // Loop memory: carry durable state across compaction summaries.
@@ -458,11 +586,14 @@ async function setup(ctx) {
     console.error('[sdlc-lean] compaction hook registration failed:', err);
   }
   // V2 safety net: V1 hooks are not bridged to V2, so register the same guards
-  // through the V2 tool hook. Throwing blocks the tool call.
+  // through the V2 tool hook. Throwing blocks the tool call. Keep this callback
+  // synchronous: the existing host contract and tests expect a sync throw.
   try {
     if (ctx.tool && typeof ctx.tool.hook === 'function') {
+      const gateRoot = typeof ctx.directory === 'string' && ctx.directory ? ctx.directory : process.cwd();
       await ctx.tool.hook('execute.before', (event) => {
         checkSafety(event.tool, event.input || {});
+        checkSpecGate(event.tool, event.input || {}, gateRoot);
       });
     }
   } catch (err) {

@@ -5,9 +5,16 @@ description: Use when asked to achieve a goal autonomously - "keep going until",
 
 # Autonomous Loop
 
-Drive a goal to done **without asking**. Each iteration is a full SDLC pass.
-Stop only when acceptance criteria are met with fresh evidence, or a budget
-rule fires.
+Drive a goal to done **without asking inside an approved phase**. Each iteration
+is a full SDLC pass. Stop only when acceptance criteria are met with fresh
+evidence, a budget rule fires, or the spec gate blocks an edit (scope
+deviation).
+
+**Approval is not a checkpoint.** Design approval, plan approval, and scope
+approval are authorization boundaries: the loop may continue freely inside an
+approved phase, but it may not create, replace, or widen a plan without a new
+human approval record. A blocked edit is a scope deviation — record it and ask
+for `close` + re-approval; never bypass the gate with bash or shell redirection.
 
 ## Setup (once)
 
@@ -39,8 +46,11 @@ flowchart LR
 2. **Decide** every fork via `option-selection`: research, matrix, pick,
    record. Never ask the human to choose.
 3. **Plan** with `writing-plans` for multi-step work; skip for one-liners.
+   Activate the gate with `spec-check approve` only after a human approves the
+   plan; the plan's `files` scope bounds every later edit.
 4. **Execute** with `test-driven-development`, or `systematic-debugging` for
-   bugs.
+   bugs. If the gate blocks an edit, stop and report a deviation — do not
+   re-plan around it.
 5. **Verify** with `verification-before-completion`: run the repo's commands,
    reuse `docs/verify-recipe.md` if it exists, else write it.
 6. **Correct**: on failure, one *implementation* fix round via
@@ -69,6 +79,7 @@ exists or promise cross-session execution without a mechanism that does it.
 | 2 consecutive no-progress loops | change strategy (different approach), not the same fix again |
 | Budget exhausted | **give up honestly**: state, evidence, exact remaining work, next step |
 | Human interrupts | pause, report loop state from the ledger |
+| Spec gate blocks an edit | stop: record the deviation; request `close` + re-approval; never bypass |
 
 ## Rules
 

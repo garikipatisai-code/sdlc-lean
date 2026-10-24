@@ -114,6 +114,17 @@ test('installs scripts/research byte-identical and tracks it in the manifest', (
   }
 });
 
+test('installs scripts/spec-check.mjs byte-identical and tracks it in the manifest', () => {
+  const target = mkTmp('sdlc-spec-check-');
+  const summary = mod.installGlobal({ target });
+  assert.equal(summary.specCheck, 1);
+  const installed = fs.readFileSync(path.join(target, 'scripts', 'spec-check.mjs'));
+  const repoCopy = fs.readFileSync(path.join(mod.repoRoot, 'scripts', 'spec-check.mjs'));
+  assert.ok(installed.equals(repoCopy), 'spec-check.mjs must be byte-identical');
+  const manifest = JSON.parse(fs.readFileSync(path.join(target, mod.MANIFEST), 'utf8'));
+  assert.ok(manifest.files.includes(path.join('scripts', 'spec-check.mjs')));
+});
+
 test('prune removes stale research files but preserves user files', () => {
   const target = mkTmp('sdlc-research-prune-');
   const repo = fakeRepo(mkTmp('sdlc-repo-'));

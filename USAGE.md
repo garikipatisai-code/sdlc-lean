@@ -26,7 +26,8 @@ cp -r .opencode /path/to/your-project/
 npm run install:global
 ```
 
-The script copies skills/agents/commands/plugin into `~/.config/opencode/`
+The script copies skills/agents/commands/plugin, `scripts/spec-check.mjs`, and `scripts/research/`
+into `~/.config/opencode/`
 (XDG_CONFIG_HOME honored) and prunes files a previous install placed that no
 longer exist in the repo. Your own skills and config are never touched. Manual
 equivalent:
@@ -37,6 +38,9 @@ cp -r .opencode/agents/*   ~/.config/opencode/agents/
 cp -r .opencode/commands/* ~/.config/opencode/commands/
 mkdir -p ~/.config/opencode/plugins
 cp .opencode/plugins/sdlc-lean.js ~/.config/opencode/plugins/
+mkdir -p ~/.config/opencode/scripts
+cp scripts/spec-check.mjs  ~/.config/opencode/scripts/
+cp -r scripts/research     ~/.config/opencode/scripts/
 ```
 
 ### Updating (this PC and other PCs)
@@ -96,6 +100,7 @@ Quick probes:
 | `This test is failing` | Routes to `systematic-debugging` (bugfix pipeline) |
 | `Explain how X works` | Uses `communicating-concisely` (diagram + short prose) |
 | `Keep going until all tests pass` | `orchestrator` + `autonomous-loop`: loops until criteria or an honest budget stop |
+| `Run the paired-question experiment on seeds 7 and 8` | Routes to `research-protocol` (frozen protocol; null counts as done) |
 | `Which library should we use — A or B?` | `option-selection`: research → matrix → pick → record |
 | `/sdlc-lean` | Prints activation timestamp, install path, and counts |
 
@@ -114,6 +119,7 @@ Nothing to select — describe the work and the router runs the pipeline.
 | A security check | *"Is the upload endpoint safe?"* | read-only traced-path audit |
 | A capability you lack | *"We need OCR — find a trusted option"* | trusted-source search → reuse/install |
 | External research | *"Compare Postgres vs SQLite for this"* | scope → parallel search → cite → synthesize |
+| An empirical experiment | *"Run the paired-question experiment on seeds 7 and 8"* | freeze → lock → evidence → amend (null counts as done) |
 | Pick the best option | *"Which library should we use — A or B?"* | `option-selection`: research → matrix → pick → record |
 | An autonomous goal | *"Keep going until all tests pass"* | `orchestrator` → `autonomous-loop`: route → decide → execute → verify → self-correct |
 
@@ -127,6 +133,7 @@ Every pipeline also has an explicit slash command when you want determinism:
 | `/bugfix <what>` | explore → investigate → fix → review → confirm |
 | `/refactor <what>` | impact → decompose → implement → verify |
 | `/security-audit [scope]` | audit → scan → dead-code → report (read-only) |
+| `/reverse-engineer [target]` | route → analyze → validate → report (read-only) |
 | `/sdlc-lean` | Status: activation proof + installed skills/agents/commands |
 
 ## 4. What happens automatically
@@ -143,15 +150,32 @@ Every pipeline also has an explicit slash command when you want determinism:
   `simplified-technical-english` (STE-informed, not certified).
 - **Debt ledger** — deferred shortcuts are logged in `docs/debt-ledger.md`
   (format in the `lean-review` skill) instead of expanding an unrelated diff.
+- **Spec gate** — after a human approves a plan, `spec-check approve` writes
+  `.sdlc/spec-gate.json`. Edits outside the plan's `files`/`allow` scope are
+  blocked for `edit`/`write`/`patch`/`apply_patch`, and the plan/spec are
+  immutable until `close` + re-approval. Bash redirection is outside the gate:
+  it is a drift guard, not a sandbox.
+
+### Spec gate commands
+
+```sh
+node scripts/spec-check.mjs approve docs/plans/<slug>.md   # after human approval
+node scripts/spec-check.mjs status                         # active plan + hashes
+node scripts/spec-check.mjs verify                         # fail on drift
+node scripts/spec-check.mjs check <path>                   # is this path in scope?
+node scripts/spec-check.mjs close                          # after evidence is recorded
+```
 
 ## 5. Skills & agents reference
 
-| Skills (36) | Purpose |
+| Skills (39) | Purpose |
 |---|---|
 | `using-sdlc-lean` | Router: infers pipeline + scrutiny |
 | `research-protocol` | Empirical experiments: frozen protocol, device locks, evidence bundle, provenance (null counts as done); phase ledger (`scripts/research/phase.mjs`) for absolute UTC deadlines, observation allowance, cumulative limits, recovery authorization, delegation scope, durable handoff |
 | `autonomous-loop` | Goal-driven loop protocol: budgets, stop rules, give-up-honestly report; checkpoints stay informational inside an approved phase, continuation never opens a new phase |
 | `option-selection` | Research-first decisions: options matrix → pick → record |
+| `colab-lifecycle` | Colab runtime lifecycle (prepare → connect → inspect → execute → persist → release → verify): pinned capability matrix, release-evidence ladder, incident protocol; deterministic guards against kill-as-teardown and `/content` deletion |
+| `reverse-engineering` | Shipped-artifact reverse engineering: REA engine ladder (pinned, not vendored), full target routing with recovery and release-availability notes, evidence discipline, S-tier reconstruction gates, competitor best-of matrix, `/reverse-engineer` command |
 | `frontend-design` | Distinctive UI build (adapted anthropics, Apache-2.0) |
 | `ui-review` | UI/a11y/UX + React perf review, terse file-line |
 | `intent-preview` | Plan approval preview before implementation |
@@ -208,9 +232,10 @@ is inspect-only. Trusted sources and install paths:
 
 ## 8. Update / uninstall
 
-Re-copy `.opencode` from a fresh clone to update. To uninstall, delete the
-copied `skills/`, `agents/`, `commands/` entries and the plugin file; remove
-the plugin entry from `opencode.json` if you added one.
+Re-copy `.opencode` and `scripts/spec-check.mjs` from a fresh clone to update.
+To uninstall, delete the copied `skills/`, `agents/`, `commands/`,
+`scripts/spec-check.mjs`, `scripts/research/` entries and the plugin file;
+remove the plugin entry from `opencode.json` if you added one.
 
 ## 9. Troubleshooting
 

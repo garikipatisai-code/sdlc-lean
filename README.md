@@ -14,6 +14,7 @@ flowchart TD
     R -->|bug / failing test| B[bugfix pipeline]
     R -->|restructure, no behavior change| RF[refactor pipeline]
     R -->|security / auth / data| S[security-audit pipeline plus reviewing-security]
+    R -->|empirical experiment| RS[research-protocol: frozen protocol, null counts as done]
     F --> FB[brainstorming to HARD GATE design approval] --> FP[writing-plans] --> FI[execute via TDD] --> FR[review plus lean-review] --> FV[verification-before-completion]
     B --> BR[systematic-debugging: reproduce, root-cause, fix, confirm]
     RF --> RI[impact analysis then behavior-preserving steps]
@@ -30,7 +31,12 @@ standard work enforces the lean ladder, architectural work runs the full
 
 ```sh
 cp -r .opencode /path/to/your-project/
+mkdir -p /path/to/your-project/scripts
+cp scripts/spec-check.mjs /path/to/your-project/scripts/
 ```
+
+The project-local plugin resolves `scripts/spec-check.mjs` relative to the
+project; without it the gate stays inactive (fail-open).
 
 **Global** — available in every project, one command:
 
@@ -38,7 +44,7 @@ cp -r .opencode /path/to/your-project/
 npm run install:global
 ```
 
-Copies skills/agents/commands/plugin into `~/.config/opencode/` and prunes
+Copies skills/agents/commands/plugin, `scripts/spec-check.mjs`, and `scripts/research/` into `~/.config/opencode/` and prunes
 files a previous install placed that no longer exist in the repo — your own
 skills and config are never touched. Manual equivalent:
 
@@ -48,6 +54,9 @@ cp -r .opencode/agents/*   ~/.config/opencode/agents/
 cp -r .opencode/commands/* ~/.config/opencode/commands/
 mkdir -p ~/.config/opencode/plugins
 cp .opencode/plugins/sdlc-lean.js ~/.config/opencode/plugins/
+mkdir -p ~/.config/opencode/scripts
+cp scripts/spec-check.mjs  ~/.config/opencode/scripts/
+cp -r scripts/research     ~/.config/opencode/scripts/
 ```
 
 **Updating** (this PC or any other with a clone): `git pull && npm run install:global`.
@@ -71,10 +80,11 @@ savings — complementary, not bundled.
 
 | Area | Contents |
 |---|---|
-| Skills (36) | router · brainstorming · writing-plans · worktrees · sdd / executing-plans · TDD · debugging · verification · review in/out · finish-branch · parallel-agents · writing-skills · diagnosing · lean-review · security · performance · schemas · release-notes · exploring-codebase · managing-tasks · communicating-concisely · simplified-technical-english · acquiring-capabilities · deep-research · incident-postmortem · dependency-upgrade · threat-model · adr · autonomous-loop · option-selection · frontend-design · ui-review · intent-preview · autonomy-dial |
-| Research helpers | `scripts/research/` (stdlib-only `protocol.mjs` + `cluster.mjs` + `phase.mjs`): protocol freeze + sha256, 4-field score-cache binding, outcome taxonomy (null counts as done), amendment gate, O_EXCL device locks, deterministic clustering, CLI — plus the phase ledger (authorized continuation, absolute UTC deadlines, observation allowance, cumulative limits, recovery authorization, delegation scope, durable handoff, fail-closed state) — ships globally; `resolveProtocolModule` / `resolvePhaseModule` use the same env → local → global → bundled ladder |
+| Skills (39) | router · brainstorming · writing-plans · worktrees · sdd / executing-plans · TDD · debugging · verification · review in/out · finish-branch · parallel-agents · writing-skills · diagnosing · lean-review · security · performance · schemas · release-notes · exploring-codebase · managing-tasks · communicating-concisely · simplified-technical-english · acquiring-capabilities · deep-research · research-protocol · incident-postmortem · dependency-upgrade · threat-model · adr · autonomous-loop · option-selection · frontend-design · ui-review · intent-preview · autonomy-dial · colab-lifecycle · reverse-engineering |
 | Agents (8) | orchestrator · implementer · planner · code-reviewer · test-writer · explorer · security-reviewer · researcher |
-| Pipelines (4) | `/feature` · `/bugfix` · `/security-audit` · `/refactor` — invoked automatically by the router |
+| Research helpers | `scripts/research/` (stdlib-only `protocol.mjs` + `cluster.mjs` + `phase.mjs`): protocol freeze + sha256, 4-field score-cache binding, outcome taxonomy (null counts as done), amendment gate, O_EXCL device locks, deterministic clustering, CLI — plus the phase ledger (authorized continuation, absolute UTC deadlines, observation allowance, cumulative limits, recovery authorization, delegation scope, durable handoff, fail-closed state) — ships globally; `resolveProtocolModule` / `resolvePhaseModule` use the same env → local → global → bundled ladder |
+| Spec gate | `scripts/spec-check.mjs` + plugin hook: an approved plan writes `.sdlc/spec-gate.json` binding spec/plan/CLI SHA-256 and a file scope; out-of-scope `edit`/`write`/`patch`/`apply_patch` calls are blocked until `close` + re-approval. Fail-open when no marker; bash writes are a documented residual risk, not a sandbox. The plugin itself must come from a trusted install |
+| Pipelines (5) | `/feature` · `/bugfix` · `/security-audit` · `/refactor` · `/reverse-engineer` — invoked automatically by the router |
 | Autonomy | `orchestrator` primary agent + `autonomous-loop` + `option-selection` — goal-driven loops (route → research → pick best option → execute → verify → self-correct) until acceptance criteria or an honest budget stop; checkpoints are informational, deadlines are live-clock UTC, recovery needs explicit narrow approval, and phase state + handoff are durable |
 | Status | `/sdlc-lean` — activation proof + installed skills/agents/commands |
 | Plugin | per-session bootstrap, auto-routing, always-on safety guards |
@@ -108,6 +118,11 @@ Trust is tiered — **verified** (official/curated) installs directly,
 **established** (popular, active, permissive license) needs approval after a
 security review, **unknown** is inspect-only. Third-party code is a trust
 boundary: no obfuscated source, no rogue lifecycle hooks, pinned versions.
+For upstream mechanisms the suite now reuses a source-level audit workflow —
+inspect (shallow clone, pin commit, read source + tests) → reproduce
+(read-only, behavior vs docs claims) → extract/adapt (lean ladder, cite
+sources) → verify (acceptance check + danger scan) — worked once against five
+research implementations (evidence in `docs/research/upstream-audits/`).
 Sources and install paths: `.opencode/skills/acquiring-capabilities/references/trusted-sources.md`.
 
 ## Deep research
@@ -119,6 +134,21 @@ Discipline is enforced — evidence hierarchy for sources, inline `[n]` citation
 to pages actually fetched, confidence labels, honest "insufficient data"
 instead of invented sources, and hard search budgets. Adapted from
 dzhng/deep-research, LangChain `open_deep_research`, and gpt-researcher.
+
+## Empirical research
+
+Experiments you *run* (hypothesis, splits, seeds, scores) route to
+`research-protocol`, not `deep-research`: freeze the protocol (hypothesis,
+splits, controls, metrics, seeds, budgets → sha256), execute under a
+device-scoped lock (second holder refused, CLI lock is a probe only), prove
+completion with an evidence bundle (estimand, repeated observations, leakage
+check, claim scope), and record amendments (repair always / correction
+post-results / protocol changes blocked after final results). Null or
+negative results count as **completed** research; stale locks fail closed
+(manual recovery only). Statistical analysis stays project-local — the suite
+provides deterministic clustering and an evidence checklist, no
+bootstrap/CI machinery. Mechanism: `scripts/research/` (see table above);
+design + audits in `docs/plans/` and `docs/research/upstream-audits/`.
 
 Long-running work is phased: the same `scripts/research/phase.mjs` ledger gates
 launches on the live clock and an absolute UTC deadline plus the required
@@ -171,4 +201,9 @@ Built on patterns from MIT-licensed upstream work:
 [obra/superpowers](https://github.com/obra/superpowers) (workflow + plugin skeleton),
 [DietrichGebert/ponytail](https://github.com/DietrichGebert/ponytail) (lean ladder),
 plus ideas from wshobson/agents, ClaudeTools/marketplace, osmontero/opencode-skills,
-opencode-snip, and the awesome-opencode ecosystem. See [LICENSE](LICENSE).
+opencode-snip, and the awesome-opencode ecosystem. Research-mode patterns
+adapted (no code copied) from
+[UKGovernmentBEIS/inspect_ai](https://github.com/UKGovernmentBEIS/inspect_ai)
+(outcome taxonomy, cache-key partition, EvalLog shape) and
+[microsoft/RD-Agent](https://github.com/microsoft/RD-Agent) (budget completion,
+repair/withdraw taxonomy, artifact binding) — both MIT. See [LICENSE](LICENSE).

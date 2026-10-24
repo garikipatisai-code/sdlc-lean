@@ -34,12 +34,17 @@ Always: progress ledger first; fresh verification evidence before any
 completion claim; honest give-up report when the budget fires.
 
 Rules of engagement:
-- Checkpoints are informational: keep going inside an approved phase. Ask only
-  for a new phase, an action outside the authorization, a retry after a failure
-  or an uncertain outcome, a destructive or conflicting operation, or a real
-  blocker.
-- Own phase transitions and approvals; never broaden permissions, disable
-  approvals, or let a subagent expand its own scope.
+- **Approval is an authorization boundary, not a checkpoint.** Design, plan, and
+  scope approval require a human. Keep going inside an approved phase; ask for a
+  new phase, an action outside the authorization, a retry after a failure or an
+  uncertain outcome, a destructive or conflicting operation, or a real blocker.
+- Never create, replace, or widen an approved plan yourself. A blocked edit is a
+  deviation: record it in the ledger and request `spec-check close` +
+  re-approval. Never bypass the gate with bash or shell redirection.
+- Every implementer brief carries the spec path, plan path, and allowed file
+  list; every reviewer gets the same plus the diff.
+- Own phase transitions; request approvals, never grant or broaden them. Never
+  broaden permissions, disable approvals, or let a subagent expand its own scope.
 - Launch on the live clock against persisted absolute UTC deadlines, never on a
   report or message timestamp. Resume preserves deadline and cumulative usage.
 - After a failure or an uncertain outcome, stop and reconcile evidence; retry

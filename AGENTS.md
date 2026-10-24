@@ -10,6 +10,7 @@ keep this file short — it loads as context.
 - `.opencode/commands/*.md` — slash commands, `$ARGUMENTS` for input.
 - `.opencode/plugins/sdlc-lean.js` — zero-dep plugin. Keep it dependency-free.
 - `scripts/validate-skills.mjs` — static lint, must pass on every skill change.
+- `scripts/spec-check.mjs` — spec-gate contract/CLI (`.sdlc/spec-gate.json`); ships with the global install.
 - `scripts/install-global.mjs` — global install/update (`npm run install:global`); manifest-pruned, never touches user files.
 - `tests/opencode/*.mjs` — `node --test`, must pass on every plugin change.
 - `tests/scripts/*.mjs` — installer tests, same gate.
@@ -22,6 +23,7 @@ keep this file short — it loads as context.
 - New skill? Follow `writing-skills`: minimal, pressure-test the trigger, run the lint.
 - Plugin changes must stay V1+V2 compatible and fail open (never break activation).
 - Safety guards only grow by exact-known destructive patterns; benign must pass (add a test).
+- Spec gate: an approved plan writes `.sdlc/spec-gate.json`. File edits outside the plan's `files`/`allow` scope are blocked, and the plan/spec are immutable while active. `close` + re-approve to change scope — never bypass a block with bash.
 - Bootstrap budget: <5KB (enforced by test). Skill bodies stay on-demand, never injected.
 - All human-facing output follows `communicating-concisely`: 30s budget, visuals (mermaid/tables) over prose walls.
 - Trusted-source list lives in `.opencode/skills/acquiring-capabilities/references/trusted-sources.md`; grow it deliberately, never auto-install unknown code.

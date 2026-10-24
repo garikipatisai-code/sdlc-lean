@@ -96,4 +96,10 @@ export const PROBES = [
     prompt: 'Preview the plan for this change and wait for my approval before implementing.',
     expect: [{ kind: 'skill', value: 'intent-preview' }],
   },
+  {
+    id: 'routing-reverse-engineering',
+    group: 'routing',
+    prompt: 'I only have the shipped build of this app - no source. Analyze the packaged files and explain how its export feature works.',
+    expect: [{ kind: 'skill', value: 'reverse-engineering' }],
+  },
 ];

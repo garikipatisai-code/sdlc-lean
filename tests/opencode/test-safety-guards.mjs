@@ -54,6 +54,45 @@ test('refuses sensitive files on patch and apply_patch', () => {
   plugin.checkSafety('patch', { patchText: '*** Move to: src/app.ts' });
 });
 
+test('blocks Colab teardown substitutes and /content deletion', () => {
+  for (const cmd of [
+    'pkill -f colab-mcp',
+    'killall colab-mcp',
+    'kill $(pgrep -f "uvx git+https://github.com/googlecolab/colab-mcp")',
+    'sudo pkill -KILL colab-mcp',
+    'npm test && pkill -f colab-mcp',
+  ]) {
+    assert.throws(() => plugin.checkSafety('bash', { command: cmd }), /bridge/);
+  }
+  for (const cmd of ['rm -rf /content', 'rm -rf /content/models', 'rm -fr "/content"', 'rm -rf /content/']) {
+    assert.throws(() => plugin.checkSafety('bash', { command: cmd }), /artifact|unexported/);
+  }
+});
+
+test('benign Colab commands pass (fail-open)', () => {
+  for (const cmd of [
+    'ls -la /content',
+    'cat /content/notes.txt',
+    'pgrep -f colab-mcp',
+    'pkill -f colab-mcp-helper', // suffix, not the bridge process
+    'pkill -0 -f colab-mcp', // signal 0 = liveness check, never kills
+    'pkill -f node',
+    'rm -rf /tmp/content',
+    'rm -rf ./content',
+    'rm -rf /tmp/colab-work',
+    'colab usage',
+    'uvx git+https://github.com/googlecolab/colab-mcp',
+    'git commit -m "block pkill colab-mcp"', // prose, not a command position
+    'echo "see pkill -f colab-mcp in docs"',
+    'grep -rn "rm -rf /content" docs/',
+  ]) {
+    plugin.checkSafety('bash', { command: cmd });
+  }
+  // the documented opt-out also disables the new guards
+  plugin.checkSafety('bash', { command: 'rm -rf /content #nosafety' });
+  plugin.checkSafety('bash', { command: 'pkill -f colab-mcp #nosafety' });
+});
+
 test('benign commands pass (fail-open)', async () => {
   const hooks = await plugin.SdlcLeanPlugin({});
   const run = (tool, args) => hooks['tool.execute.before']({ tool }, { args });

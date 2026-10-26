@@ -100,6 +100,7 @@ Quick probes:
 | `This test is failing` | Routes to `systematic-debugging` (bugfix pipeline) |
 | `Explain how X works` | Uses `communicating-concisely` (diagram + short prose) |
 | `Keep going until all tests pass` | `orchestrator` + `autonomous-loop`: loops until criteria or an honest budget stop |
+| `Build a polished 3D web game` | `web-game-development` + `/game`: design → plan → build → perf/a11y gate → ship |
 | `Run the paired-question experiment on seeds 7 and 8` | Routes to `research-protocol` (frozen protocol; null counts as done) |
 | `Which library should we use — A or B?` | `option-selection`: research → matrix → pick → record |
 | `/sdlc-lean` | Prints activation timestamp, install path, and counts |
@@ -117,6 +118,7 @@ Nothing to select — describe the work and the router runs the pipeline.
 | A bug fixed | *"Login 500s on unicode passwords"* | reproduce → root-cause → fix → confirm |
 | A cleanup | *"Split this 600-line module"* | impact analysis → behavior-preserving steps |
 | A security check | *"Is the upload endpoint safe?"* | read-only traced-path audit |
+| A web game | *"Build a polished 3D web game"* | engine choice → design gate → plan → TDD build → perf/a11y → ship |
 | A capability you lack | *"We need OCR — find a trusted option"* | trusted-source search → reuse/install |
 | External research | *"Compare Postgres vs SQLite for this"* | scope → parallel search → cite → synthesize |
 | An empirical experiment | *"Run the paired-question experiment on seeds 7 and 8"* | freeze → lock → evidence → amend (null counts as done) |

@@ -15,10 +15,12 @@ flowchart TD
     R -->|restructure, no behavior change| RF[refactor pipeline]
     R -->|security / auth / data| S[security-audit pipeline plus reviewing-security]
     R -->|empirical experiment| RS[research-protocol: frozen protocol, null counts as done]
+    R -->|web game| G[game pipeline]
     F --> FB[brainstorming to HARD GATE design approval] --> FP[writing-plans] --> FI[execute via TDD] --> FR[review plus lean-review] --> FV[verification-before-completion]
     B --> BR[systematic-debugging: reproduce, root-cause, fix, confirm]
     RF --> RI[impact analysis then behavior-preserving steps]
     S --> SR[read-only traced-path findings]
+    G --> GB[engine matrix plus S-tier gates] --> GD[brainstorming HARD GATE] --> GP[writing-plans] --> GI[TDD build, greybox first] --> GR[review plus perf/a11y gate] --> GV[verify then ship checklist]
 ```
 
 Every route scales scrutiny to the task: trivial work is built directly,
@@ -166,6 +168,15 @@ conflicts by a stated rule (never silently), handle partial failures, then one
 review over the merged result. `dispatching-parallel-agents` owns the contract;
 `subagent-driven-development` and `deep-research` reuse it.
 
+## Web games
+
+Web-game work routes to `web-game-development` (or `/game`): pick a web-first
+engine, keep the simulation deterministic on a fixed step, budget frame time and
+assets before art, add authoritative netcode only when the design needs it, then
+gate on playtest, accessibility, and portal requirements. The skill ships S-tier
+gates and a pinned Apache-2.0 reference corpus; vendored engine guides are
+drill-down detail, not a second source of truth.
+
 ## Safety
 
 Trust-boundary validation, data-loss handling, security, accessibility, and
@@ -206,4 +217,7 @@ adapted (no code copied) from
 [UKGovernmentBEIS/inspect_ai](https://github.com/UKGovernmentBEIS/inspect_ai)
 (outcome taxonomy, cache-key partition, EvalLog shape) and
 [microsoft/RD-Agent](https://github.com/microsoft/RD-Agent) (budget completion,
-repair/withdraw taxonomy, artifact binding) — both MIT. See [LICENSE](LICENSE).
+repair/withdraw taxonomy, artifact binding) — both MIT. The vendored
+game-development corpus under `.opencode/skills/web-game-development/references/vendor/`
+is Apache-2.0, © Abhishek Barali and the awesome-gamedev-agent-skills
+contributors (see its `NOTICE`). See [LICENSE](LICENSE).

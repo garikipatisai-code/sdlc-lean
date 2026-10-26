@@ -13,9 +13,9 @@ All notable changes to this project are documented here. Format follows
   netcode, game feel/playtest/accessibility, PWA/portal shipping gates. Vendors a
   curated Apache-2.0 reference corpus (Phaser/Pixi/three + 12 disciplines +
   itch/prototype) with attribution; no executable upstream helpers. Vendored
-  Markdown/JSON only; CI/credential guidance is hardened (SHA-256 pin,
-  step-scoped secret, no creds-file reads) and helper scripts are not bundled.
-  Adds a routing probe (40 skills).
+  Markdown/JSON plus the upstream Apache `LICENSE`/`NOTICE`; CI/credential
+  guidance is hardened (SHA-256 pin, step-scoped secret, no creds-file reads)
+  and helper scripts are not bundled. Adds a routing probe (40 skills).
 - V1 trust core: CI workflow, root package manifest, debt-ledger format,
   `simplified-technical-english` skill, and hardened safety guards.
 - Live eval harness (`eval/run.mjs`): dry-by-default probes with structural

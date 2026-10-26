@@ -97,6 +97,12 @@ export const PROBES = [
     expect: [{ kind: 'skill', value: 'intent-preview' }],
   },
   {
+    id: 'routing-web-game',
+    group: 'routing',
+    prompt: 'Build a polished 3D web game with Three.js, a fixed-step loop, and a 60fps mobile budget.',
+    expect: [{ kind: 'skill', value: 'web-game-development' }],
+  },
+  {
     id: 'routing-reverse-engineering',
     group: 'routing',
     prompt: 'I only have the shipped build of this app - no source. Analyze the packaged files and explain how its export feature works.',

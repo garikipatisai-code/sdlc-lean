@@ -134,6 +134,7 @@ Every pipeline also has an explicit slash command when you want determinism:
 | `/refactor <what>` | impact → decompose → implement → verify |
 | `/security-audit [scope]` | audit → scan → dead-code → report (read-only) |
 | `/reverse-engineer [target]` | route → analyze → validate → report (read-only) |
+| `/game <what>` | design → plan → build → perf/a11y gate → ship |
 | `/sdlc-lean` | Status: activation proof + installed skills/agents/commands |
 
 ## 4. What happens automatically
@@ -168,7 +169,7 @@ node scripts/spec-check.mjs close                          # after evidence is r
 
 ## 5. Skills & agents reference
 
-| Skills (39) | Purpose |
+| Skills (40) | Purpose |
 |---|---|
 | `using-sdlc-lean` | Router: infers pipeline + scrutiny |
 | `research-protocol` | Empirical experiments: frozen protocol, device locks, evidence bundle, provenance (null counts as done); phase ledger (`scripts/research/phase.mjs`) for absolute UTC deadlines, observation allowance, cumulative limits, recovery authorization, delegation scope, durable handoff |
@@ -177,6 +178,7 @@ node scripts/spec-check.mjs close                          # after evidence is r
 | `colab-lifecycle` | Colab runtime lifecycle (prepare → connect → inspect → execute → persist → release → verify): pinned capability matrix, release-evidence ladder, incident protocol; deterministic guards against kill-as-teardown and `/content` deletion |
 | `reverse-engineering` | Shipped-artifact reverse engineering: REA engine ladder (pinned, not vendored), full target routing with recovery and release-availability notes, evidence discipline, S-tier reconstruction gates, competitor best-of matrix, `/reverse-engineer` command |
 | `frontend-design` | Distinctive UI build (adapted anthropics, Apache-2.0) |
+| `web-game-development` | Web-game router + SOTA gates: engine matrix, fixed-step/WebGPU perf, netcode, game feel/playtest, a11y, PWA/portal shipping; vendored Apache-2.0 Phaser/Pixi/three + discipline references, `/game` command |
 | `ui-review` | UI/a11y/UX + React perf review, terse file-line |
 | `intent-preview` | Plan approval preview before implementation |
 | `autonomy-dial` | Observe→Auto tiers, audit-undo, escalation |

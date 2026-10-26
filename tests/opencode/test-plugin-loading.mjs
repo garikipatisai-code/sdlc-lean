@@ -2,6 +2,7 @@
 // Mocks the V1 client + message envelope; exercises the real plugin module.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import crypto from 'crypto';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -192,6 +193,70 @@ test('ux skills ship and are routed within budget', () => {
     Buffer.byteLength(boot) <= 5120,
     'router bootstrap must stay within 5KB budget',
   );
+});
+
+test('web-game capability ships with its references, vendor license, and command', () => {
+  const boot = plugin.getBootstrapContent();
+  assert.ok(boot.includes('web-game-development'), 'router must name the web-game skill');
+  const skill = plugin.listSkills().find((s) => s.id === 'web-game-development');
+  assert.ok(skill, 'web-game-development skill must ship');
+  assert.match(skill.description, /^Use when/i);
+  assert.ok(skill.content.includes('S-tier'), 'skill must define the quality gate');
+  for (const term of ['engine-matrix', 'web-architecture-performance', 'web-netcode', 'web-shipping', 'game-design-playtest']) {
+    assert.ok(skill.content.includes(term), `skill must route to ${term}`);
+  }
+  const base = path.resolve(import.meta.dirname, '../../.opencode/skills/web-game-development');
+
+  // Every non-placeholder reference path in the router must exist.
+  const refs = [...skill.content.matchAll(/`(references\/[^`]+)`/g)]
+    .map((m) => m[1])
+    .filter((r) => !r.includes('<'));
+  for (const ref of refs) assert.ok(fs.existsSync(path.join(base, ref)), `${ref} must ship`);
+
+  // The vendor corpus is inert Markdown/JSON plus the Apache license/notice.
+  const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+    const p = path.join(dir, e.name);
+    assert.ok(!e.isSymbolicLink(), `vendor must not contain symlinks: ${p}`);
+    return e.isDirectory() ? walk(p) : [p];
+  });
+  const vendor = path.join(base, 'references/vendor');
+  for (const file of walk(vendor)) {
+    const rel = path.relative(vendor, file);
+    const allowed = rel.endsWith('.md') || rel.endsWith('.json')
+      || rel === 'LICENSE-APACHE-2.0' || rel === 'NOTICE'
+      || rel === 'SHA256SUMS';
+    assert.ok(allowed, `unexpected vendored file type: ${rel}`);
+    assert.ok(!(fs.statSync(file).mode & 0o111), `vendored file must not be executable: ${rel}`);
+  }
+
+  // Every vendored file is covered by SHA256SUMS, and every digest matches.
+  const sums = fs.readFileSync(path.join(vendor, 'SHA256SUMS'), 'utf8').trim().split('\n');
+  const listed = new Set();
+  for (const line of sums) {
+    const [hash, rel] = line.trim().split(/\s+/);
+    listed.add(rel);
+    const actual = crypto.createHash('sha256').update(fs.readFileSync(path.join(vendor, rel))).digest('hex');
+    assert.equal(actual, hash, `${rel} checksum mismatch`);
+  }
+  const present = new Set(walk(vendor).map((f) => path.relative(vendor, f)).filter((r) => r !== 'SHA256SUMS'));
+  assert.deepEqual([...present].sort(), [...listed].sort(), 'SHA256SUMS must cover every vendored file');
+
+  // The pin is recorded in both provenance documents.
+  const pin = '184b72be02884f782a0058f2eeae2ce4277453e4';
+  const vendored = fs.readFileSync(path.join(base, 'references/VENDORED.md'), 'utf8');
+  const trusted = fs.readFileSync(
+    path.resolve(import.meta.dirname, '../../.opencode/skills/acquiring-capabilities/references/trusted-sources.md'),
+    'utf8',
+  );
+  assert.ok(vendored.includes(pin), 'VENDORED.md must record the upstream commit');
+  assert.ok(trusted.includes(pin), 'trusted-sources must record the upstream commit');
+
+  const gameCmd = path.resolve(import.meta.dirname, '../../.opencode/commands/game.md');
+  assert.ok(fs.existsSync(gameCmd), '/game command must ship');
+  const game = fs.readFileSync(gameCmd, 'utf8');
+  for (const term of ['requesting-code-review', 'lean-review', 'spec-check', 'Do not implement']) {
+    assert.ok(game.includes(term), `/game must include ${term}`);
+  }
 });
 
 test('activation: writes status, toasts once per session', async () => {

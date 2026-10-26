@@ -33,6 +33,15 @@ with explicit approval only, pinned:
 `npx rea-agents@6.4.0 setup --client opencode --skill=false` (dry-run first).
 Verified 2026-10-13: 6.4.0 runs no install-time lifecycle hooks.
 
+Pre-cleared candidate: `gamedev-skills/awesome-gamedev-agent-skills` —
+Apache-2.0, ~4.3k★, active 2026-10-24; audited 2026-10-25: vendored subset is Markdown/JSON plus the
+upstream Apache `LICENSE`/`NOTICE`; upstream Python helpers were not copied (some
+write preview images), and no lifecycle hooks or shell scripts were found in the
+vendored subset. Vendored under `web-game-development/references/vendor/` at commit
+`184b72be02884f782a0058f2eeae2ce4277453e4`; no executable helpers copied. The
+embedded itch CI recipe was hardened to require a hash pin and a step-scoped
+secret; treat its remaining install commands as approval-gated.
+
 ## Unknown — inspect only, never auto-install
 
 Anything not meeting the above. Read it, summarize risk, hand the decision to

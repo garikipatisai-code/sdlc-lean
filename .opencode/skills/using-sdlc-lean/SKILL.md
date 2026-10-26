@@ -25,6 +25,7 @@ Every human-facing word follows `communicating-concisely` (STE-lite, 30s budget,
 
 Classify, run the pipeline, announce the route in one line. Pipeline skill first.
 
+- Web game → `web-game-development`.
 - New feature / behavior change / "let's build X" → **feature**: explore → `brainstorming` (HARD GATE) → `writing-plans` → execute → review → verify.
 - Goal-driven autonomy ("keep going until", acceptance criteria) → `orchestrator` (`autonomous-loop`).
 - UI build/reshape → `frontend-design`. UI review/a11y → `ui-review`. Approval → `intent-preview`. Tiers → `autonomy-dial`.

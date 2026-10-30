@@ -155,8 +155,8 @@ Every pipeline also has an explicit slash command when you want determinism:
   `simplified-technical-english` (STE-informed, not certified).
 - **Debt ledger** — deferred shortcuts are logged in `docs/debt-ledger.md`
   (format in the `lean-review` skill) instead of expanding an unrelated diff.
-- **Spec gate** — after a human approves a plan, `spec-check approve` writes
-  `.sdlc/spec-gate.json`. Edits outside the plan's `files`/`allow` scope are
+- **Spec gate** — after a human approves a plan, `/approve <plan>` (V2 TUI) or the
+  `spec-check approve` TTY fallback writes `.sdlc/spec-gate.json`. Edits outside the plan's `files`/`allow` scope are
   blocked for `edit`/`write`/`patch`/`apply_patch`, and the plan/spec are
   immutable until `close` + re-approval. Bash redirection is outside the gate:
   it is a drift guard, not a sandbox.
@@ -164,7 +164,8 @@ Every pipeline also has an explicit slash command when you want determinism:
 ### Spec gate commands
 
 ```sh
-node scripts/spec-check.mjs approve docs/plans/<slug>.md   # after human approval
+/approve docs/plans/<slug>.md                              # V2 TUI (human-only)
+node scripts/spec-check.mjs approve docs/plans/<slug>.md   # TTY fallback (human terminal)
 node scripts/spec-check.mjs status                         # active plan + hashes
 node scripts/spec-check.mjs verify                         # fail on drift
 node scripts/spec-check.mjs check <path>                   # is this path in scope?

@@ -1,0 +1,30 @@
+{
+  "plan": "docs/plans/2026-10-30-tui-approval-command.md",
+  "plan_sha256": "fbe1a253baf7855cc711ff041173b0297fb48785fa5e8eca156cb0f7a8d34671",
+  "tasks": [
+    {
+      "task": 1,
+      "verify": "! node --test tests/opencode/test-approve-command.mjs",
+      "exit": 0,
+      "at": "2026-10-30T23:02:24Z"
+    },
+    {
+      "task": 2,
+      "verify": "node --test --test-name-pattern=\"^behavior:\" tests/opencode/test-approve-command.mjs && node --test tests/opencode/test-plugin-loading.mjs tests/opencode/test-spec-gate.mjs",
+      "exit": 0,
+      "at": "2026-10-30T23:04:52Z"
+    },
+    {
+      "task": 3,
+      "verify": "node --test --test-name-pattern=\"^docs:\" tests/opencode/test-approve-command.mjs && node --test tests/opencode/test-brain-skills.mjs tests/opencode/test-skill-contracts.mjs",
+      "exit": 0,
+      "at": "2026-10-30T23:04:53Z"
+    },
+    {
+      "task": 4,
+      "verify": "npm run verify && node eval/run.mjs",
+      "exit": 0,
+      "at": "2026-10-30T23:04:59Z"
+    }
+  ]
+}

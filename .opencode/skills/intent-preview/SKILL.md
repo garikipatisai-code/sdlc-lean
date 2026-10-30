@@ -16,5 +16,6 @@ Reimplemented from SOTA plan-approval pattern (Claude plan mode, Cursor Projects
 
 ## Approval
 
-- Approval is the `spec-check approve` step: the human runs `node scripts/spec-check.mjs approve <plan>` in a `TTY`.
+- Approval on V2 is `/approve <plan>` in the TUI: the human runs `/approve docs/plans/<slug>.md`.
+  The `spec-check approve` (`node scripts/spec-check.mjs approve <plan>`) `TTY` fallback remains.
 - Non-interactive approval (a pipe, a redirect, or an agent-owned terminal) is denied. Stop and report; never substitute your own approval.

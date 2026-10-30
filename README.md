@@ -17,7 +17,7 @@ flowchart TD
     R -->|shipped artifact, no source| RE[reverse-engineering: REA ladder, evidence, no mutation]
     R -->|empirical experiment| RS[research-protocol: frozen protocol, null counts as done]
     R -->|web game| G[game pipeline]
-    F --> TH[threat-model if a trust boundary] --> FB[brainstorming to HARD GATE design approval] --> FP[writing-plans] --> HA[human TTY approves plan] --> FI[execute via TDD + fail-before-fix] --> FR[review: raw Verify output + dispositions] --> FV[verification-before-completion] --> FE[evidence JSON] --> FC[close gate]
+    F --> TH[threat-model if a trust boundary] --> FB[brainstorming to HARD GATE design approval] --> FP[writing-plans] --> HA["human approves plan: /approve in TUI or TTY fallback"] --> FI[execute via TDD + fail-before-fix] --> FR[review: raw Verify output + dispositions] --> FV[verification-before-completion] --> FE[evidence JSON] --> FC[close gate]
     B --> BR[systematic-debugging: reproduce, root-cause, fix, fail-before-fix proof]
     RF --> RI[impact analysis then behavior-preserving steps]
     S --> SR[read-only traced-path findings]
@@ -25,7 +25,7 @@ flowchart TD
     G --> GB[engine matrix + S-tier evidence] --> GD[brainstorming HARD GATE] --> GP[writing-plans] --> GI[TDD build, greybox first] --> GR[review + perf/a11y gate] --> GV[verify + ship checklist]
 ```
 
-Explicit commands `/preview`, `/release`, and `/sdlc-lean` bypass router inference: `/preview` is read-only, `/release` drafts only, and `/sdlc-lean` reports status.
+Explicit commands `/preview`, `/release`, and `/sdlc-lean` bypass router inference: `/preview` is read-only, `/release` drafts only, and `/sdlc-lean` reports status; on V2, `/approve <plan>` activates the spec gate as a human-only act (TTY fallback: `spec-check approve`).
 
 Every route scales scrutiny to the task: trivial work is built directly,
 standard work enforces the lean ladder, architectural work runs the full
@@ -89,7 +89,7 @@ savings — complementary, not bundled.
 | Skills (40) | router · brainstorming · writing-plans · worktrees · sdd / executing-plans · TDD · debugging · verification · review in/out · finish-branch · parallel-agents · writing-skills · diagnosing · lean-review · security · performance · schemas · release-notes · exploring-codebase · managing-tasks · communicating-concisely · simplified-technical-english · acquiring-capabilities · deep-research · research-protocol · incident-postmortem · dependency-upgrade · threat-model · adr · autonomous-loop · option-selection · frontend-design · web-game-development · ui-review · intent-preview · autonomy-dial · colab-lifecycle · reverse-engineering |
 | Agents (8) | orchestrator · implementer · planner · code-reviewer · test-writer · explorer · security-reviewer · researcher |
 | Research helpers | `scripts/research/` (stdlib-only `protocol.mjs` + `cluster.mjs` + `phase.mjs`): protocol freeze + sha256, 4-field score-cache binding, outcome taxonomy (null counts as done), amendment gate, O_EXCL device locks, deterministic clustering, CLI — plus the phase ledger (authorized continuation, absolute UTC deadlines, observation allowance, cumulative limits, recovery authorization, delegation scope, durable handoff, fail-closed state) — ships globally; `resolveProtocolModule` / `resolvePhaseModule` use the same env → local → global → bundled ladder |
-| Spec gate | `scripts/spec-check.mjs` + plugin hook: an approved plan writes `.sdlc/spec-gate.json` binding spec/plan/CLI SHA-256 and a file scope; out-of-scope `edit`/`write`/`patch`/`apply_patch` calls are blocked until `close` + re-approval. `approve` is TTY-bound; `close` requires `docs/plans/<slug>-evidence.json` with one exit-0 row per plan task. Fail-open when no marker; bash writes are a documented residual risk, not a sandbox. The plugin itself must come from a trusted install |
+| Spec gate | `scripts/spec-check.mjs` + plugin hook: an approved plan writes `.sdlc/spec-gate.json` binding spec/plan/CLI SHA-256 and a file scope; out-of-scope `edit`/`write`/`patch`/`apply_patch` calls are blocked until `close` + re-approval. `/approve <plan>` (V2 TUI) is primary; `spec-check approve` is the TTY fallback. `close` requires `docs/plans/<slug>-evidence.json` with one exit-0 row per plan task. Fail-open when no marker; bash writes are a documented residual risk, not a sandbox. The plugin itself must come from a trusted install |
 | Pipelines (8) | `/feature` · `/bugfix` · `/security-audit` · `/refactor` · `/reverse-engineer` · `/game` · `/preview` · `/release` — invoked automatically by the router |
 | Autonomy | `orchestrator` primary agent + `autonomous-loop` + `option-selection` — goal-driven loops (route → research → pick best option → execute → verify → self-correct) until acceptance criteria or an honest budget stop; checkpoints are informational, deadlines are live-clock UTC, recovery needs explicit narrow approval, and phase state + handoff are durable |
 | Status | `/sdlc-lean` — activation proof + installed skills/agents/commands |

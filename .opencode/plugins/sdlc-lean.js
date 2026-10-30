@@ -27,7 +27,7 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import { spawnSync } from 'child_process';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -391,6 +391,66 @@ export const checkSpecGate = (tool, args = {}, root) => {
   throw new Error(`[sdlc-lean] spec gate blocked: ${detail}`);
 };
 
+// --- V2 `/approve` command (human-only) -------------------------------------
+// The human types `/approve <repo-relative-plan.md>` in the TUI. The command
+// reuses the CLI contract module and never touches the plan file. No tool and
+// no agent-callable path exists: only this user-invoked command approves.
+const resolveApprovalCli = (root) => {
+  const configHome = process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config');
+  const candidates = [
+    path.join(root, 'scripts', 'spec-check.mjs'),
+    path.join(configHome, 'opencode', 'scripts', 'spec-check.mjs'),
+  ];
+  for (const candidate of candidates) {
+    try {
+      if (fs.statSync(candidate).isFile()) return candidate;
+    } catch (err) {
+      // try the next candidate
+    }
+  }
+  return null;
+};
+
+const parseApprovalArg = (text) => {
+  const usage = 'usage: /approve <repo-relative-plan.md>';
+  const trimmed = typeof text === 'string' ? text.trim() : '';
+  if (!trimmed) throw new Error(usage);
+  const tokens = trimmed.split(/\s+/);
+  if (tokens.length !== 1) throw new Error(`${usage} (exactly one plan path)`);
+  if (tokens[0].startsWith('-')) throw new Error(`${usage} (flags are not accepted)`);
+  return tokens[0];
+};
+
+const approvePlan = async (ctx, { sessionID, prompt } = {}) => {
+  const notify = async (text) => {
+    try {
+      await ctx.session.synthetic({ sessionID, text });
+    } catch (err) {
+      console.error('[sdlc-lean] approval result could not be shown:', err);
+    }
+  };
+  try {
+    const root = ctx.location?.directory;
+    if (typeof root !== 'string' || !root) throw new Error('no project directory for this session');
+    const arg = parseApprovalArg(prompt?.text);
+    const cli = resolveApprovalCli(root);
+    if (!cli) throw new Error('scripts/spec-check.mjs not found (project or global config)');
+    const mod = await import(pathToFileURL(cli).href);
+    const rel = mod.normalizeRel(root, arg);
+    const gate = mod.buildGate(root, rel);
+    const marker = {
+      ...gate,
+      approved_by: os.userInfo().username,
+      approved_at: new Date().toISOString(),
+      approved_via: 'tui-command',
+    };
+    await mod.writeGate(root, marker);
+    await notify(`[sdlc-lean] spec gate active: ${marker.plan} -> ${marker.spec} (${marker.files.length} files, plan sha256 ${marker.plan_sha256.slice(0, 12)})`);
+  } catch (err) {
+    await notify(`[sdlc-lean] /approve refused: ${err?.message || err}`);
+  }
+};
+
 // Shell readers that would print a secret file into the model context. A reader
 // only counts at the start of a simple command (optionally after sudo/env), so
 // benign prose such as `git commit -m "remove cat .env"` still passes.
@@ -598,6 +658,20 @@ async function setup(ctx) {
     }
   } catch (err) {
     console.error('[sdlc-lean] tool hook registration failed:', err);
+  }
+  // Human-only approval: register `/approve <plan>` when the host exposes the
+  // V2 command surface. No-ops on hosts without it; registration errors never
+  // break setup.
+  try {
+    if (ctx.command && typeof ctx.command.transform === 'function') {
+      await ctx.command.transform((editor) => editor.add({
+        name: 'approve',
+        description: 'Approve an SDLC plan and activate the spec gate (human-only)',
+        execute: (invocation) => approvePlan(ctx, invocation),
+      }));
+    }
+  } catch (err) {
+    console.error('[sdlc-lean] command registration failed:', err);
   }
 }
 

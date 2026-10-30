@@ -47,10 +47,9 @@ the gate is active. Before approval use `status: draft` with empty `approved_by`
 
 ## Activate the gate
 
-After human approval, run `approve` yourself in a terminal:
-`node scripts/spec-check.mjs approve docs/plans/<slug>.md` (installed copy if no repo-local script).
-It writes `.sdlc/spec-gate.json` binding the spec hash, plan hash, and file scope; do not implement
-before it succeeds. `close` only after evidence is recorded; plan/spec changes need `close` + a new approval — never edit around the gate.
+After human approval, the human runs `/approve docs/plans/<slug>.md` in the V2 TUI; the TTY fallback is `spec-check approve`
+(`node scripts/spec-check.mjs approve <plan>`, installed copy if no repo-local script), which writes `.sdlc/spec-gate.json` binding spec/plan hashes and scope.
+Never implement before it succeeds; `close` only after evidence; plan/spec changes need `close` + a new approval — never edit around the gate.
 
 ## Task table (mandatory)
 

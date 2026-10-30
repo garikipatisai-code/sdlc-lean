@@ -137,6 +137,8 @@ Every pipeline also has an explicit slash command when you want determinism:
 | `/security-audit [scope]` | audit → scan → dead-code → report (read-only) |
 | `/reverse-engineer [target]` | route → analyze → validate → report (read-only) |
 | `/game <what>` | design → plan → build → perf/a11y gate → ship |
+| `/preview <what>` | read-only preview → goal/steps/files/risk/check → human approval (never implements) |
+| `/release <what>` | read-only diff/PRs → draft notes → version bump → hand off (never publishes) |
 | `/sdlc-lean` | Status: activation proof + installed skills/agents/commands |
 
 ## 4. What happens automatically
@@ -176,14 +178,14 @@ node scripts/spec-check.mjs close                          # after evidence is r
 | `using-sdlc-lean` | Router: infers pipeline + scrutiny |
 | `research-protocol` | Empirical experiments: frozen protocol, device locks, evidence bundle, provenance (null counts as done); phase ledger (`scripts/research/phase.mjs`) for absolute UTC deadlines, observation allowance, cumulative limits, recovery authorization, delegation scope, durable handoff |
 | `autonomous-loop` | Goal-driven loop protocol: budgets, stop rules, give-up-honestly report; checkpoints stay informational inside an approved phase, continuation never opens a new phase |
-| `option-selection` | Research-first decisions: options matrix → pick → record |
+| `option-selection` | Research-first decisions: binary criteria matrix → pick → record; swap order for two options. |
 | `colab-lifecycle` | Colab runtime lifecycle (prepare → connect → inspect → execute → persist → release → verify): pinned capability matrix, release-evidence ladder, incident protocol; deterministic guards against kill-as-teardown and `/content` deletion |
 | `reverse-engineering` | Shipped-artifact reverse engineering: REA engine ladder (pinned, not vendored), full target routing with recovery and release-availability notes, evidence discipline, S-tier reconstruction gates, competitor best-of matrix, `/reverse-engineer` command |
 | `frontend-design` | Distinctive UI build (adapted anthropics, Apache-2.0) |
 | `web-game-development` | Web-game router + SOTA gates: engine matrix, fixed-step/WebGPU perf, netcode, game feel/playtest, a11y, PWA/portal shipping; vendored Apache-2.0 Phaser/Pixi/three + discipline references, `/game` command |
 | `ui-review` | UI/a11y/UX + React perf review, terse file-line |
-| `intent-preview` | Plan approval preview before implementation |
-| `autonomy-dial` | Observe→Auto tiers, audit-undo, escalation |
+| `intent-preview` | Read-only preview; human TTY approval; never self-approve. |
+| `autonomy-dial` | Observe→Auto tiers; named check command, audit ledger, reversal path, escalation on a failed check. |
 | `brainstorming` · `writing-plans` · `executing-plans` · `subagent-driven-development` | Feature flow: design → plan → execute |
 | `test-driven-development` · `systematic-debugging` · `verification-before-completion` | Correctness gates |
 | `requesting-code-review` · `receiving-code-review` · `lean-review` | Review in/out + over-engineering audit |

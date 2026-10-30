@@ -85,12 +85,12 @@ savings — complementary, not bundled.
 | Skills (40) | router · brainstorming · writing-plans · worktrees · sdd / executing-plans · TDD · debugging · verification · review in/out · finish-branch · parallel-agents · writing-skills · diagnosing · lean-review · security · performance · schemas · release-notes · exploring-codebase · managing-tasks · communicating-concisely · simplified-technical-english · acquiring-capabilities · deep-research · research-protocol · incident-postmortem · dependency-upgrade · threat-model · adr · autonomous-loop · option-selection · frontend-design · web-game-development · ui-review · intent-preview · autonomy-dial · colab-lifecycle · reverse-engineering |
 | Agents (8) | orchestrator · implementer · planner · code-reviewer · test-writer · explorer · security-reviewer · researcher |
 | Research helpers | `scripts/research/` (stdlib-only `protocol.mjs` + `cluster.mjs` + `phase.mjs`): protocol freeze + sha256, 4-field score-cache binding, outcome taxonomy (null counts as done), amendment gate, O_EXCL device locks, deterministic clustering, CLI — plus the phase ledger (authorized continuation, absolute UTC deadlines, observation allowance, cumulative limits, recovery authorization, delegation scope, durable handoff, fail-closed state) — ships globally; `resolveProtocolModule` / `resolvePhaseModule` use the same env → local → global → bundled ladder |
-| Spec gate | `scripts/spec-check.mjs` + plugin hook: an approved plan writes `.sdlc/spec-gate.json` binding spec/plan/CLI SHA-256 and a file scope; out-of-scope `edit`/`write`/`patch`/`apply_patch` calls are blocked until `close` + re-approval. Fail-open when no marker; bash writes are a documented residual risk, not a sandbox. The plugin itself must come from a trusted install |
-| Pipelines (6) | `/feature` · `/bugfix` · `/security-audit` · `/refactor` · `/reverse-engineer` · `/game` — invoked automatically by the router |
+| Spec gate | `scripts/spec-check.mjs` + plugin hook: an approved plan writes `.sdlc/spec-gate.json` binding spec/plan/CLI SHA-256 and a file scope; out-of-scope `edit`/`write`/`patch`/`apply_patch` calls are blocked until `close` + re-approval. `approve` is TTY-bound; `close` requires `docs/plans/<slug>-evidence.json` with one exit-0 row per plan task. Fail-open when no marker; bash writes are a documented residual risk, not a sandbox. The plugin itself must come from a trusted install |
+| Pipelines (8) | `/feature` · `/bugfix` · `/security-audit` · `/refactor` · `/reverse-engineer` · `/game` · `/preview` · `/release` — invoked automatically by the router |
 | Autonomy | `orchestrator` primary agent + `autonomous-loop` + `option-selection` — goal-driven loops (route → research → pick best option → execute → verify → self-correct) until acceptance criteria or an honest budget stop; checkpoints are informational, deadlines are live-clock UTC, recovery needs explicit narrow approval, and phase state + handoff are durable |
 | Status | `/sdlc-lean` — activation proof + installed skills/agents/commands |
 | Plugin | per-session bootstrap, auto-routing, always-on safety guards |
-| Eval | `npm run eval` — opt-in live harness, dry by default, with token/cost telemetry |
+| Eval | `npm run eval` — opt-in live harness, dry by default: 35 structural probes across 9 groups, plus a coverage map (`eval/coverage.mjs`) for every skill and command; token/cost telemetry |
 
 ## Human-facing output contract
 
@@ -99,8 +99,8 @@ Every response and generated doc follows `communicating-concisely`: a
 over walls — mermaid for flows/architecture/schemas, tables for comparisons
 and task lists, progressive disclosure for detail. Plans and designs are a
 diagram plus a table, not an essay. Long prose and generated docs also apply
-`simplified-technical-english` — an ASD-STE100-informed subset (~80%), never
-claimed as certified.
+`simplified-technical-english` — an ASD-STE100-informed subset (rules 1–20),
+never claimed as certified or compliant.
 
 ## Debt ledger
 

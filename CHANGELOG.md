@@ -6,6 +6,9 @@ All notable changes to this project are documented here. Format follows
 
 ## Unreleased
 
+### Changed
+- Four-wave evidence-backed hardening: TTY-bound approval, evidence-bound close, least-privilege agents, and eval trust (Wave 1); TDD/fail-before-fix, evidence-based review, merge gate, and worktree baseline (Wave 2); 40-skill contracts, 9-command coverage, `url-fetched`/`command-exit`, 35 probes, and calibration (Wave 3); five pending domain rules resolved, `/release`, and domain/claim corrections (Wave 4).
+
 ### Added
 - Web-game capability: `web-game-development` skill + `/game` command — web-first
   engine matrix (Phaser 4, PixiJS v8, three.js, Babylon.js, PlayCanvas, Godot web

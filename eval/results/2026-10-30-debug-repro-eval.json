@@ -1,0 +1,58 @@
+{
+  "date": "2026-10-30",
+  "model": null,
+  "probes": 1,
+  "results": [
+    {
+      "id": "debug-repro",
+      "group": "execution",
+      "advisory": true,
+      "ok": true,
+      "expect": [
+        {
+          "kind": "skill",
+          "value": "systematic-debugging",
+          "ok": true
+        },
+        {
+          "kind": "artifact-contains",
+          "path": "docs/debug-evidence.md",
+          "value": "Repro command",
+          "ok": true
+        },
+        {
+          "kind": "artifact-contains",
+          "path": "docs/debug-evidence.md",
+          "value": "Fail before fix",
+          "ok": true
+        },
+        {
+          "kind": "file-unchanged",
+          "path": "tests/calc.test.mjs",
+          "ok": true
+        }
+      ],
+      "text": "I'll start by loading the debugging skill and examining the failing test.\n<skill_content name=\"systematic-debugging\">\n# Skill: systematic-debugging\n\n# Systematic Debugging\n\n**NO FIXES WITHOUT ROOT CAUSE.** A report names a symptom. Patching the named\npath while sibling callers stay broken is the opposite of lazy.\n\n## 4 phases\n\n1. **Reproduce**: write the failing test/script first. Confirm it fails for the reported reason.\n2. **Trace**: follow the real flow end to end. Grep every caller of the function you are about to touch. Fix it once, where all callers route through.\n3. **Hypothesize**: state the single root cause in one sentence. If you have two candidates, test both — do not fix both.\n4. **Fix + verify**: minimal fix (lean ladder), reproducing test goes green, full suite stays green.\n\n## Fail-before-fix proof\n\nAfter the fix, temporarily revert the production change; confirm the repro test\nfails again; reapply and confirm green. The repro test stays; record the repro\ncommand in the progress ledger task row and the evidence row.\n\n## Rules\n\n- Two-strike rule: two failed fix attempts → stop, re-trace, restate the hypothesis. Never stack speculative fixes.\n- The reproducing test stays. Never weaken, skip, delete, or rewrite a test/assertion, snapshot, fixture, or lint rule to pass; a changed assertion is a behavior change requiring approval.\n- Symptom-only patches are rejected. If the true fix is out of scope, say so and file it — do not smuggle it in.\n- A production incident rather than a local bug? After the fix, run `incident-postmortem`.\n\nBase directory for this skill: /tmp/sdlc-eval-HF3hQX/.opencode/skills/systematic-debugging\nRelative paths in this skill (e.g., scripts/, reference/) are relative to this base directory.\nNote: file list is sampled.\n\n<skill_files>\n</skill_files>\n</skill_content>\nRead directory /tmp/sdlc-eval-HF3hQX, entries 1-5\n.opencode/\nscripts/\nsrc/\ntests/\npackage.json\nUsing systematic-debugging. Reading the test, source, and package config.\nR",
+      "usage": {
+        "cost": 0.007876530000000001,
+        "tokens": {
+          "input": 119851,
+          "output": 2120,
+          "reasoning": 327,
+          "cache": {
+            "read": 220160,
+            "write": 0
+          }
+        }
+      }
+    }
+  ],
+  "totals": {
+    "cost": 0.007876530000000001,
+    "input": 119851,
+    "output": 2120,
+    "reasoning": 327,
+    "cacheRead": 220160,
+    "cacheWrite": 0
+  }
+}

@@ -1,0 +1,74 @@
+{
+  "date": "2026-10-30",
+  "model": "opencode-go/deepseek-v4.1-flash",
+  "probes": 1,
+  "harness": {
+    "opencode": "opencode v2.2.4",
+    "node": "v24.19.0"
+  },
+  "results": [
+    {
+      "id": "merge-gate",
+      "group": "execution",
+      "advisory": true,
+      "ok": true,
+      "expect": [
+        {
+          "kind": "skill",
+          "value": "finishing-a-development-branch",
+          "ok": true
+        },
+        {
+          "kind": "artifact-contains",
+          "path": "docs/merge-gate.md",
+          "value": "human approval",
+          "ok": true
+        },
+        {
+          "kind": "artifact-contains",
+          "path": "docs/merge-gate.md",
+          "value": "final SHA",
+          "ok": true
+        },
+        {
+          "kind": "artifact-contains",
+          "path": "docs/merge-gate.md",
+          "value": "spec-check verify",
+          "ok": true
+        },
+        {
+          "kind": "artifact-contains",
+          "path": "docs/merge-gate.md",
+          "value": "spec-check close",
+          "ok": true
+        },
+        {
+          "kind": "file-unchanged",
+          "path": "src/index.js",
+          "ok": true
+        }
+      ],
+      "text": "<skill_content name=\"finishing-a-development-branch\">\n# Skill: finishing-a-development-branch\n\n# Finishing a Development Branch\n\n1. Full verification green **on the final SHA** (`verification-before-completion`); record the SHA.\n2. **Explicit human approval** before merge/PR. Present merge, PR (summary + test evidence), or keep; if no reply, wait — no approval, no merge/PR.\n3. CI green **on the final SHA**; \"confirm CI scope\" is not a green build.\n4. `spec-check verify` passes **before cleanup**; run `spec-check close` **after evidence** rows are written.\n5. Cleanup only after merge/PR: remove worktrees (`git worktree remove`), delete the merged branch, drop scratch files.\n\nBase directory for this skill: /tmp/sdlc-eval-XNmd6D/.opencode/skills/finishing-a-development-branch\nRelative paths in this skill (e.g., scripts/, reference/) are relative to this base directory.\nNote: file list is sampled.\n\n<skill_files>\n</skill_files>\n</skill_content>\ntotal 108\ndrwx------   5 appusai appusai  4096 Oct 30 17:17 .\ndrwxrwxrwt 360 root    root    86016 Oct 30 17:17 ..\ndrwxrwxr-x   6 appusai appusai  4096 Oct 30 17:17 .opencode\n-rw-rw-r--   1 appusai appusai    44 Oct 30 17:17 package.json\ndrwxrwxr-x   2 appusai appusai  4096 Oct 30 17:17 scripts\ndrwxrwxr-x   2 appusai appusai  4096 Oct 30 17:17 src\n/tmp/sdlc-eval-XNmd6D/src/index.js\n/tmp/sdlc-eval-XNmd6D/.opencode/.gitignore\n/tmp/sdlc-eval-XNmd6D/.opencode/plugins/sdlc-lean.js\n/tmp/sdlc-eval-XNmd6D/.opencode/commands/security-audit.md\n/tmp/sdlc-eval-XNmd6D/.opencode/commands/release.md\n/tmp/sdlc-eval-XNmd6D/.opencode/commands/sdlc-lean.md\n/tmp/sdlc-eval-XNmd6D/.opencode/commands/bugfix.md\n/tmp/sdlc-eval-XNmd6D/.opencode/commands/feature.md\n/tmp/sdlc-eval-XNmd6D/.opencode/commands/refactor.md\n/tmp/sdlc-eval-XNmd6D/.opencode/commands/preview.md\n/tmp/sdlc-eval-XNmd6D/.opencode/commands/reverse-engineer.md\n/tmp/sdlc-eval-XNmd6D/.opencode/commands/game.md\n/tmp/sdlc-eval-XNmd6D/.opencode/package.json\n/tmp/sdlc-eval-XNmd6D/.opencode/packa",
+      "usage": {
+        "cost": 0,
+        "tokens": {
+          "input": 25161,
+          "output": 1027,
+          "reasoning": 417,
+          "cache": {
+            "read": 95104,
+            "write": 0
+          }
+        }
+      }
+    }
+  ],
+  "totals": {
+    "cost": 0,
+    "input": 25161,
+    "output": 1027,
+    "reasoning": 417,
+    "cacheRead": 95104,
+    "cacheWrite": 0
+  }
+}

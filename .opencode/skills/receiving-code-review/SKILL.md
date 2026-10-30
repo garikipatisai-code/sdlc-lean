@@ -7,10 +7,11 @@ description: Use when receiving code review feedback, before implementing sugges
 
 Treat every finding as a hypothesis, not an order.
 
-1. **Verify**: reproduce or trace each finding. If you cannot reproduce it, say so with evidence — do not "fix" phantoms.
-2. **YAGNI-check**: does the suggestion add unrequested abstraction or scope? Push back with the lean ladder.
-3. **Implement** verified findings, one by one, with tests where behavior changes.
-4. **Report**: fixed (with evidence), rejected (with reason), or needs-human (ambiguous trade-off).
+1. **Verify**: reproduce or trace each finding. If you cannot reproduce it, reject it with evidence — do not "fix" phantoms.
+2. **YAGNI-check**: does it add unrequested abstraction or scope? Push back with the lean ladder.
+3. **Implement** verified findings one by one, with tests where behavior changes.
+4. **Re-run** the task `Verify` and the `full suite` after the fixes — a fix is not done until both pass again.
+5. **Record** `fixed` (with evidence), `rejected` (with reason), or `needs-human` (ambiguous trade-off) per finding in the progress ledger.
 
 Never bulk-apply review suggestions. A review that grows scope is a design
 discussion — route it back through `brainstorming`, not silent compliance.

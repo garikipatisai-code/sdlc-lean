@@ -12,6 +12,7 @@
 //
 // Zero dependencies; shells out to the installed `opencode` CLI.
 
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -49,8 +50,31 @@ function printDry(opts, probes) {
   console.log('sdlc-lean eval — DRY RUN (no model calls)');
   console.log(`model:   ${opts.model || 'configured default'}`);
   console.log(`probes:  ${probes.length}  (${Object.entries(groups).map(([g, n]) => `${g}=${n}`).join(', ')})`);
-  for (const p of probes) console.log(`  - ${p.id} [${p.group}]${p.advisory ? ' (advisory)' : ''}`);
+  for (const p of probes) {
+    const modes = [p.advisory ? '(advisory)' : '', p.auto === false ? '(no auto)' : '']
+      .filter(Boolean)
+      .join(' ');
+    console.log(`  - ${p.id} [${p.group}]${modes ? ` ${modes}` : ''}`);
+  }
   console.log(`\nrun for real with: node eval/run.mjs --run --max-probes ${probes.length}`);
+}
+
+export const createScratch = () => fs.mkdtempSync(path.join(os.tmpdir(), 'sdlc-eval-'));
+
+// Run a probe-declared command in the scratch project. Static argv only, never
+// a shell, so model text cannot inject commands. 124 = timeout, 127 = spawn
+// error; otherwise the command's numeric exit status.
+export function runCommand(scratch, command) {
+  if (!command || typeof command.cmd !== 'string') return undefined;
+  const res = spawnSync(command.cmd, command.args || [], {
+    cwd: scratch,
+    shell: false,
+    timeout: command.timeoutMs || 60_000,
+    encoding: 'utf8',
+    maxBuffer: 8 * 1024 * 1024,
+  });
+  if (res.error) return res.error.code === 'ETIMEDOUT' ? 124 : 127;
+  return typeof res.status === 'number' ? res.status : 127;
 }
 
 function copySuite(scratch) {
@@ -58,18 +82,72 @@ function copySuite(scratch) {
     recursive: true,
     filter: (src) => !src.includes(`${path.sep}node_modules`),
   });
+  fs.mkdirSync(path.join(scratch, 'scripts'), { recursive: true });
+  fs.copyFileSync(
+    path.join(repoRoot, 'scripts', 'spec-check.mjs'),
+    path.join(scratch, 'scripts', 'spec-check.mjs'),
+  );
   fs.writeFileSync(path.join(scratch, 'package.json'), '{"name":"sdlc-eval-fixture","private":true}\n');
   fs.mkdirSync(path.join(scratch, 'src'), { recursive: true });
   fs.writeFileSync(path.join(scratch, 'src', 'index.js'), 'export const hello = 1;\n');
 }
 
+// Write probe-declared fixture files into the scratch project. Paths are
+// relative; absolute and parent-escaping paths are ignored.
+function writeFixtures(scratch, fixtures = {}) {
+  for (const [rel, content] of Object.entries(fixtures)) {
+    if (typeof rel !== 'string' || rel === '' || path.isAbsolute(rel) || rel.includes('..')) continue;
+    const abs = path.join(scratch, rel);
+    fs.mkdirSync(path.dirname(abs), { recursive: true });
+    fs.writeFileSync(abs, content);
+  }
+}
+
+// Snapshot declared baseline files as `sha256:<hex>`; an absent file is `null`
+// so "absent before and after" can pass `file-unchanged`.
+function snapshotHashes(scratch, paths = []) {
+  const hashes = {};
+  for (const rel of paths) {
+    if (typeof rel !== 'string' || rel === '' || path.isAbsolute(rel) || rel.includes('..')) continue;
+    try {
+      const digest = crypto.createHash('sha256').update(fs.readFileSync(path.join(scratch, rel))).digest('hex');
+      hashes[rel] = `sha256:${digest}`;
+    } catch (err) {
+      if (err.code !== 'ENOENT') throw err;
+      hashes[rel] = null;
+    }
+  }
+  return hashes;
+}
+
+// Read probe-declared artifact files from the scratch project. Paths are
+// relative; absolute and parent-escaping paths are ignored, missing files are
+// omitted (so a missing key means "artifact absent").
+function readArtifacts(scratch, paths = []) {
+  const artifacts = {};
+  for (const rel of paths) {
+    if (typeof rel !== 'string' || rel === '' || path.isAbsolute(rel) || rel.includes('..')) continue;
+    try {
+      artifacts[rel] = fs.readFileSync(path.join(scratch, rel), 'utf8');
+    } catch (err) {
+      if (err.code !== 'ENOENT') throw err;
+    }
+  }
+  return artifacts;
+}
+
 function runProbe(scratch, probe, opts) {
   const probeStart = Date.now();
-  const args = ['run', '--standalone', '--format', 'json', '--auto', '--title', `eval:${probe.id}`];
+  writeFixtures(scratch, probe.fixtures);
+  const before = snapshotHashes(scratch, probe.baseline);
+  const args = ['run', '--standalone', '--format', 'json'];
+  if (probe.auto !== false) args.push('--auto');
+  args.push('--title', `eval:${probe.id}`);
   if (opts.model) args.push('--model', opts.model);
   args.push(probe.prompt);
   const res = spawnSync('opencode', args, {
     cwd: scratch,
+    env: { ...process.env, PWD: scratch },
     encoding: 'utf8',
     maxBuffer: 32 * 1024 * 1024,
     timeout: 180_000,
@@ -84,6 +162,9 @@ function runProbe(scratch, probe, opts) {
   } catch {
     observed.activated = false;
   }
+  if (probe.command) observed.commandExit = runCommand(scratch, probe.command);
+  observed.artifacts = readArtifacts(scratch, probe.artifacts);
+  observed.fileHashes = { before, after: snapshotHashes(scratch, probe.baseline) };
   const expect = evaluate(probe.expect, observed);
   return {
     id: probe.id,
@@ -148,17 +229,23 @@ function renderMarkdown({ date, opts, probes, results, totals }) {
   return lines.join('\n') + '\n';
 }
 
+function opencodeVersion() {
+  const res = spawnSync('opencode', ['--version'], { encoding: 'utf8', timeout: 10_000 });
+  const version = String(res.stdout || '').trim();
+  return res.status === 0 && version ? version : null;
+}
+
 function runLive(opts, probes) {
-  const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'sdlc-eval-'));
-  let results = [];
-  try {
-    copySuite(scratch);
-    for (const p of probes) {
+  const results = [];
+  for (const p of probes) {
+    const scratch = createScratch();
+    try {
+      copySuite(scratch);
       process.stderr.write(`[eval] ${p.id} …\n`);
       results.push(runProbe(scratch, p, opts));
+    } finally {
+      fs.rmSync(scratch, { recursive: true, force: true });
     }
-  } finally {
-    fs.rmSync(scratch, { recursive: true, force: true });
   }
 
   const totals = sumUsage(results);
@@ -167,7 +254,14 @@ function runLive(opts, probes) {
   const outDir = path.isAbsolute(opts.outDir) ? opts.outDir : path.join(repoRoot, opts.outDir);
   fs.mkdirSync(outDir, { recursive: true });
   const base = path.join(outDir, `${date}-${slug}-eval`);
-  const payload = { date, model: opts.model || null, probes: probes.length, results, totals };
+  const payload = {
+    date,
+    model: opts.model || null,
+    probes: probes.length,
+    harness: { opencode: opencodeVersion(), node: process.version },
+    results,
+    totals,
+  };
   fs.writeFileSync(`${base}.json`, JSON.stringify(payload, null, 2) + '\n');
   fs.writeFileSync(`${base}.md`, renderMarkdown({ date, opts, probes, results, totals }));
 
@@ -181,6 +275,10 @@ function runLive(opts, probes) {
 function main() {
   const opts = parseArgs(process.argv.slice(2));
   const probes = selectProbes(PROBES, opts);
+  if (probes.length === 0) {
+    process.stderr.write('no probes selected\n');
+    return 1;
+  }
   if (opts.dry) {
     printDry(opts, probes);
     return 0;

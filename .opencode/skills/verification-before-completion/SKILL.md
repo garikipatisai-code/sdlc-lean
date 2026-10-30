@@ -18,6 +18,8 @@ description: Use when about to claim work is complete, fixed, or passing, before
    the same plan hash approved at the start; no out-of-scope files in the diff.
 6. Diff self-review: `git diff` read end to end — no strays, no secrets, no debug leftovers.
 
+Test integrity. Never weaken, skip, delete, or rewrite a test/assertion, snapshot, fixture, or lint rule to pass; a changed assertion is a behavior change requiring approval.
+
 If any item fails, fix and re-run from step 1. Report evidence inline
 (command + outcome), never "should be passing" or "tests pass" without the run.
 Do not close the gate until the evidence above is recorded; do not report done

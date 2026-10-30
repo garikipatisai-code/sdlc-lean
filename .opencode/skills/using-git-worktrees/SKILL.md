@@ -12,12 +12,15 @@ Isolate work so parallel agents and experiments never collide.
 Prefer the project's convention if one exists; otherwise:
 
 1. `git worktree add .worktrees/<slug> -b <slug>` (keep worktrees under `.worktrees/`, gitignored).
-2. Run project setup inside the worktree (install deps per README).
-3. Verify a clean baseline: run the test suite once before changing anything.
+2. Record the **baseline SHA** (`git rev-parse HEAD`) and the **test command** in the progress ledger.
+3. Run project setup inside the worktree (install deps per README).
+4. Verify a clean baseline: run the test command once before changing anything.
+5. Check `dependency`/`port` collisions against other active worktrees (same lockfile, same dev port).
 
 ## Rules
 
 - One worktree per independent task stream. `dispatching-parallel-agents` assigns one each.
 - Never commit in two worktrees on the same branch.
-- On finish, follow `finishing-a-development-branch`, then `git worktree remove .worktrees/<slug>`.
+- The `.sdlc/spec-gate.json` marker is `per-worktree`: the plan must be approved in that worktree, not only on main.
+- On finish, follow `finishing-a-development-branch`; clean up (remove the worktree) only after `merge/PR`.
 - If the repo forbids worktrees (odd CI, absolute paths), fall back to a feature branch and say so in one line.

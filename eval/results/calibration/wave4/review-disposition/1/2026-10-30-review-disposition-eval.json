@@ -1,0 +1,68 @@
+{
+  "date": "2026-10-30",
+  "model": "opencode-go/deepseek-v4.1-flash",
+  "probes": 1,
+  "harness": {
+    "opencode": "opencode v2.2.4",
+    "node": "v24.19.0"
+  },
+  "results": [
+    {
+      "id": "review-disposition",
+      "group": "execution",
+      "advisory": true,
+      "ok": true,
+      "expect": [
+        {
+          "kind": "skill",
+          "value": "requesting-code-review",
+          "ok": true
+        },
+        {
+          "kind": "artifact-matches",
+          "path": "docs/review.md",
+          "value": "[A-Za-z0-9_./-]+\\.js:\\d+",
+          "ok": true
+        },
+        {
+          "kind": "artifact-contains",
+          "path": "docs/review.md",
+          "value": "severity",
+          "ok": true
+        },
+        {
+          "kind": "artifact-contains",
+          "path": "docs/review.md",
+          "value": "disposition",
+          "ok": true
+        },
+        {
+          "kind": "file-unchanged",
+          "path": "src/review.js",
+          "ok": true
+        }
+      ],
+      "text": "Using `requesting-code-review` to review `src/review.js`.\n<skill_content name=\"requesting-code-review\">\n# Skill: requesting-code-review\n\n# Requesting Code Review\n\nThe reviewer needs the **approved spec and plan**, not just the diff — scope\ndrift is invisible without them. Pass: spec path, plan path, the plan's `files`\nlist, the `diff`, and the raw `Verify` output. A self-report is not evidence.\n\nEvery change takes the review path; there is no self-review shortcut. The only\nexception is binary and recorded: `≤20 changed lines AND no auth/IO/schema`.\nWrite `review-exception: ≤20 lines, no auth/IO/schema` in the review note;\notherwise dispatch a reviewer.\n\n## 4 passes, each bound to its evidence source\n\nA pass is not a persona verdict; it reports only what its evidence shows. A\npass with no such evidence says `no finding` — never \"looks fine\".\n\n1. **Correctness** — against the `spec` or plan requirement: unmet AC, extra scope.\n2. **Security** — only a `traced attacker path` from input to impact; see `reviewing-security`.\n3. **Performance** — only a `measurement`; no speculative optimization demands; see `investigating-performance`.\n4. **Maintainability + leanness** — the `diff` plus `lean-review`'s tagged list.\n\nAlso flag files changed outside the plan's `files` scope, acceptance criteria\nwith no evidence, and any claim that skips the gate.\n\n## Persist findings\n\nEvery finding goes in the review note **and** the progress ledger as\n`path:line`, `severity`, and `disposition` (`fixed`/`rejected`/`needs-human`).\nUncertain items are `needs-human` questions, not verdicts. The reviewer never\napplies fixes — it hands back the list; the implementer decides and records\neach `disposition` (see `receiving-code-review`).\n\nBase directory for this skill: /tmp/sdlc-eval-FO1TGt/.opencode/skills/requesting-code-review\nRelative paths in this skill (e.g., scripts/, reference/) are relative to this base directory.\nNote: file list is sampled.\n\n<skill_files>\n</skill_files>\n</skill_content>\nRe",
+      "usage": {
+        "cost": 0,
+        "tokens": {
+          "input": 17483,
+          "output": 942,
+          "reasoning": 577,
+          "cache": {
+            "read": 55296,
+            "write": 0
+          }
+        }
+      }
+    }
+  ],
+  "totals": {
+    "cost": 0,
+    "input": 17483,
+    "output": 942,
+    "reasoning": 577,
+    "cacheRead": 55296,
+    "cacheWrite": 0
+  }
+}

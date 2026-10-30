@@ -1,0 +1,68 @@
+{
+  "date": "2026-10-30",
+  "model": "opencode-go/deepseek-v4.1-flash",
+  "probes": 1,
+  "harness": {
+    "opencode": "opencode v2.2.4",
+    "node": "v24.19.0"
+  },
+  "results": [
+    {
+      "id": "external-verification",
+      "group": "trust",
+      "advisory": false,
+      "ok": true,
+      "expect": [
+        {
+          "kind": "skill",
+          "value": "verification-before-completion",
+          "ok": true
+        },
+        {
+          "kind": "artifact-contains",
+          "path": "docs/evidence.json",
+          "value": "node --test",
+          "ok": true
+        },
+        {
+          "kind": "artifact-matches",
+          "path": "docs/evidence.json",
+          "value": "\"exit\"\\s*:\\s*0",
+          "ok": true
+        },
+        {
+          "kind": "artifact-matches",
+          "path": "docs/evidence.json",
+          "value": "\"at\"\\s*:\\s*\"\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z\"",
+          "ok": true
+        },
+        {
+          "kind": "command-exit",
+          "value": 0,
+          "ok": true
+        }
+      ],
+      "text": "I'll load the verification skill, then inspect the repo.\n<skill_content name=\"verification-before-completion\">\n# Skill: verification-before-completion\n\n# Verification Before Completion\n\n**NO COMPLETION CLAIMS WITHOUT FRESH VERIFICATION EVIDENCE.** Stale results\n(from before your last edit) do not count.\n\n## Checklist (run now, cite results)\n\n1. Focused tests for the change: command + pass result.\n2. Full suite (or the repo's agreed scope): command + pass result.\n3. Linters/type checks the repo uses: clean.\n4. Spec/plan mapping: every requirement traces to a task with evidence.\n5. Spec gate: `node scripts/spec-check.mjs verify --require-active` exits 0 with\n   the same plan hash approved at the start; no out-of-scope files in the diff.\n6. Diff self-review: `git diff` read end to end — no strays, no secrets, no debug leftovers.\n\nTest integrity. Never weaken, skip, delete, or rewrite a test/assertion, snapshot, fixture, or lint rule to pass; a changed assertion is a behavior change requiring approval.\n\nIf any item fails, fix and re-run from step 1. Report evidence inline\n(command + outcome), never \"should be passing\" or \"tests pass\" without the run.\nDo not close the gate until the evidence above is recorded; do not report done\nwhile `spec-check verify` fails.\n\n## Verify recipe (write once, reuse every loop)\n\nIf `docs/verify-recipe.md` exists, run its commands and cite results. If it\ndoes not, write it now from steps 1–3: the exact commands that must pass\nbefore any completion claim. Autonomous loops reuse it — never re-derive\nverification commands each round.\n\nBase directory for this skill: /tmp/sdlc-eval-kFwPSE/.opencode/skills/verification-before-completion\nRelative paths in this skill (e.g., scripts/, reference/) are relative to this base directory.\nNote: file list is sampled.\n\n<skill_files>\n</skill_files>\n</skill_content>\ntotal 112\ndrwx------   6 appusai appusai  4096 Oct 30 16:23 .\ndrwxrwxrwt 295 root    root    86016 Oct 30 16:23 ..\ndrwxrwxr-x   6 appusai appusai",
+      "usage": {
+        "cost": 0,
+        "tokens": {
+          "input": 18120,
+          "output": 778,
+          "reasoning": 319,
+          "cache": {
+            "read": 122496,
+            "write": 0
+          }
+        }
+      }
+    }
+  ],
+  "totals": {
+    "cost": 0,
+    "input": 18120,
+    "output": 778,
+    "reasoning": 319,
+    "cacheRead": 122496,
+    "cacheWrite": 0
+  }
+}

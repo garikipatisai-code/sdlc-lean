@@ -1,0 +1,60 @@
+{
+  "plan": "docs/plans/2026-10-30-trust-core-hardening.md",
+  "plan_sha256": "60c6b4282b83c26d44e86f6b0973f2fffe15d3f8b2953b98633648db36e04b3f",
+  "tasks": [
+    {
+      "task": 1,
+      "verify": "! node --test tests/scripts/test-spec-check.mjs",
+      "exit": 0,
+      "at": "2026-10-30T18:38:25Z"
+    },
+    {
+      "task": 2,
+      "verify": "node --test tests/scripts/test-spec-check.mjs",
+      "exit": 0,
+      "at": "2026-10-30T18:43:20Z"
+    },
+    {
+      "task": 3,
+      "verify": "! node --test tests/opencode/test-agent-permissions.mjs tests/opencode/test-trust-skills.mjs",
+      "exit": 0,
+      "at": "2026-10-30T18:50:05Z"
+    },
+    {
+      "task": 4,
+      "verify": "node --test tests/opencode/test-agent-permissions.mjs",
+      "exit": 0,
+      "at": "2026-10-30T18:51:16Z"
+    },
+    {
+      "task": 5,
+      "verify": "node --test --test-name-pattern=\"writing-plans|executing-plans|subagent\" tests/opencode/test-trust-skills.mjs && node --test tests/opencode/test-brain-skills.mjs",
+      "exit": 0,
+      "at": "2026-10-30T18:54:27Z"
+    },
+    {
+      "task": 6,
+      "verify": "node --test --test-name-pattern=\"review|integrity|ledger|compaction\" tests/opencode/test-trust-skills.mjs && node --test tests/opencode/test-compaction-hook.mjs",
+      "exit": 0,
+      "at": "2026-10-30T18:56:07Z"
+    },
+    {
+      "task": 7,
+      "verify": "! node --test tests/eval/test-assert.mjs tests/eval/test-probes.mjs",
+      "exit": 0,
+      "at": "2026-10-30T18:59:38Z"
+    },
+    {
+      "task": 8,
+      "verify": "node --test tests/eval/test-assert.mjs tests/eval/test-probes.mjs && node eval/run.mjs && node --check eval/run.mjs",
+      "exit": 0,
+      "at": "2026-10-30T19:03:20Z"
+    },
+    {
+      "task": 9,
+      "verify": "npm run verify && node eval/run.mjs",
+      "exit": 0,
+      "at": "2026-10-30T19:07:19Z"
+    }
+  ]
+}

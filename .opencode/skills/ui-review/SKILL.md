@@ -9,7 +9,7 @@ Adapter of `vercel-labs/agent-skills` (`web-design-guidelines` + `react-best-pra
 
 ## Procedure
 
-1. Fetch pinned guidelines per run: `https://raw.githubusercontent.com/vercel-labs/web-interface-guidelines/e3d624baaf29dc1fc645aff3e38f03e564d2d6b1/command.md` via WebFetch (re-pin in `references/ATTRIBUTION.md` to update). Never review from memory.
+1. Fetch pinned guidelines per run: `https://raw.githubusercontent.com/vercel-labs/web-interface-guidelines/e3d624baaf29dc1fc645aff3e38f03e564d2d6b1/command.md` via WebFetch (re-pin in `references/ATTRIBUTION.md` to update). If the fetch fails, stop: report the failure and review nothing. Never review from memory or a cached copy; the review fails closed.
 2. Read target files (arg `<file-or-pattern>` or ask which files).
 3. Apply all fetched rules + React perf rules (waterfalls, bundle, server/client fetching, re-renders — 40+ rules, impact-ordered).
 4. Output terse `file:line` findings only. No prose walls. Group: design / a11y / UX / perf.

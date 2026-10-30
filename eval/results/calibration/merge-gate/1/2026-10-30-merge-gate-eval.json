@@ -1,0 +1,74 @@
+{
+  "date": "2026-10-30",
+  "model": "opencode-go/deepseek-v4.1-flash",
+  "probes": 1,
+  "harness": {
+    "opencode": "opencode v2.2.4",
+    "node": "v24.19.0"
+  },
+  "results": [
+    {
+      "id": "merge-gate",
+      "group": "execution",
+      "advisory": true,
+      "ok": false,
+      "expect": [
+        {
+          "kind": "skill",
+          "value": "finishing-a-development-branch",
+          "ok": true
+        },
+        {
+          "kind": "artifact-contains",
+          "path": "docs/merge-gate.md",
+          "value": "human approval",
+          "ok": true
+        },
+        {
+          "kind": "artifact-contains",
+          "path": "docs/merge-gate.md",
+          "value": "final SHA",
+          "ok": true
+        },
+        {
+          "kind": "artifact-contains",
+          "path": "docs/merge-gate.md",
+          "value": "spec-check verify",
+          "ok": false
+        },
+        {
+          "kind": "artifact-contains",
+          "path": "docs/merge-gate.md",
+          "value": "spec-check close",
+          "ok": false
+        },
+        {
+          "kind": "file-unchanged",
+          "path": "src/index.js",
+          "ok": true
+        }
+      ],
+      "text": "I'll load the skill and check the repo state.\n<skill_content name=\"finishing-a-development-branch\">\n# Skill: finishing-a-development-branch\n\n# Finishing a Development Branch\n\n1. Full verification green **on the final SHA** (`verification-before-completion`); record the SHA.\n2. **Explicit human approval** before merge/PR. Present merge, PR (summary + test evidence), or keep; if no reply, wait — no approval, no merge/PR.\n3. CI green **on the final SHA**; \"confirm CI scope\" is not a green build.\n4. `spec-check verify` passes **before cleanup**; run `spec-check close` **after evidence** rows are written.\n5. Cleanup only after merge/PR: remove worktrees (`git worktree remove`), delete the merged branch, drop scratch files.\n\nBase directory for this skill: /tmp/sdlc-eval-9Ybeoj/.opencode/skills/finishing-a-development-branch\nRelative paths in this skill (e.g., scripts/, reference/) are relative to this base directory.\nNote: file list is sampled.\n\n<skill_files>\n</skill_files>\n</skill_content>\ntotal 108\ndrwx------   5 appusai appusai  4096 Oct 30 16:28 .\ndrwxrwxrwt 303 root    root    86016 Oct 30 16:28 ..\ndrwxrwxr-x   6 appusai appusai  4096 Oct 30 16:28 .opencode\n-rw-rw-r--   1 appusai appusai    44 Oct 30 16:28 package.json\ndrwxrwxr-x   2 appusai appusai  4096 Oct 30 16:28 scripts\ndrwxrwxr-x   2 appusai appusai  4096 Oct 30 16:28 src\n\n{\"name\":\"sdlc-eval-fixture\",\"private\":true}\nscripts:\ntotal 32\ndrwxrwxr-x 2 appusai appusai  4096 Oct 30 16:28 .\ndrwx------ 5 appusai appusai  4096 Oct 30 16:28 ..\n-rw-rw-r-- 1 appusai appusai 24454 Oct 30 16:28 spec-check.mjs\n\nsrc:\ntotal 12\ndrwxrwxr-x 2 appusai appusai 4096 Oct 30 16:28 .\ndrwx------ 5 appusai appusai 4096 Oct 30 16:28 ..\n-rw-rw-r-- 1 appusai appusai   24 Oct 30 16:28 index.js\n#!/usr/bin/env node\n// Spec-gate contract for sdlc-lean (zero dependencies).\n//\n// An approved plan binds a spec (SHA-256), a file scope, and an approval\n// record in .sdlc/spec-gate.json. The plugin reads that marker and blocks\n// file-tool edits outsi",
+      "usage": {
+        "cost": 0,
+        "tokens": {
+          "input": 16989,
+          "output": 821,
+          "reasoning": 181,
+          "cache": {
+            "read": 54272,
+            "write": 0
+          }
+        }
+      }
+    }
+  ],
+  "totals": {
+    "cost": 0,
+    "input": 16989,
+    "output": 821,
+    "reasoning": 181,
+    "cacheRead": 54272,
+    "cacheWrite": 0
+  }
+}

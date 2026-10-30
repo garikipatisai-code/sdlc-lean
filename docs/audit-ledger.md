@@ -1,7 +1,6 @@
 # Audit ledger
 
-Append-only trail for agentic actions (autonomy-dial). Format: date | actor | action | files | check | reverted?
+One row per Auto run.
 
-| date | actor | action | files | check | reverted? |
-|---|---|---|---|---|---|
-| | | | | | |
+| date | tier | check | result | reversal |
+|---|---|---|---|---|

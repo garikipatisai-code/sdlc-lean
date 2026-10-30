@@ -1,0 +1,53 @@
+{
+  "date": "2026-10-30",
+  "model": null,
+  "probes": 1,
+  "results": [
+    {
+      "id": "external-verification",
+      "group": "trust",
+      "advisory": false,
+      "ok": false,
+      "expect": [
+        {
+          "kind": "skill",
+          "value": "verification-before-completion",
+          "ok": false
+        },
+        {
+          "kind": "artifact-contains",
+          "path": "docs/evidence.json",
+          "value": "node --test",
+          "ok": true
+        },
+        {
+          "kind": "artifact-matches",
+          "path": "docs/evidence.json",
+          "value": "\"exit\"\\s*:\\s*0",
+          "ok": false
+        }
+      ],
+      "text": "Read file src/index.js, lines 1-1\n1: export const hello = 1;\n./src/index.js\n./.opencode/.gitignore\n./.opencode/plugins/sdlc-lean.js\n./.opencode/commands/security-audit.md\n./.opencode/commands/sdlc-lean.md\n./.opencode/commands/bugfix.md\n./.opencode/commands/feature.md\n./.opencode/commands/refactor.md\n./.opencode/commands/preview.md\n./.opencode/commands/reverse-engineer.md\n./.opencode/commands/game.md\n./.opencode/skills/dependency-upgrade/SKILL.md\n./.opencode/skills/using-git-worktrees/SKILL.md\n./.opencode/skills/autonomy-dial/SKILL.md\n./.opencode/skills/executing-plans/SKILL.md\n./.opencode/skills/writing-plans/SKILL.md\n./.opencode/skills/writing-plans/references/plan-rubric.md\n./.opencode/skills/communicating-concisely/SKILL.md\n./.opencode/skills/dispatching-parallel-agents/SKILL.md\n./.opencode/skills/frontend-design/SKILL.md\n./.opencode/skills/frontend-design/references/ATTRIBUTION.md\n./.opencode/skills/test-driven-development/SKILL.md\n./.opencode/skills/using-sdlc-lean/SKILL.md\n./.opencode/skills/deep-research/SKILL.md\n./.opencode/skills/deep-research/references/source-quality.md\n./.opencode/skills/deep-research/references/report-format.md\n./.opencode/skills/deep-research/references/citation-check.md\n./.opencode/skills/exploring-codebase/SKILL.md\n./.opencode/skills/writing-skills/SKILL.md\n./.opencode/skills/evolving-schemas/SKILL.md\n./.opencode/skills/web-game-development/SKILL.md\n./.opencode/skills/web-game-development/references/engine-matrix.md\n./.opencode/skills/web-game-development/references/web-netcode.md\n./.opencode/skills/web-game-development/references/vendor/create-game-assets/SKILL.md\n./.opencode/skills/web-game-development/references/vendor/create-game-assets/references/raster-pipeline.md\n./.opencode/skills/web-game-development/references/vendor/create-game-assets/references/three-d-pipeline.md\n./.opencode/skills/web-game-development/references/vendor/create-game-assets/references/art-direction.md\n./.opencode/skills/web-game-development/references/vend",
+      "usage": {
+        "cost": 0.003888696,
+        "tokens": {
+          "input": 58970,
+          "output": 902,
+          "reasoning": 215,
+          "cache": {
+            "read": 127232,
+            "write": 0
+          }
+        }
+      }
+    }
+  ],
+  "totals": {
+    "cost": 0.003888696,
+    "input": 58970,
+    "output": 902,
+    "reasoning": 215,
+    "cacheRead": 127232,
+    "cacheWrite": 0
+  }
+}

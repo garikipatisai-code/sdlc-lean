@@ -5,7 +5,8 @@ description: Use when implementation is complete and all tests pass, to decide h
 
 # Finishing a Development Branch
 
-1. Re-run the full verification (`verification-before-completion`) — green suite required.
-2. Present the menu: **merge** to main, **open a PR** (with generated summary + test evidence), or **keep** the branch (state why).
-3. On merge/PR: squash or stage a clean diff, confirm CI scope, then clean up — remove worktrees (`git worktree remove`), delete the branch if merged, drop scratch files.
-4. Update persistent state: close plan tasks, record deferred items as `scope: <ceiling>, <upgrade path>` comments or the issue tracker — never silent TODOs.
+1. Full verification green **on the final SHA** (`verification-before-completion`); record the SHA.
+2. **Explicit human approval** before merge/PR. Present merge, PR (summary + test evidence), or keep; if no reply, wait — no approval, no merge/PR.
+3. CI green **on the final SHA**; "confirm CI scope" is not a green build.
+4. `spec-check verify` passes **before cleanup**; run `spec-check close` **after evidence** rows are written.
+5. Cleanup only after merge/PR: remove worktrees (`git worktree remove`), delete the merged branch, drop scratch files.

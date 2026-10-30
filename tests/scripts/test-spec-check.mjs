@@ -11,6 +11,27 @@ import { pathToFileURL } from 'url';
 const moduleURL = pathToFileURL(path.resolve(import.meta.dirname, '../../scripts/spec-check.mjs')).href;
 const scriptPath = path.resolve(import.meta.dirname, '../../scripts/spec-check.mjs');
 
+const TASK_HEADER = '# | Task | Spec req | Files | Test | Expected | Verify';
+const DEFAULT_VERIFY = 'node --test tests/example.mjs';
+
+const defaultTasks = [
+  {
+    n: 1,
+    task: 'Example task',
+    spec: 'AC1',
+    files: '`src/app.js`',
+    test: 'unit',
+    expected: 'green',
+    verify: DEFAULT_VERIFY,
+  },
+];
+
+const taskTable = (tasks = defaultTasks, header = TASK_HEADER) => [
+  `| ${header} |`,
+  '|---|---|---|---|---|---|---|',
+  ...tasks.map((r) => `| ${r.n} | ${r.task} | ${r.spec} | ${r.files} | ${r.test} | ${r.expected} | ${r.verify} |`),
+].join('\n');
+
 const planText = ({
   spec = 'docs/specs/spec.md',
   status = 'approved',
@@ -18,6 +39,8 @@ const planText = ({
   approvedAt = '2026-10-24T00:00:00Z',
   files = ['src/app.js'],
   allow = [],
+  tasks = defaultTasks,
+  taskHeader = TASK_HEADER,
 } = {}) => `---
 spec: ${spec}
 status: ${status}
@@ -30,6 +53,8 @@ ${allow.length ? `allow:\n${allow.map((f) => `  - ${f}`).join('\n')}\n` : ''}---
 # Plan
 
 Body.
+
+${taskTable(tasks, taskHeader)}
 `;
 
 const makeRepo = (opts = {}) => {
@@ -39,6 +64,29 @@ const makeRepo = (opts = {}) => {
   fs.writeFileSync(path.join(root, 'docs', 'specs', 'spec.md'), '# Spec\n\nApproved.\n');
   fs.writeFileSync(path.join(root, 'docs', 'plans', 'plan.md'), planText(opts));
   return root;
+};
+
+const markerPath = (root) => path.join(root, '.sdlc', 'spec-gate.json');
+const evidencePath = (root) => path.join(root, 'docs', 'plans', 'plan-evidence.json');
+
+const evidenceRow = (overrides = {}) => ({
+  task: 1,
+  verify: DEFAULT_VERIFY,
+  exit: 0,
+  at: '2026-10-24T00:00:00Z',
+  ...overrides,
+});
+
+const baseEvidence = (gate, tasks = [evidenceRow()]) => ({
+  plan: gate.plan,
+  plan_sha256: gate.plan_sha256,
+  tasks,
+});
+
+const writeEvidence = (root, document) => {
+  const file = evidencePath(root);
+  fs.writeFileSync(file, `${JSON.stringify(document, null, 2)}\n`);
+  return file;
 };
 
 const load = async () => import(moduleURL);
@@ -73,6 +121,62 @@ test('parsePlanText rejects non-UTC approval timestamps and unsafe patterns', as
   assert.throws(() => mod.parsePlanText(planText({ approvedAt: '2026-10-24 00:00:00' })), /UTC/i);
   assert.throws(() => mod.parsePlanText(planText({ files: ['../secret'] })), /unsafe|escape/i);
   assert.throws(() => mod.parsePlanText(planText({ files: ['/etc/passwd'] })), /unsafe|absolute|relative/i);
+});
+
+test('humanApproval requires stdin and stdout to be TTYs', async () => {
+  const mod = await load();
+  assert.equal(mod.humanApproval({ stdinTTY: true, stdoutTTY: true }), true);
+  assert.throws(() => mod.humanApproval({ stdinTTY: false, stdoutTTY: true }), /TTY|terminal/i);
+  assert.throws(() => mod.humanApproval({ stdinTTY: true, stdoutTTY: false }), /TTY|terminal/i);
+  assert.throws(() => mod.humanApproval({}), /TTY|terminal/i);
+  assert.throws(() => mod.humanApproval(), /TTY|terminal/i);
+});
+
+test('parsePlanTasks reads task rows and their Verify commands', async () => {
+  const mod = await load();
+  const tasks = mod.parsePlanTasks(planText({
+    tasks: [
+      { n: 1, task: 'First', spec: 'AC1', files: '`a.js`', test: 'unit', expected: 'green', verify: 'node --test tests/a.mjs' },
+      { n: 2, task: 'Second', spec: 'AC2', files: '`b.js`', test: 'unit', expected: 'green', verify: 'npm run verify' },
+    ],
+  }));
+  assert.deepEqual(tasks.map(({ task, verify }) => ({ task, verify })), [
+    { task: 1, verify: 'node --test tests/a.mjs' },
+    { task: 2, verify: 'npm run verify' },
+  ]);
+});
+
+test('parsePlanTasks strips one backtick pair from a wrapped Verify cell', async () => {
+  const mod = await load();
+  const tasks = mod.parsePlanTasks(planText({
+    tasks: [{ n: 1, task: 'Wrapped', spec: 'AC1', files: 'x', test: 't', expected: 'e', verify: '`npm run verify`' }],
+  }));
+  assert.equal(tasks[0].verify, 'npm run verify');
+});
+
+test('parsePlanTasks unescapes escaped pipes inside Verify', async () => {
+  const mod = await load();
+  const tasks = mod.parsePlanTasks(planText({
+    tasks: [{ n: 1, task: 'Piped', spec: 'AC1', files: 'x', test: 't', expected: 'e', verify: 'node -e "a \\| b"' }],
+  }));
+  assert.equal(tasks[0].verify, 'node -e "a | b"');
+});
+
+test('parsePlanTasks rejects duplicate task numbers', async () => {
+  const mod = await load();
+  const text = planText({
+    tasks: [
+      { n: 1, task: 'First', spec: 'AC1', files: 'x', test: 't', expected: 'e', verify: 'node --test a.mjs' },
+      { n: 1, task: 'Again', spec: 'AC2', files: 'y', test: 't', expected: 'e', verify: 'node --test b.mjs' },
+    ],
+  });
+  assert.throws(() => mod.parsePlanTasks(text), /duplicate/i);
+});
+
+test('parsePlanTasks rejects a table without a Verify header', async () => {
+  const mod = await load();
+  const text = planText({ taskHeader: '# | Task | Spec req | Files | Test | Expected' });
+  assert.throws(() => mod.parsePlanTasks(text), /missing-task-table|task table|Verify/i);
 });
 
 test('glob matching handles exact, star, double-star, and question mark', async () => {
@@ -175,6 +279,78 @@ test('validateGate rejects a missing spec, symlinked spec, and malformed marker'
   assert.throws(() => mod.readGate(root2), /marker|json/i);
 });
 
+test('closeGate refuses missing or unbound evidence and keeps the marker', async (t) => {
+  const mod = await load();
+  const root = makeRepo();
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const gate = mod.buildGate(root, 'docs/plans/plan.md');
+  mod.writeGate(root, gate);
+
+  assert.throws(() => mod.closeGate(root), /evidence/i);
+  assert.ok(fs.existsSync(markerPath(root)), 'missing evidence must leave the marker');
+
+  writeEvidence(root, { ...baseEvidence(gate), plan_sha256: '0'.repeat(64) });
+  assert.throws(() => mod.closeGate(root), /plan_sha256|plan hash/i);
+  assert.ok(fs.existsSync(markerPath(root)), 'a wrong plan_sha256 must leave the marker');
+});
+
+test('closeGate refuses missing, extra, or mismatched task rows and keeps the marker', async (t) => {
+  const mod = await load();
+  const cases = [
+    { name: 'missing row', tasks: [], error: /missing|one row|task/i },
+    { name: 'extra row', tasks: [evidenceRow(), evidenceRow({ task: 2 })], error: /extra|unexpected|task 2|one row/i },
+    { name: 'mismatched verify', tasks: [evidenceRow({ verify: 'node --test tests/other.mjs' })], error: /verify/i },
+    { name: 'non-zero exit', tasks: [evidenceRow({ exit: 1 })], error: /exit/i },
+    { name: 'invalid at', tasks: [evidenceRow({ at: '2026-10-24 00:00:00' })], error: /UTC|timestamp|\bat\b/i },
+  ];
+  for (const c of cases) {
+    const root = makeRepo();
+    t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+    const gate = mod.buildGate(root, 'docs/plans/plan.md');
+    mod.writeGate(root, gate);
+    writeEvidence(root, baseEvidence(gate, c.tasks));
+    assert.throws(() => mod.closeGate(root), c.error, c.name);
+    assert.ok(fs.existsSync(markerPath(root)), `${c.name} must leave the marker`);
+  }
+});
+
+test('closeGate refuses plan or spec drift and keeps the marker', async (t) => {
+  const mod = await load();
+  const planRoot = makeRepo();
+  t.after(() => fs.rmSync(planRoot, { recursive: true, force: true }));
+  const planGate = mod.buildGate(planRoot, 'docs/plans/plan.md');
+  mod.writeGate(planRoot, planGate);
+  writeEvidence(planRoot, baseEvidence(planGate));
+  fs.appendFileSync(path.join(planRoot, 'docs', 'plans', 'plan.md'), '\nchanged\n');
+  assert.throws(() => mod.closeGate(planRoot), /plan.*drift|drift/i);
+  assert.ok(fs.existsSync(markerPath(planRoot)), 'plan drift must leave the marker');
+
+  const specRoot = makeRepo();
+  t.after(() => fs.rmSync(specRoot, { recursive: true, force: true }));
+  const specGate = mod.buildGate(specRoot, 'docs/plans/plan.md');
+  mod.writeGate(specRoot, specGate);
+  writeEvidence(specRoot, baseEvidence(specGate));
+  fs.appendFileSync(path.join(specRoot, 'docs', 'specs', 'spec.md'), '\nchanged\n');
+  assert.throws(() => mod.closeGate(specRoot), /spec.*drift|drift/i);
+  assert.ok(fs.existsSync(markerPath(specRoot)), 'spec drift must leave the marker');
+});
+
+test('closeGate accepts complete evidence, returns the evidence hash, and removes the marker', async (t) => {
+  const mod = await load();
+  const root = makeRepo();
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const gate = mod.buildGate(root, 'docs/plans/plan.md');
+  mod.writeGate(root, gate);
+  const file = writeEvidence(root, baseEvidence(gate));
+
+  const result = mod.closeGate(root);
+  assert.match(result.sha256, /^[0-9a-f]{64}$/);
+  assert.equal(result.sha256, mod.hashFile(file));
+  assert.match(result.evidence, /docs[\\/]plans[\\/]plan-evidence\.json$/);
+  assert.equal(fs.existsSync(markerPath(root)), false, 'valid evidence must remove the marker');
+  assert.equal(mod.closeGate(root), null, 'closing with no marker reports no gate');
+});
+
 test('checkPath reports inactive, allowed, and blocked targets', async (t) => {
   const mod = await load();
   const root = makeRepo({ allow: ['docs/debt-ledger.md'] });
@@ -222,7 +398,8 @@ test('checkPath blocks symlinked directory escapes and protected-file aliases', 
   assert.equal(alias.allowed, false);
 });
 
-test('CLI approve/status/verify/check/close round-trip', async (t) => {
+test('CLI status/verify/check round-trip and refusal on drift', async (t) => {
+  const mod = await load();
   const root = makeRepo();
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
 
@@ -233,10 +410,9 @@ test('CLI approve/status/verify/check/close round-trip', async (t) => {
   assert.equal(required.status, 2, 'require-active must fail with no marker');
   assert.match(required.stderr, /no active spec gate/i);
 
-  const approve = run(['approve', 'docs/plans/plan.md'], root);
-  assert.equal(approve.status, 0, approve.stderr);
-  assert.match(approve.stdout, /active spec gate/i);
-  assert.ok(fs.existsSync(path.join(root, '.sdlc', 'spec-gate.json')));
+  const gate = mod.buildGate(root, 'docs/plans/plan.md');
+  mod.writeGate(root, gate);
+  writeEvidence(root, baseEvidence(gate));
 
   const status = run(['status'], root);
   assert.equal(status.status, 0, status.stderr);
@@ -255,23 +431,85 @@ test('CLI approve/status/verify/check/close round-trip', async (t) => {
   assert.equal(run(['check', 'src/app.js'], root).status, 1);
 
   const close = run(['close'], root);
-  assert.equal(close.status, 0, close.stderr);
-  assert.equal(fs.existsSync(path.join(root, '.sdlc', 'spec-gate.json')), false);
-  assert.equal(run(['verify'], root).status, 0);
+  assert.equal(close.status, 1, 'close must refuse while the plan or spec drifted');
+  assert.match(close.stderr, /drift/i);
+  assert.ok(fs.existsSync(markerPath(root)), 'a refused close must keep the marker');
 });
 
-test('CLI refuses an unapproved plan and a plan outside the repo', async (t) => {
+test('CLI close requires evidence and reports the evidence hash', async (t) => {
+  const mod = await load();
+  const refusedRoot = makeRepo();
+  t.after(() => fs.rmSync(refusedRoot, { recursive: true, force: true }));
+  const refusedGate = mod.buildGate(refusedRoot, 'docs/plans/plan.md');
+  mod.writeGate(refusedRoot, refusedGate);
+
+  const refused = run(['close'], refusedRoot);
+  assert.equal(refused.status, 1);
+  assert.match(refused.stderr, /evidence/i);
+  assert.ok(fs.existsSync(markerPath(refusedRoot)), 'missing evidence must keep the marker');
+
+  const root = makeRepo();
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const gate = mod.buildGate(root, 'docs/plans/plan.md');
+  mod.writeGate(root, gate);
+  const file = writeEvidence(root, baseEvidence(gate));
+
+  const closed = run(['close'], root);
+  assert.equal(closed.status, 0, closed.stderr);
+  assert.match(closed.stdout, /closed spec gate: evidence/i);
+  assert.match(closed.stdout, new RegExp(mod.hashFile(file)));
+  assert.equal(fs.existsSync(markerPath(root)), false);
+});
+
+test('CLI approve refuses a piped stdin/stdout and writes no marker', async (t) => {
+  const root = makeRepo();
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+
+  const res = run(['approve', 'docs/plans/plan.md'], root);
+  assert.equal(res.status, 1);
+  assert.match(res.stderr, /TTY|terminal/i);
+  assert.equal(fs.existsSync(markerPath(root)), false, 'non-TTY approval must write no marker');
+});
+
+test('CLI approve checks the TTY before validating the plan', async (t) => {
   const root = makeRepo({ status: 'draft' });
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  const refused = run(['approve', 'docs/plans/plan.md'], root);
-  assert.equal(refused.status, 1);
-  assert.match(refused.stderr, /approved/i);
+
+  const res = run(['approve', 'docs/plans/plan.md'], root);
+  assert.equal(res.status, 1);
+  assert.match(res.stderr, /TTY|terminal/i);
+  assert.doesNotMatch(res.stderr, /not-approved/i);
+  assert.equal(fs.existsSync(markerPath(root)), false);
+});
+
+test('main with an injected TTY approves and prints the active gate', async (t) => {
+  const mod = await load();
+  const root = makeRepo();
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+
+  const logs = [];
+  const original = console.log;
+  console.log = (...args) => { logs.push(args.join(' ')); };
+  let code;
+  try {
+    code = mod.main(['--root', root, 'approve', 'docs/plans/plan.md'], { stdinTTY: true, stdoutTTY: true });
+  } finally {
+    console.log = original;
+  }
+  assert.equal(code, 0);
+  assert.ok(fs.existsSync(markerPath(root)), 'injected-TTY approval must write the marker');
+  assert.match(logs.join('\n'), /active spec gate/i);
+});
+
+test('buildGate refuses an unapproved plan and a plan outside the repo', async (t) => {
+  const mod = await load();
+  const root = makeRepo({ status: 'draft' });
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  assert.throws(() => mod.buildGate(root, 'docs/plans/plan.md'), /approved/i);
 
   const root2 = makeRepo();
   t.after(() => fs.rmSync(root2, { recursive: true, force: true }));
-  const outside = run(['approve', '../outside.md'], root2);
-  assert.equal(outside.status, 1);
-  assert.match(outside.stderr, /unsafe-path|escapes|outside/i);
+  assert.throws(() => mod.buildGate(root2, '../outside.md'), /unsafe-path|escapes|outside/i);
 });
 
 test('CLI invoked through a symlink still runs', async (t) => {

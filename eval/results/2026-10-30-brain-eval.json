@@ -1,0 +1,159 @@
+{
+  "date": "2026-10-30",
+  "model": null,
+  "probes": 3,
+  "results": [
+    {
+      "id": "brain-design",
+      "group": "brain",
+      "advisory": false,
+      "ok": true,
+      "expect": [
+        {
+          "kind": "skill",
+          "value": "brainstorming",
+          "ok": true
+        },
+        {
+          "kind": "artifact-contains",
+          "path": "docs/design.md",
+          "value": "## Non-goals",
+          "ok": true
+        },
+        {
+          "kind": "artifact-contains",
+          "path": "docs/design.md",
+          "value": "Alternatives",
+          "ok": true
+        },
+        {
+          "kind": "artifact-contains",
+          "path": "docs/design.md",
+          "value": "Trade-offs",
+          "ok": true
+        },
+        {
+          "kind": "artifact-contains",
+          "path": "docs/design.md",
+          "value": "Review findings",
+          "ok": true
+        }
+      ],
+      "text": "Using `brainstorming` to shape the feature before the design doc, and `communicating-concisely` for the writeup.\n<skill_content name=\"brainstorming\">\n# Skill: brainstorming\n\n# Brainstorming\n\nRefine rough ideas into an approved design. **No code until the design is approved.** For bug fixes use `systematic-debugging` instead.\n\n## 1. Classify (one line, then proceed)\n\n- **Spike**: throwaway exploration to answer one question → time-box it, report findings, stop.\n- **Bounded**: clear shape, small surface → ask at most 3 questions, then draft.\n- **Architectural**: new system, cross-cutting change, new dependency → full flow below.\n\n## 2. Questions (Socratic, batched)\n\nAsk in batches. Cover: actual user need (challenge it — lean rung 1: does this\nneed to exist?), alternatives (including deletion and native-platform options),\nscope boundaries (non-goals), and constraints (stack, perf, patterns to reuse).\n\n## 3. Design artifact\n\nWrite it where the project keeps docs (`docs/`), or inline for a spike.\nVisual-first: a mermaid `flowchart` (or `erDiagram`, `sequenceDiagram`), then\nthe tables. Required headings, in order:\n\n| Heading | Must contain |\n|---|---|\n| `## Goal` | the outcome, one paragraph |\n| `## Non-goals` | what is explicitly out of scope |\n| `## Alternatives` | ≥2 options, each with why rejected |\n| `## Trade-offs` | what this buys, what it gives up |\n| `## Trace` | requirement → design → test table |\n| `## Review findings` | written individual findings, merged |\n| `## Leading indicators` | recorded per section 5 |\n\nTemplate and perspective table: `references/design-review.md`.\n\n## 4. Review protocol\n\n- Written individual findings BEFORE approval — not a verbal yes.\n- Bounded change → one reviewer; architectural change → ≥2 assigned perspectives: requirements, failure modes, operability.\n- Merge dispositions: accept, reject with reason, or defer to a named owner.\n- A meeting is optional; written findings are the record.\n\n## 5. Leading indicators (record in the arti",
+      "usage": {
+        "cost": 0.00290854,
+        "tokens": {
+          "input": 16224,
+          "output": 2457,
+          "reasoning": 1346,
+          "cache": {
+            "read": 65280,
+            "write": 0
+          }
+        }
+      }
+    },
+    {
+      "id": "brain-plan",
+      "group": "brain",
+      "advisory": false,
+      "ok": true,
+      "expect": [
+        {
+          "kind": "skill",
+          "value": "writing-plans",
+          "ok": true
+        },
+        {
+          "kind": "artifact-matches",
+          "path": "docs/plan.md",
+          "value": "\\|\\s*Files\\s*\\|",
+          "ok": true
+        },
+        {
+          "kind": "artifact-matches",
+          "path": "docs/plan.md",
+          "value": "\\|\\s*Verify\\s*\\|",
+          "ok": true
+        },
+        {
+          "kind": "artifact-matches",
+          "path": "docs/plan.md",
+          "value": "\\b(?:AC-?\\d+|R\\d+)\\b",
+          "ok": true
+        }
+      ],
+      "text": "I'll use `writing-plans` to turn the spec into a plan.\n<skill_content name=\"writing-plans\">\n# Skill: writing-plans\n\n# Writing Plans\n\nBreak approved work into tasks with one verifiable outcome each. One plan file per feature\n(e.g. `docs/plans/YYYY-MM-DD-<slug>.md`). Visual-first: a plan is a diagram plus a task table, not an essay.\n\n## Task shape\n\nRoute depth by the work's shape, not by task count:\n\n- **Localized** (one file or one concern): 3–5 tasks, each independently verifiable.\n- **Multi-file interdependent**: state the explicit dependency order and note each task's impact on the files it touches.\n- **Unknown**: run a spike task first; its outcome sets the shape of the rest.\n\n## Plan header (mandatory)\n\nStart the plan with YAML frontmatter so the spec gate can parse it:\n\n```yaml\n---\nspec: docs/specs/YYYY-MM-DD-<slug>.md\nstatus: approved\napproved_by: <human>\napproved_at: <ISO-8601 UTC>\nfiles:\n  - exact/or/glob/path\nallow:\n  - docs/plans/<slug>-progress.md\n---\n```\n\n`files` is the edit scope; `allow` is always-writable control state (progress ledger, debt ledger).\nThe plan and spec are immutable while the gate is active. The block above is the **post-approval**\nshape: before approval use `status: draft` with empty `approved_by`/`approved_at`; the human fills them, the planner never self-approves.\n\n- **Goal**: one paragraph, then a mermaid `flowchart` of the architecture/flow.\n- **Architecture**: components touched + interfaces consumed/produced.\n- **Tech stack**: languages, frameworks, test command(s) — auto-detect from the repo, ask if ambiguous.\n- **Spec**: link to the approved design.\n- **Global Constraints**: repo conventions (from AGENTS.md/CONTRIBUTING if present).\n- **Lean Constraints**: which ladder rung each area targets; reuse-first candidates.\n- **Review Focus**: what reviewers should scrutinize.\n\n## Activate the gate\n\nAfter human approval run `node scripts/spec-check.mjs approve docs/plans/<slug>.md` (no repo-local\nscript: `node \"${XDG_CONFIG_HOME:-$HOM",
+      "usage": {
+        "cost": 0.008023542000000002,
+        "tokens": {
+          "input": 48657,
+          "output": 3628,
+          "reasoning": 6449,
+          "cache": {
+            "read": 184064,
+            "write": 0
+          }
+        }
+      }
+    },
+    {
+      "id": "brain-research",
+      "group": "brain",
+      "advisory": false,
+      "ok": true,
+      "expect": [
+        {
+          "kind": "skill",
+          "value": "deep-research",
+          "ok": true
+        },
+        {
+          "kind": "artifact-contains",
+          "path": "docs/report.md",
+          "value": "## Sources",
+          "ok": true
+        },
+        {
+          "kind": "artifact-contains",
+          "path": "docs/report.md",
+          "value": "sources_reviewed:",
+          "ok": true
+        },
+        {
+          "kind": "artifact-matches",
+          "path": "docs/report.md",
+          "value": "\\[\\d+\\]",
+          "ok": true
+        },
+        {
+          "kind": "artifact-matches",
+          "path": "docs/report.md",
+          "value": "1\\.[^\\n]*https?://",
+          "ok": true
+        }
+      ],
+      "text": "Using deep-research to gather external evidence.\n<skill_content name=\"communicating-concisely\">\n# Skill: communicating-concisely\n\n# Communicating Concisely\n\nHuman attention per response: ~30 seconds (~120 words). Only then can a human\ncomfortably oversee agent-driven development. Every human-facing output obeys this.\n\n## Rules\n\n1. **Answer first.** Verdict, outcome, or recommendation in the first 2 lines. No preamble, no restating the question.\n2. **Default under 120 words.** Bullets over paragraphs. One idea per bullet.\n3. **Visual over prose for anything structural**: flows/architecture/sequences → mermaid diagram; comparisons/options → table; status → checklist or table. Never a text wall where a diagram or table fits.\n4. **Progressive disclosure**: summary + evidence always; details on demand (\"say the word and I'll expand\"). Link to files (`path:line`) instead of pasting code.\n5. **Expand only when asked** or when the task genuinely requires it (plan approval, incident report). Even then: diagram first, then the minimum prose.\n\n## Generated documentation\n\nSame contract, scaled: start with a mermaid overview + a summary table, then\nsections. Every diagram must be renderable (valid mermaid, no HTML hacks).\nPrefer: flowchart for flows, sequenceDiagram for interactions, erDiagram for\nschemas, gantt or checklist for plans.\n\nFor long prose or generated docs, apply `simplified-technical-english`\n(STE-informed, not certified) — short sentences, one meaning per word, active\nvoice, and no loss of conditions.\n\nBase directory for this skill: /tmp/sdlc-eval-8vP9PW/.opencode/skills/communicating-concisely\nRelative paths in this skill (e.g., scripts/, reference/) are relative to this base directory.\nNote: file list is sampled.\n\n<skill_files>\n</skill_files>\n</skill_content>\n<skill_content name=\"deep-research\">\n# Skill: deep-research\n\n# Deep Research\n\nEvidence over vibes. Plan → parallel search → assess gaps → cite → synthesize.\nAdapted from dzhng/deep-research, open_deep_resea",
+      "usage": {
+        "cost": 0.011148873999999998,
+        "tokens": {
+          "input": 132387,
+          "output": 3177,
+          "reasoning": 2936,
+          "cache": {
+            "read": 491008,
+            "write": 0
+          }
+        }
+      }
+    }
+  ],
+  "totals": {
+    "cost": 0.022080956,
+    "input": 197268,
+    "output": 9262,
+    "reasoning": 10731,
+    "cacheRead": 740352,
+    "cacheWrite": 0
+  }
+}

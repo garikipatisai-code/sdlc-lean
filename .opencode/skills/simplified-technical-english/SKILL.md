@@ -1,18 +1,15 @@
 ---
 name: simplified-technical-english
-description: Use when writing long prose, explanations, or generated documentation that must be unambiguous and easy to read - applies an ASD-STE100-informed subset at about 80% (short simple sentences, one meaning per word, active voice), never claiming certification or compliance
+description: Use when writing long prose, explanations, or generated documentation that must be unambiguous and easy to read - applies an ASD-STE100-informed subset (short simple sentences, one meaning per word, active voice), never claiming certification or compliance
 ---
 
 # Simplified Technical English (STE-informed)
 
 Plain, unambiguous prose for long or technical text. This is an
-**ASD-STE100-informed subset**, applied at ~80% — not the standard. Output is
+**ASD-STE100-informed subset**, not the standard. Output is
 **STE-informed, never certified or compliant** [ASD-STE100 Issue 9, © ASD; the
-dictionary is not reproduced here].
-
-Origin: Andrej Karpathy (2026) suggested asking a model to explain in
-ASD-STE100 and softening to "80% of the way" because the spec is stringent.
-Use the principles; do not copy the dictionary.
+dictionary is not reproduced here]. The rules follow the in-repo research in
+`eval/research/2026-10-04-asd-ste100.md`.
 
 ## When to use
 
@@ -22,7 +19,7 @@ Use the principles; do not copy the dictionary.
 - Skip it for short status lines, code, and anything `communicating-concisely`
   already covers as a list.
 
-## The subset (highest-leverage rules)
+## The subset (rules 1–20)
 
 **Words**
 1. One word, one meaning; do not rotate synonyms for the same thing.
@@ -70,6 +67,6 @@ longer sentence.
 
 ## Anti-patterns
 
-- Do not claim "ASD-STE100 compliant" — nothing here is certified.
+- Do not claim certification or compliance.
 - Do not simplify away uncertainty, scope, or exceptions.
 - Do not replace a clear diagram with prose.

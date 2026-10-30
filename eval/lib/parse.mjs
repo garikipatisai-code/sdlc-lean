@@ -7,8 +7,10 @@
 //   skills  - skill names from skill events or skill tool calls
 //   tools   - tool names from tool events
 //   blocked - true if any string carries the guard marker
+//   urls    - http(s) URLs supplied to webfetch/fetch calls, deduped in order
 
 const GUARD_MARKER = '[sdlc-lean]';
+const FETCH_TOOLS = new Set(['webfetch', 'fetch']);
 
 export function parseEvents(input) {
   const events = [];
@@ -33,6 +35,8 @@ export function parseEvents(input) {
   const text = [];
   const skills = [];
   const tools = [];
+  const urls = [];
+  const seenUrls = new Set();
   let blocked = false;
   const usage = {
     cost: 0,
@@ -81,6 +85,16 @@ export function parseEvents(input) {
       if (node.tool === 'skill' || /skill/i.test(type)) skills.push(node.name);
       else if (/tool/i.test(type)) tools.push(node.name);
     }
+    const isFetch =
+      (typeof node.tool === 'string' && FETCH_TOOLS.has(node.tool.toLowerCase())) ||
+      (typeof node.name === 'string' && FETCH_TOOLS.has(node.name.toLowerCase()));
+    if (isFetch) {
+      for (const url of [node.input?.url, node.state?.input?.url, node.args?.url]) {
+        if (typeof url !== 'string' || !/^https?:\/\//i.test(url) || seenUrls.has(url)) continue;
+        seenUrls.add(url);
+        urls.push(url);
+      }
+    }
 
     for (const [k, v] of Object.entries(node)) {
       const key = k.toLowerCase();
@@ -96,5 +110,5 @@ export function parseEvents(input) {
   };
 
   walk(events);
-  return { text: text.join('\n'), skills: [...new Set(skills)], tools, blocked, usage };
+  return { text: text.join('\n'), skills: [...new Set(skills)], tools, blocked, usage, urls };
 }

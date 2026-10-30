@@ -6,9 +6,7 @@ description: Use when a question needs external evidence rather than local code 
 # Deep Research
 
 Evidence over vibes. Plan → parallel search → assess gaps → cite → synthesize.
-Reimagined from dzhng/deep-research (recursive breadth/depth), LangChain
-open_deep_research (`think_tool`, compression), and gpt-researcher (source
-curation), adapted to a prompt-only skill with websearch/webfetch + subagents.
+Adapted from dzhng/deep-research, open_deep_research, and gpt-researcher.
 
 ```mermaid
 flowchart LR
@@ -18,7 +16,7 @@ flowchart LR
     A -- gaps and budget left --> B
     A -- done --> C[Compress: dedupe, keep cited claims]
     C --> R[Synthesize report]
-    R --> V[Verify every citation points to a fetched page]
+    R --> V[Entailment: each claim checked on its fetched page]
 ```
 
 ## Depth modes (pick one, announce it, never ask the user to choose)
@@ -44,39 +42,45 @@ ambiguous — otherwise state your interpretation and proceed.
   See `references/source-quality.md` (evidence hierarchy + SIFT + red flags).
 - For independent sub-questions, dispatch the `researcher` subagent — **all in
   one message** so they run in parallel (fan-out; contract in
-  `dispatching-parallel-agents`). Give each: objective, the output schema, the
-  source boundary, and its search budget. Subagents return distilled findings,
-  **never raw pages** (keeps context small).
+  `dispatching-parallel-agents`). Give each: objective, output schema, source
+  boundary, and search budget. Subagents return distilled findings, **never
+  raw pages** (keeps context small). Extra personas are optional — never
+  required; do not multiply perspectives.
 - Reuse `acquiring-capabilities` trust rules: no random blogs, no unsourced
   forums, no AI-generated listicles.
 
 ## 3. Assess (`think_tool`)
 
-After each round, pause and write one short gap analysis: what is now
-supported, what is still missing, what sources conflict. Generate the next
-round's queries from **angles, not synonyms**, and shrink breadth as depth
-increases (a follow-up round uses fewer, sharper queries).
+After each round, write one short gap analysis: what is now supported, what is
+missing, what conflicts. **Close the loop**: each round's queries derive from
+what was just read; a round that does not change the next query ends the loop.
+Use **angles, not synonyms**; shrink breadth as depth increases.
 
 ## 4. Compress (fan-in)
 
 Dedupe by URL; merge duplicate facts; keep only claims that carry a citation;
-preserve citation numbers. Never drop a source that supports a kept claim.
-Resolve conflicts per `dispatching-parallel-agents` (stated rule or escalate),
-and list what remains unanswered.
+preserve citation numbers; never drop a source that supports a kept claim. At
+fan-in **one writer** merges: parallel section writers produce disjoint
+reports, so style and citations stay consistent. Resolve conflicts per
+`dispatching-parallel-agents`; list what remains unanswered.
 
 ## 5. Synthesize + verify
 
-- Output per `references/report-format.md` and the 30s contract
-  (`communicating-concisely`): executive summary first, then themed sections
-  with a mermaid/table where it clarifies. Write long reports to a file and
-  return the summary + path + `sources_reviewed: N`.
-- **Verify**: every citation `[n]` points to a page you actually fetched and
-  whose content you read — never the search engine, never a snippet-only hit,
-  never an invented URL. If it can't be verified, cut the claim.
+- Output per `references/report-format.md` and `communicating-concisely`:
+  executive summary first, then themed sections (mermaid/table where it
+  clarifies). Long reports go to a file; return summary + path +
+  `sources_reviewed: N`.
+- **Per-claim entailment**: every citation `[n]` points to a page you actually
+  fetched and read — never the search engine, never a snippet-only hit, never
+  an invented URL. Compare each claim against that page
+  (`references/citation-check.md`): supported → keep, partial → qualify,
+  unsupported → cut or mark "unverified". Count citation accuracy
+  (supported ÷ checked) in the report.
 - End with confidence labels, unresolved conflicts, and open questions.
 - When the report compares options, end with a decision: hand off to
   `option-selection` (matrix → pick → record). A comparison with no choice is
-  an unfinished report.
+  an unfinished report. BrowseComp is a single-short-answer benchmark; do not
+  optimize for it.
 
 ## Citation discipline
 
@@ -90,12 +94,11 @@ and list what remains unanswered.
 ## Hard budgets (stop even if not done)
 
 Per subagent: 3–5 searches. Global: the mode's source target. Stop when 3+
-independent sources agree, when a round adds no new material, or when the last
-two searches return the same information. Report what remains unanswered.
+independent sources agree, a round adds no new material, or the last two
+searches return the same information. Report what remains unanswered.
 
 ## Anti-patterns
 
 - No subagents for a quick lookup; no synonym queries as separate agents.
 - Never treat a search hit as validated; never cite the engine instead of the page.
-- No blog-only sourcing for factual claims; no repeating content across sections.
-- Don't run endless rounds — budget out, then report gaps honestly.
+- No blog-only sourcing for factual claims; no repeated sections; budget out, then report gaps honestly.

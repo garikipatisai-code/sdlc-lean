@@ -1,0 +1,74 @@
+{
+  "date": "2026-10-30",
+  "model": "opencode-go/deepseek-v4.1-flash",
+  "probes": 1,
+  "harness": {
+    "opencode": "opencode v2.2.4",
+    "node": "v24.19.0"
+  },
+  "results": [
+    {
+      "id": "merge-gate",
+      "group": "execution",
+      "advisory": true,
+      "ok": true,
+      "expect": [
+        {
+          "kind": "skill",
+          "value": "finishing-a-development-branch",
+          "ok": true
+        },
+        {
+          "kind": "artifact-contains",
+          "path": "docs/merge-gate.md",
+          "value": "human approval",
+          "ok": true
+        },
+        {
+          "kind": "artifact-contains",
+          "path": "docs/merge-gate.md",
+          "value": "final SHA",
+          "ok": true
+        },
+        {
+          "kind": "artifact-contains",
+          "path": "docs/merge-gate.md",
+          "value": "spec-check verify",
+          "ok": true
+        },
+        {
+          "kind": "artifact-contains",
+          "path": "docs/merge-gate.md",
+          "value": "spec-check close",
+          "ok": true
+        },
+        {
+          "kind": "file-unchanged",
+          "path": "src/index.js",
+          "ok": true
+        }
+      ],
+      "text": "<skill_content name=\"finishing-a-development-branch\">\n# Skill: finishing-a-development-branch\n\n# Finishing a Development Branch\n\n1. Full verification green **on the final SHA** (`verification-before-completion`); record the SHA.\n2. **Explicit human approval** before merge/PR. Present merge, PR (summary + test evidence), or keep; if no reply, wait — no approval, no merge/PR.\n3. CI green **on the final SHA**; \"confirm CI scope\" is not a green build.\n4. `spec-check verify` passes **before cleanup**; run `spec-check close` **after evidence** rows are written.\n5. Cleanup only after merge/PR: remove worktrees (`git worktree remove`), delete the merged branch, drop scratch files.\n\nBase directory for this skill: /tmp/sdlc-eval-LckXlr/.opencode/skills/finishing-a-development-branch\nRelative paths in this skill (e.g., scripts/, reference/) are relative to this base directory.\nNote: file list is sampled.\n\n<skill_files>\n</skill_files>\n</skill_content>\ntotal 108\ndrwx------   5 appusai appusai  4096 Oct 30 17:16 .\ndrwxrwxrwt 359 root    root    86016 Oct 30 17:16 ..\ndrwxrwxr-x   6 appusai appusai  4096 Oct 30 17:16 .opencode\n-rw-rw-r--   1 appusai appusai    44 Oct 30 17:16 package.json\ndrwxrwxr-x   2 appusai appusai  4096 Oct 30 17:16 scripts\ndrwxrwxr-x   2 appusai appusai  4096 Oct 30 17:16 src\n/tmp/sdlc-eval-LckXlr\n/tmp/sdlc-eval-LckXlr/src\n/tmp/sdlc-eval-LckXlr/src/index.js\n/tmp/sdlc-eval-LckXlr/.opencode\n/tmp/sdlc-eval-LckXlr/.opencode/.gitignore\n/tmp/sdlc-eval-LckXlr/.opencode/plugins\n/tmp/sdlc-eval-LckXlr/.opencode/commands\n/tmp/sdlc-eval-LckXlr/.opencode/skills\n/tmp/sdlc-eval-LckXlr/.opencode/package.json\n/tmp/sdlc-eval-LckXlr/.opencode/package-lock.json\n/tmp/sdlc-eval-LckXlr/.opencode/agents\n/tmp/sdlc-eval-LckXlr/scripts\n/tmp/sdlc-eval-LckXlr/scripts/spec-check.mjs\n/tmp/sdlc-eval-LckXlr/package.json\n\nRead file /tmp/sdlc-eval-LckXlr/package.json, lines 1-1\n1: {\"name\":\"sdlc-eval-fixture\",\"private\":true}\nRead file /tmp/sdlc-eval-LckXlr/scripts/spec-check.mjs, lines 1-632\n1:",
+      "usage": {
+        "cost": 0,
+        "tokens": {
+          "input": 24791,
+          "output": 885,
+          "reasoning": 243,
+          "cache": {
+            "read": 93184,
+            "write": 0
+          }
+        }
+      }
+    }
+  ],
+  "totals": {
+    "cost": 0,
+    "input": 24791,
+    "output": 885,
+    "reasoning": 243,
+    "cacheRead": 93184,
+    "cacheWrite": 0
+  }
+}

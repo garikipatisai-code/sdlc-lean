@@ -5,7 +5,7 @@ description: Use when a significant architectural decision is made and must be r
 
 # Architecture Decision Record
 
-Record the decision and its why. ADRs are immutable history.
+Record the decision and its why. ADRs are append-only history: a decision is superseded, never rewritten.
 
 ## When
 
@@ -22,6 +22,7 @@ A choice that is costly to reverse, crosses modules or teams, adds a dependency,
 
 ## Rules
 
-- Never edit an accepted ADR; supersede it with a new one.
+- Only the Status line may change: accepted → superseded by NNNN (or deprecated). The rest of an accepted ADR is frozen.
+- The new ADR names and links the decision it replaces, so history stays traceable.
 - Keep it to one screen; link code, issues, and prior ADRs.
 - State the alternative you rejected and why — that is the value.

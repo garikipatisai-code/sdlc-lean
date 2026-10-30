@@ -22,3 +22,9 @@ Every section must earn its place — delete anything the agent would do anyway.
 2. Pressure-test: fresh session, give a task that should trigger the skill,
    confirm it fires (and that unrelated tasks don't).
 3. Fix loopholes found in testing by tightening the description, not by adding prose.
+
+## Coverage entry
+
+Every new top-level skill needs one entry in `eval/coverage.mjs`: a `probe` or
+`group`, or an `exempt` with a one-line reason. Run
+`node --test tests/opencode/test-eval-coverage.mjs`; missing or duplicate entries fail.

@@ -1,0 +1,55 @@
+{
+  "plan": "docs/plans/2026-10-30-execution-quality-hardening.md",
+  "plan_sha256": "6e440b1beca70a62a77d68e4065b64536780c0b19a984800a762f8ba4b1d3f2b",
+  "tasks": [
+    {
+      "task": 1,
+      "verify": "! node --test tests/opencode/test-execution-skills.mjs",
+      "exit": 0,
+      "at": "2026-10-30T19:38:14Z"
+    },
+    {
+      "task": 2,
+      "verify": "node --test --test-name-pattern=\"test-driven-development|systematic-debugging\" tests/opencode/test-execution-skills.mjs && node --test --test-name-pattern=\"integrity\" tests/opencode/test-trust-skills.mjs",
+      "exit": 0,
+      "at": "2026-10-30T19:39:30Z",
+      "repro": "node --test --test-name-pattern=\"test-driven-development|systematic-debugging\" tests/opencode/test-execution-skills.mjs"
+    },
+    {
+      "task": 3,
+      "verify": "node --test --test-name-pattern=\"executing-plans|subagent\" tests/opencode/test-execution-skills.mjs && node --test --test-name-pattern=\"executing-plans|subagent\" tests/opencode/test-trust-skills.mjs",
+      "exit": 0,
+      "at": "2026-10-30T19:41:31Z"
+    },
+    {
+      "task": 4,
+      "verify": "node --test --test-name-pattern=\"requesting-code-review|receiving-code-review\" tests/opencode/test-execution-skills.mjs && node --test --test-name-pattern=\"requesting-code-review\" tests/opencode/test-trust-skills.mjs",
+      "exit": 0,
+      "at": "2026-10-30T19:42:46Z"
+    },
+    {
+      "task": 5,
+      "verify": "node --test tests/opencode/test-execution-skills.mjs",
+      "exit": 0,
+      "at": "2026-10-30T19:44:25Z"
+    },
+    {
+      "task": 6,
+      "verify": "! node --test tests/eval/test-probes.mjs",
+      "exit": 0,
+      "at": "2026-10-30T19:44:59Z"
+    },
+    {
+      "task": 7,
+      "verify": "node --test tests/eval/test-probes.mjs && node eval/run.mjs && node --check eval/probes.mjs",
+      "exit": 0,
+      "at": "2026-10-30T19:47:18Z"
+    },
+    {
+      "task": 8,
+      "verify": "npm run verify && node eval/run.mjs",
+      "exit": 0,
+      "at": "2026-10-30T19:48:14Z"
+    }
+  ]
+}

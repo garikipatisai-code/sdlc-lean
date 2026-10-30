@@ -47,3 +47,39 @@ test('detects skills from a skill_content marker in text', () => {
   const obs = parseEvents('{"type":"text","text":"Using it.\\n<skill_content name=\\"systematic-debugging\\">"}');
   assert.ok(obs.skills.includes('systematic-debugging'));
 });
+
+// AC3: collected URLs come only from webfetch/fetch calls, in order, deduped.
+const toolEvent = (tool, input) =>
+  JSON.stringify({ type: 'tool_use', part: { type: 'tool', tool, state: { input } } });
+
+test('collects webfetch and fetch URLs in order', () => {
+  const fixture = [
+    toolEvent('webfetch', { url: 'https://example.com/one' }),
+    toolEvent('fetch', { url: 'https://example.com/two' }),
+  ].join('\n');
+  const obs = parseEvents(fixture);
+  assert.deepEqual(obs.urls, ['https://example.com/one', 'https://example.com/two']);
+});
+
+test('ignores a url passed to a non-fetch tool', () => {
+  const obs = parseEvents(toolEvent('read', { url: 'https://example.com/ignored' }));
+  assert.deepEqual(obs.urls, []);
+});
+
+test('dedupes repeated fetched URLs', () => {
+  const fixture = [
+    toolEvent('webfetch', { url: 'https://example.com/one' }),
+    toolEvent('fetch', { url: 'https://example.com/one' }),
+    toolEvent('webfetch', { url: 'https://example.com/two' }),
+  ].join('\n');
+  const obs = parseEvents(fixture);
+  assert.deepEqual(obs.urls, ['https://example.com/one', 'https://example.com/two']);
+});
+
+test('returns an empty urls list when nothing was fetched', () => {
+  const fixture = [
+    JSON.stringify({ type: 'text', part: { type: 'text', text: 'no fetch' } }),
+    toolEvent('read', { filePath: 'a' }),
+  ].join('\n');
+  assert.deepEqual(parseEvents(fixture).urls, []);
+});

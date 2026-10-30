@@ -1,0 +1,68 @@
+{
+  "date": "2026-10-30",
+  "model": "opencode-go/deepseek-v4.1-flash",
+  "probes": 1,
+  "harness": {
+    "opencode": "opencode v2.2.4",
+    "node": "v24.19.0"
+  },
+  "results": [
+    {
+      "id": "worktree-baseline",
+      "group": "execution",
+      "advisory": true,
+      "ok": true,
+      "expect": [
+        {
+          "kind": "skill",
+          "value": "using-git-worktrees",
+          "ok": true
+        },
+        {
+          "kind": "artifact-contains",
+          "path": "docs/worktree-baseline.md",
+          "value": "baseline SHA",
+          "ok": true
+        },
+        {
+          "kind": "artifact-contains",
+          "path": "docs/worktree-baseline.md",
+          "value": "test command",
+          "ok": true
+        },
+        {
+          "kind": "artifact-contains",
+          "path": "docs/worktree-baseline.md",
+          "value": "per-worktree",
+          "ok": true
+        },
+        {
+          "kind": "file-unchanged",
+          "path": ".sdlc/spec-gate.json",
+          "ok": true
+        }
+      ],
+      "text": "Using `using-git-worktrees` to write the worktree setup note.\n<skill_content name=\"using-git-worktrees\">\n# Skill: using-git-worktrees\n\n# Using Git Worktrees\n\nIsolate work so parallel agents and experiments never collide.\n\n## Setup\n\nPrefer the project's convention if one exists; otherwise:\n\n1. `git worktree add .worktrees/<slug> -b <slug>` (keep worktrees under `.worktrees/`, gitignored).\n2. Record the **baseline SHA** (`git rev-parse HEAD`) and the **test command** in the progress ledger.\n3. Run project setup inside the worktree (install deps per README).\n4. Verify a clean baseline: run the test command once before changing anything.\n5. Check `dependency`/`port` collisions against other active worktrees (same lockfile, same dev port).\n\n## Rules\n\n- One worktree per independent task stream. `dispatching-parallel-agents` assigns one each.\n- Never commit in two worktrees on the same branch.\n- The `.sdlc/spec-gate.json` marker is `per-worktree`: the plan must be approved in that worktree, not only on main.\n- On finish, follow `finishing-a-development-branch`; clean up (remove the worktree) only after `merge/PR`.\n- If the repo forbids worktrees (odd CI, absolute paths), fall back to a feature branch and say so in one line.\n\nBase directory for this skill: /tmp/sdlc-eval-RX31Sj/.opencode/skills/using-git-worktrees\nRelative paths in this skill (e.g., scripts/, reference/) are relative to this base directory.\nNote: file list is sampled.\n\n<skill_files>\n</skill_files>\n</skill_content>\ntotal 108\ndrwx------   5 appusai appusai  4096 Oct 30 16:30 .\ndrwxrwxrwt 308 root    root    86016 Oct 30 16:30 ..\ndrwxrwxr-x   6 appusai appusai  4096 Oct 30 16:30 .opencode\n-rw-rw-r--   1 appusai appusai    44 Oct 30 16:30 package.json\ndrwxrwxr-x   2 appusai appusai  4096 Oct 30 16:30 scripts\ndrwxrwxr-x   2 appusai appusai  4096 Oct 30 16:30 src\n---\n---\n\nExited with code 1\n{\"name\":\"sdlc-eval-fixture\",\"private\":true}\n---\nscripts:\nspec-check.mjs\n\nsrc:\nindex.js\n---\nfatal: not a git repository (or a",
+      "usage": {
+        "cost": 0,
+        "tokens": {
+          "input": 24992,
+          "output": 978,
+          "reasoning": 540,
+          "cache": {
+            "read": 106112,
+            "write": 0
+          }
+        }
+      }
+    }
+  ],
+  "totals": {
+    "cost": 0,
+    "input": 24992,
+    "output": 978,
+    "reasoning": 540,
+    "cacheRead": 106112,
+    "cacheWrite": 0
+  }
+}

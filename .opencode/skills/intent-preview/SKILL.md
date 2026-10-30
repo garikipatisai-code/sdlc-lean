@@ -1,6 +1,6 @@
 ---
 name: intent-preview
-description: Use when starting agentic work that needs approval - preview plan, accept or edit before implementation, read-only research first
+description: Use when starting agentic work that needs approval - read-only research, preview plan, wait for accept before implementation
 ---
 
 # Intent Preview
@@ -10,6 +10,11 @@ Reimplemented from SOTA plan-approval pattern (Claude plan mode, Cursor Projects
 ## Procedure
 
 1. Research read-only: map touched code, no edits.
-2. Present preview: goal + plan steps + files + risk + runnable check. Skip preview only if diff describable in one sentence.
-3. Wait for accept or edited plan. Track accept rate (target >85%).
-4. On accept: execute via `executing-plans` with TDD; on edit: revise preview, re-present once.
+2. Present the preview: goal + plan steps + files + risk + runnable check. Skip preview only if the diff is describable in one sentence.
+3. Wait for accept or an edited plan. Never self-approve: the human decides, and silence or elapsed time is not consent.
+4. On accept: execute via `executing-plans` with TDD; on edit: revise the preview, re-present once.
+
+## Approval
+
+- Approval is the `spec-check approve` step: the human runs `node scripts/spec-check.mjs approve <plan>` in a `TTY`.
+- Non-interactive approval (a pipe, a redirect, or an agent-owned terminal) is denied. Stop and report; never substitute your own approval.

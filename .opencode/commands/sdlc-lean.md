@@ -4,7 +4,7 @@ description: Report sdlc-lean status - activation proof, plugin presence, and in
 
 Deterministic check (read-only, change nothing):
 
-!`echo "last activation: $(cat "${XDG_STATE_HOME:-$HOME/.local/state}/sdlc-lean/status.json" 2>/dev/null || echo none)"; echo "project skills: $(find .opencode/skills -name SKILL.md 2>/dev/null | wc -l)"; echo "global skills: $(find $HOME/.config/opencode/skills -name SKILL.md 2>/dev/null | wc -l)"; echo "agents: $(find .opencode/agents $HOME/.config/opencode/agents -name '*.md' 2>/dev/null | wc -l)"; echo "commands: $(find .opencode/commands $HOME/.config/opencode/commands -name '*.md' 2>/dev/null | wc -l)"; echo "plugin: $(find .opencode/plugins $HOME/.config/opencode/plugins -name sdlc-lean.js 2>/dev/null | tr '\n' ' ')"`
+!`echo "last activation: $(cat "${XDG_STATE_HOME:-$HOME/.local/state}/sdlc-lean/status.json" 2>/dev/null || echo none)"; echo "project skills: $(find .opencode/skills -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)"; echo "global skills: $(find $HOME/.config/opencode/skills -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)"; echo "agents: $(find .opencode/agents $HOME/.config/opencode/agents -name '*.md' 2>/dev/null | wc -l)"; echo "commands: $(find .opencode/commands $HOME/.config/opencode/commands -name '*.md' 2>/dev/null | wc -l)"; echo "plugin: $(find .opencode/plugins $HOME/.config/opencode/plugins -name sdlc-lean.js 2>/dev/null | tr '\n' ' ')"`
 
 Report in at most 5 lines: whether the last activation was recorded (timestamp +
 session + skill count) — this proves the plugin injected; whether the plugin is

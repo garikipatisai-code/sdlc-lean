@@ -16,7 +16,7 @@ Blameless: find the conditions, not a person. Facts before narrative.
 5. **Root cause** — the condition that made this possible, not the last action.
 6. **Contributing factors** — deploy, observability, process, or docs that widened it.
 7. **What was luck** — a near miss is a finding.
-8. **Action items** — each with an owner, a date, and a type: prevent / detect / mitigate.
+8. **Action items** — each with an owner, a date, and a type: prevent / detect / mitigate. Add the recurrence-prevention verification: the test, alert, or check that fails if the cause returns.
 
 ## Rules
 
@@ -24,3 +24,7 @@ Blameless: find the conditions, not a person. Facts before narrative.
 - An action item without an owner and date is a wish.
 - Separate confirmed facts from hypotheses.
 - End with the smallest change that would have caught this earlier.
+
+## Where action items live
+
+- List open items in the postmortem; move deferred debt to `docs/debt-ledger.md` with the same owner and date.

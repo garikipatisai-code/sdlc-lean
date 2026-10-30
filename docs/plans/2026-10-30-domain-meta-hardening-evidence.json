@@ -1,0 +1,89 @@
+{
+  "plan": "docs/plans/2026-10-30-domain-meta-hardening.md",
+  "plan_sha256": "9d5f39b1c1c0caa08ffe54e1cce4e81f3d5d45ace4335d3fc64f2669c61f8957",
+  "final_gate": {
+    "npm_run_verify": "40 skills, 0 lint failures; 357 tests, 357 pass, 0 fail",
+    "eval_dry": "35 probes (activation=2, safety=2, routing=12, brain=3, trust=4, execution=4, command=4, agent=1, router=3); no spend",
+    "bootstrap_bytes": 5068
+  },
+  "tasks": [
+    {
+      "task": 1,
+      "verify": "! node --test tests/opencode/test-skill-contracts.mjs && ! node --test tests/opencode/test-eval-coverage.mjs && ! node --test tests/eval/test-probes.mjs",
+      "exit": 0,
+      "at": "2026-10-30T22:01:47Z",
+      "summary": {
+        "red": "skill-contracts 28 tests 11 pass 17 fail; eval-coverage 7 tests 4 pass 3 fail; probes 20 tests 17 pass 3 fail; all named content/data failures, no import or syntax error",
+        "edited": ["tests/opencode/test-skill-contracts.mjs", "tests/opencode/test-eval-coverage.mjs", "tests/eval/test-probes.mjs"],
+        "content_or_data_edits": 0
+      }
+    },
+    {
+      "task": 2,
+      "verify": "set -e; for s in threat-model brainstorming reviewing-security systematic-debugging diagnosing-sdlc; do node --test --test-name-pattern=\"specific: $s\" tests/opencode/test-skill-contracts.mjs; done; node --test tests/opencode/test-brain-skills.mjs tests/opencode/test-execution-skills.mjs",
+      "exit": 0,
+      "at": "2026-10-30T22:03:27Z"
+    },
+    {
+      "task": 3,
+      "verify": "set -e; for s in autonomy-dial intent-preview; do node --test --test-name-pattern=\"specific: $s\" tests/opencode/test-skill-contracts.mjs; done; node --test --test-name-pattern=\"evidence: adr\" tests/opencode/test-skill-contracts.mjs",
+      "exit": 0,
+      "at": "2026-10-30T22:05:06Z"
+    },
+    {
+      "task": 4,
+      "verify": "set -e; for s in simplified-technical-english incident-postmortem; do node --test --test-name-pattern=\"evidence: $s\" tests/opencode/test-skill-contracts.mjs; done",
+      "exit": 0,
+      "at": "2026-10-30T22:06:23Z"
+    },
+    {
+      "task": 5,
+      "verify": "set -e; for s in dependency-upgrade evolving-schemas; do node --test --test-name-pattern=\"evidence: $s\" tests/opencode/test-skill-contracts.mjs; done",
+      "exit": 0,
+      "at": "2026-10-30T22:07:25Z"
+    },
+    {
+      "task": 6,
+      "verify": "set -e; for s in ui-review web-game-development; do node --test --test-name-pattern=\"specific: $s\" tests/opencode/test-skill-contracts.mjs; done",
+      "exit": 0,
+      "at": "2026-10-30T22:08:43Z"
+    },
+    {
+      "task": 7,
+      "verify": "node --test --test-name-pattern=\"release:\" tests/opencode/test-skill-contracts.mjs && node --test --test-name-pattern=\"specific: writing-release-notes\" tests/opencode/test-skill-contracts.mjs",
+      "exit": 0,
+      "at": "2026-10-30T22:09:37Z"
+    },
+    {
+      "task": 8,
+      "verify": "node --test tests/opencode/test-skill-contracts.mjs tests/opencode/test-eval-coverage.mjs tests/eval/test-probes.mjs && node eval/run.mjs",
+      "exit": 0,
+      "at": "2026-10-30T22:11:19Z"
+    },
+    {
+      "task": 9,
+      "verify": "node --input-type=module -e \"import fs from 'node:fs';import {CALIBRATION} from './eval/coverage.mjs';const ids=['review-disposition','merge-gate','worktree-baseline'];let n=0;for(const id of ids){let p=0;for(let i=1;i<=3;i++){const d='eval/results/calibration/wave4/'+id+'/'+i;const f=fs.readdirSync(d).find(x=>x.endsWith('-eval.json'));const r=JSON.parse(fs.readFileSync(d+'/'+f));if(!r.model)throw Error(id+' model');if(!r.harness?.opencode)throw Error(id+' version');if(r.results[0].ok)p++;n++}if((p===3)!==(CALIBRATION[id]==='stable'))throw Error(id+' '+p+'/3 vs '+CALIBRATION[id])}if(n!==9)throw Error('runs '+n)\" && node --test tests/eval/test-probes.mjs && node eval/run.mjs",
+      "exit": 0,
+      "at": "2026-10-30T22:20:25Z",
+      "summary": {
+        "model": "opencode-go/deepseek-v4.1-flash",
+        "harness": "opencode v2.2.4",
+        "date": "2026-10-30",
+        "runs": 9,
+        "cost_usd": 0,
+        "results": {
+          "review-disposition": "3/3 stable",
+          "merge-gate": "3/3 stable",
+          "worktree-baseline": "3/3 stable"
+        },
+        "advisory_removed": ["review-disposition", "merge-gate", "worktree-baseline"]
+      }
+    },
+    {
+      "task": 10,
+      "verify": "npm run verify && node eval/run.mjs",
+      "exit": 0,
+      "at": "2026-10-30T22:21:40Z"
+    }
+  ]
+}

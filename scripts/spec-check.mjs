@@ -34,6 +34,17 @@ export class SpecCheckError extends Error {
 
 const fail = (code, message) => { throw new SpecCheckError(code, message); };
 
+/**
+ * Approval is a human act: both streams must be TTYs. There is no env-var or
+ * flag bypass; a human running the command in a terminal is the only approval.
+ */
+export const humanApproval = ({ stdinTTY, stdoutTTY } = {}) => {
+  if (stdinTTY !== true || stdoutTTY !== true) {
+    fail('tty-required', 'approval requires an interactive terminal: run this command yourself in a terminal (stdin and stdout must be TTYs); non-interactive approval is denied');
+  }
+  return true;
+};
+
 export const gatePath = (root = process.cwd()) => path.join(path.resolve(root), GATE_REL);
 
 export const hashFile = (file) => crypto.createHash('sha256')
@@ -165,6 +176,76 @@ export const parsePlanText = (text) => {
 export const progressFor = (plan) => (plan.endsWith('.md')
   ? `${plan.slice(0, -3)}-progress.md`
   : `${plan}-progress.md`);
+
+/** Derive the evidence file for a plan: foo.md -> foo-evidence.json. */
+export const evidenceFor = (plan) => plan.replace(/\.md$/, '') + '-evidence.json';
+
+// Split a Markdown table row on unescaped pipes: `\|` is a literal `|`.
+const splitRow = (line) => {
+  const cells = [];
+  let cell = '';
+  for (let i = 0; i < line.length; i++) {
+    if (line[i] === '\\' && line[i + 1] === '|') {
+      cell += '|';
+      i++;
+    } else if (line[i] === '|') {
+      cells.push(cell.trim());
+      cell = '';
+    } else {
+      cell += line[i];
+    }
+  }
+  cells.push(cell.trim());
+  if (cells.length && cells[0] === '') cells.shift();
+  if (cells.length && cells[cells.length - 1] === '') cells.pop();
+  return cells;
+};
+
+const isTaskHeader = (cells) => cells.includes('#') && cells.includes('Task') && cells.includes('Verify');
+const isSeparator = (cells) => cells.length > 0 && cells.every((c) => /^:?-{2,}:?$/.test(c));
+
+/**
+ * Parse the plan's `# | Task | … | Verify` table. Returns `[{ task, verify }]`
+ * with the Verify cell normalized (trimmed, one backtick pair removed).
+ */
+export const parsePlanTasks = (text) => {
+  if (typeof text !== 'string') fail('missing-task-table', 'plan must be text with a task table');
+  const lines = text.split(/\r?\n/);
+  const start = lines.findIndex((line) => line.trim().startsWith('|') && isTaskHeader(splitRow(line.trim())));
+  if (start === -1) {
+    fail('missing-task-table', 'plan has no task table with #, Task, and Verify columns');
+  }
+
+  const header = splitRow(lines[start].trim());
+  const taskCol = header.indexOf('#');
+  const verifyCol = header.indexOf('Verify');
+  const tasks = [];
+  const seen = new Set();
+  for (let i = start + 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line.startsWith('|')) break;
+    const cells = splitRow(line);
+    if (isSeparator(cells)) continue;
+    if (cells.length !== header.length) {
+      fail('invalid-plan-task', `task row must have ${header.length} cells, got ${cells.length}`);
+    }
+    const rawN = cells[taskCol];
+    if (!/^[1-9]\d*$/.test(rawN)) {
+      fail('invalid-plan-task', `task row has an invalid task number: "${rawN}"`);
+    }
+    const n = Number(rawN);
+    if (seen.has(n)) fail('duplicate-task', `duplicate task number: ${n}`);
+    seen.add(n);
+    let verify = cells[verifyCol];
+    if (verify.startsWith('`') && verify.endsWith('`') && verify.length >= 2) {
+      verify = verify.slice(1, -1).trim();
+    }
+    if (!verify) fail('invalid-plan-task', `task ${n} has an empty Verify command`);
+    tasks.push({ task: n, verify });
+  }
+  if (tasks.length === 0) fail('missing-task-table', 'task table has no task rows');
+  return tasks;
+};
 
 /** Glob match: `*` = one segment, `**` = zero or more segments, `?` = one char. */
 export const matchPattern = (pattern, target) => {
@@ -302,15 +383,69 @@ export const writeGate = (root, gate) => {
   return p;
 };
 
+/**
+ * Close only with complete, hash-bound evidence. Every refusal throws before
+ * the marker is unlinked, so a failed close leaves the gate active.
+ */
 export const closeGate = (root = process.cwd()) => {
-  const p = gatePath(root);
+  const gate = readGate(root);
+  if (!gate) return null;
+  const valid = validateGate(root, gate);
+
+  const evidence = evidenceFor(valid.plan);
+  const evidenceAbs = assertRegularFile(root, evidence, 'evidence');
+  let parsed;
   try {
-    fs.unlinkSync(p);
-    return true;
+    parsed = JSON.parse(fs.readFileSync(evidenceAbs, 'utf8'));
   } catch (err) {
-    if (err.code === 'ENOENT') return false;
-    throw err;
+    fail('invalid-evidence', `${evidence} is not valid JSON: ${err.message}`);
   }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    fail('invalid-evidence', `${evidence} must contain a JSON object`);
+  }
+  if (parsed.plan !== valid.plan) {
+    fail('evidence-plan-mismatch', `${evidence} plan is "${parsed.plan}", expected "${valid.plan}"`);
+  }
+  if (parsed.plan_sha256 !== valid.plan_sha256) {
+    fail('evidence-hash-mismatch', `${evidence} plan_sha256 does not match the active gate; re-run the tasks and rewrite the evidence`);
+  }
+  if (!Array.isArray(parsed.tasks)) {
+    fail('invalid-evidence', `${evidence} tasks must be an array`);
+  }
+
+  const planTasks = parsePlanTasks(fs.readFileSync(path.resolve(root, valid.plan), 'utf8'));
+  const byTask = new Map();
+  for (const row of parsed.tasks) {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) {
+      fail('invalid-evidence', `${evidence} tasks must contain objects`);
+    }
+    if (!Number.isInteger(row.task) || row.task < 1) {
+      fail('invalid-evidence', `${evidence} task numbers must be positive integers`);
+    }
+    if (byTask.has(row.task)) {
+      fail('duplicate-evidence-row', `${evidence} has more than one row for task ${row.task}`);
+    }
+    byTask.set(row.task, row);
+  }
+  for (const task of planTasks) {
+    const row = byTask.get(task.task);
+    if (!row) fail('missing-evidence-row', `${evidence} is missing a row for task ${task.task}`);
+    if (typeof row.verify !== 'string' || row.verify.trim() !== task.verify) {
+      fail('verify-mismatch', `${evidence} task ${task.task} verify is not the plan's Verify command; expected "${task.verify}"`);
+    }
+    if (typeof row.exit !== 'number' || row.exit !== 0) {
+      fail('task-failed', `${evidence} task ${task.task} exit is ${row.exit}, expected 0`);
+    }
+    assertUtc(row.at, `evidence task ${task.task} at`);
+  }
+  const planNumbers = new Set(planTasks.map((t) => t.task));
+  for (const n of byTask.keys()) {
+    if (!planNumbers.has(n)) fail('extra-evidence-row', `${evidence} has an extra row for task ${n} not in the plan`);
+  }
+
+  const sha256 = hashFile(evidenceAbs);
+  fs.unlinkSync(gatePath(root));
+  return { evidence, sha256 };
 };
 
 // Reject lexical escapes (handled by normalizeRel) and symlink escapes. The
@@ -370,10 +505,14 @@ const USAGE = `Usage: node scripts/spec-check.mjs <command> [options]
 
 Commands:
   approve <plan.md>   Validate an approved plan and write .sdlc/spec-gate.json
+                      (interactive terminal required: no piped approval)
   status              Show the active gate (or "none")
   verify [--require-active]   Re-hash plan/spec/CLI; exit 1 on drift, 2 if no gate when required
-  close               Remove the active gate
+  close               Validate <plan>-evidence.json and remove the active gate
   check <path...>     Exit 0 if every path is in scope, 1 if any is blocked
+
+Evidence for close: docs/plans/<slug>-evidence.json must bind the plan hash and
+list one row per plan task with the exact Verify command, exit 0, and a UTC at.
 
 Options:
   --root <dir>        Repo root (default: cwd)
@@ -381,7 +520,7 @@ Options:
   -h, --help          Show this help
 `;
 
-export const main = (argv = process.argv.slice(2)) => {
+export const main = (argv = process.argv.slice(2), io = {}) => {
   const args = { _: [] };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--root') {
@@ -405,9 +544,13 @@ export const main = (argv = process.argv.slice(2)) => {
 
   const root = path.resolve(args.root || process.cwd());
   const [command, positional] = args._;
+  // Resolve the TTY state once: injected io wins (tests), else the real streams.
+  const stdinTTY = io.stdinTTY !== undefined ? io.stdinTTY : process.stdin.isTTY;
+  const stdoutTTY = io.stdoutTTY !== undefined ? io.stdoutTTY : process.stdout.isTTY;
 
   try {
     if (command === 'approve') {
+      humanApproval({ stdinTTY, stdoutTTY });
       if (!positional) fail('invalid-args', 'approve needs a plan path');
       const gate = buildGate(root, positional);
       writeGate(root, gate);
@@ -442,7 +585,11 @@ export const main = (argv = process.argv.slice(2)) => {
     }
     if (command === 'close') {
       const closed = closeGate(root);
-      console.log(closed ? 'closed spec gate' : 'no active spec gate');
+      if (!closed) {
+        console.log('no active spec gate');
+        return 0;
+      }
+      console.log(`closed spec gate: evidence ${closed.evidence} sha256 ${closed.sha256}`);
       return 0;
     }
     if (command === 'check') {

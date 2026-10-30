@@ -1,0 +1,74 @@
+{
+  "plan": "docs/plans/2026-10-30-measurement-hardening.md",
+  "plan_sha256": "043d4ec7077eb959b780f54337fe37bf11b90c4b9c51d786f17cdd1a080de2c4",
+  "tasks": [
+    {
+      "task": 1,
+      "verify": "! node --test tests/opencode/test-eval-coverage.mjs",
+      "exit": 0,
+      "at": "2026-10-30T21:12:02Z"
+    },
+    {
+      "task": 2,
+      "verify": "node --test tests/opencode/test-eval-coverage.mjs",
+      "exit": 0,
+      "at": "2026-10-30T21:21:17Z"
+    },
+    {
+      "task": 3,
+      "verify": "! node --test tests/opencode/test-skill-contracts.mjs",
+      "exit": 0,
+      "at": "2026-10-30T21:15:12Z"
+    },
+    {
+      "task": 4,
+      "verify": "node --test tests/opencode/test-skill-contracts.mjs && node scripts/validate-skills.mjs",
+      "exit": 0,
+      "at": "2026-10-30T21:16:23Z"
+    },
+    {
+      "task": 5,
+      "verify": "! node --test tests/eval/test-parse.mjs tests/eval/test-assert.mjs",
+      "exit": 0,
+      "at": "2026-10-30T21:17:23Z"
+    },
+    {
+      "task": 6,
+      "verify": "node --test tests/eval/test-parse.mjs tests/eval/test-assert.mjs",
+      "exit": 0,
+      "at": "2026-10-30T21:18:31Z"
+    },
+    {
+      "task": 7,
+      "verify": "! node --test tests/eval/test-probes.mjs",
+      "exit": 0,
+      "at": "2026-10-30T21:20:06Z"
+    },
+    {
+      "task": 8,
+      "verify": "node --test tests/eval/test-probes.mjs && node eval/run.mjs",
+      "exit": 0,
+      "at": "2026-10-30T21:21:17Z"
+    },
+    {
+      "task": 9,
+      "verify": "node -e \"const fs=require('fs');const ids=['external-verification','debug-repro','review-disposition','merge-gate','worktree-baseline'];let n=0;for(const id of ids)for(let i=1;i<=3;i++){const d='eval/results/calibration/'+id+'/'+i;const f=fs.readdirSync(d).find(x=>x.endsWith('-eval.json'));const r=JSON.parse(fs.readFileSync(d+'/'+f));if(!r.model)throw Error(id+' model');if(!r.harness)throw Error(id+' harness');if(!r.harness.opencode)throw Error(id+' version');n++}if(n!==15)throw Error('runs '+n)\" && node --test tests/eval/test-probes.mjs && node eval/run.mjs",
+      "exit": 0,
+      "at": "2026-10-30T21:31:34Z"
+    },
+    {
+      "task": 10,
+      "verify": "npm run verify && node eval/run.mjs",
+      "exit": 0,
+      "at": "2026-10-30T21:33:24Z"
+    }
+  ],
+  "calibration": {
+    "approved": "opencode-go/deepseek-v4.1-flash · 15 runs · $0.25 cap · 2026-10-30",
+    "model": "opencode-go/deepseek-v4.1-flash",
+    "harness": "opencode v2.2.4",
+    "runs": 15,
+    "stable": ["external-verification", "debug-repro"],
+    "unstable": ["review-disposition", "merge-gate", "worktree-baseline"]
+  }
+}

@@ -56,6 +56,14 @@ lack it. Treat WebGL2 as the floor and WebGPU as progressive enhancement with a
 tested fallback and device/context-loss recovery. Phaser 4 is WebGL2-only;
 Unity 6.3 still labels WebGPU experimental.
 
+## S-tier evidence table
+
+Every cell names evidence to show before any S-tier claim.
+
+| engine | performance | accessibility | replay | shipping |
+|---|---|---|---|---|
+| pinned version + why | p95 frame time log at 60 fps | input/a11y checklist pass | seed + input log → state hash | portal build + load budget |
+
 ## Non-negotiables
 
 1. **Fixed-step simulation + interpolated render.** Accumulator clamped to

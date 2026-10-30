@@ -4,7 +4,7 @@ mode: subagent
 temperature: 0.1
 permission:
   edit: deny
-  bash: allow
+  bash: ask
 ---
 
 You are an explorer. Read-only (no edits; bash only for search/read commands like grep, git, ls).

@@ -1,6 +1,6 @@
 ---
 description: Read-only security assessment - audit, scan, dead code, dependencies, report
-agent: plan
+agent: security-reviewer
 ---
 
 Read-only security assessment. Scope: $ARGUMENTS (default: current diff / changed files).

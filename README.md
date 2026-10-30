@@ -13,15 +13,19 @@ flowchart TD
     R -->|new idea / feature| F[feature pipeline]
     R -->|bug / failing test| B[bugfix pipeline]
     R -->|restructure, no behavior change| RF[refactor pipeline]
-    R -->|security / auth / data| S[security-audit pipeline plus reviewing-security]
+    R -->|security / auth / data| S[security-audit pipeline + reviewing-security]
+    R -->|shipped artifact, no source| RE[reverse-engineering: REA ladder, evidence, no mutation]
     R -->|empirical experiment| RS[research-protocol: frozen protocol, null counts as done]
     R -->|web game| G[game pipeline]
-    F --> FB[brainstorming to HARD GATE design approval] --> FP[writing-plans] --> FI[execute via TDD] --> FR[review plus lean-review] --> FV[verification-before-completion]
-    B --> BR[systematic-debugging: reproduce, root-cause, fix, confirm]
+    F --> TH[threat-model if a trust boundary] --> FB[brainstorming to HARD GATE design approval] --> FP[writing-plans] --> HA[human TTY approves plan] --> FI[execute via TDD + fail-before-fix] --> FR[review: raw Verify output + dispositions] --> FV[verification-before-completion] --> FE[evidence JSON] --> FC[close gate]
+    B --> BR[systematic-debugging: reproduce, root-cause, fix, fail-before-fix proof]
     RF --> RI[impact analysis then behavior-preserving steps]
     S --> SR[read-only traced-path findings]
-    G --> GB[engine matrix plus S-tier gates] --> GD[brainstorming HARD GATE] --> GP[writing-plans] --> GI[TDD build, greybox first] --> GR[review plus perf/a11y gate] --> GV[verify then ship checklist]
+    RE --> RR[observation / inference / unknown; never mutate]
+    G --> GB[engine matrix + S-tier evidence] --> GD[brainstorming HARD GATE] --> GP[writing-plans] --> GI[TDD build, greybox first] --> GR[review + perf/a11y gate] --> GV[verify + ship checklist]
 ```
+
+Explicit commands `/preview`, `/release`, and `/sdlc-lean` bypass router inference: `/preview` is read-only, `/release` drafts only, and `/sdlc-lean` reports status.
 
 Every route scales scrutiny to the task: trivial work is built directly,
 standard work enforces the lean ladder, architectural work runs the full

@@ -1,0 +1,30 @@
+{
+  "plan": "docs/plans/2026-10-31-popup-autofill.md",
+  "plan_sha256": "3c390939222d5db84a2d1d8d7752e689ac7c1d3e4c85deb0cae1b6833d2a595c",
+  "tasks": [
+    {
+      "task": 1,
+      "verify": "! node --test tests/opencode/test-popup-autofill.mjs",
+      "exit": 0,
+      "at": "2026-10-31T05:26:17Z"
+    },
+    {
+      "task": 2,
+      "verify": "node --test tests/opencode/test-popup-autofill.mjs",
+      "exit": 0,
+      "at": "2026-10-31T05:26:17Z"
+    },
+    {
+      "task": 3,
+      "verify": "node --test tests/opencode/test-popup-autofill.mjs",
+      "exit": 0,
+      "at": "2026-10-31T05:26:17Z"
+    },
+    {
+      "task": 4,
+      "verify": "npm run verify",
+      "exit": 0,
+      "at": "2026-10-31T05:26:17Z"
+    }
+  ]
+}

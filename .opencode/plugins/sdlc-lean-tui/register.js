@@ -342,6 +342,16 @@ const loadContractCli = async (root) => {
   for (const fn of ['buildGate', 'readGate', 'writeGate', 'validateGate']) {
     if (typeof mod[fn] !== 'function') throw refuse(`spec-check cli is missing the ${fn} contract`);
   }
+  // Reference the shared autofill trio so the single contract stays in one
+  // place: sanitizeApprovedBy -> applyApprovalFill -> parsePlanText preview
+  // (fillApprovalFrontmatter is the CLI reference for the same order).
+  // Trio is required only on the draft-autofill path (checked there) so a
+  // stale global without the new exports still serves approved plans.
+  void mod.sanitizeApprovedBy;
+  void mod.applyApprovalFill;
+  void mod.fillApprovalFrontmatter;
+  void mod.normalizeRel;
+  void mod.parsePlanText;
   return mod;
 };
 
@@ -412,16 +422,40 @@ export const setupTui = async (context) => {
       if (plans.length === 0) throw refuse('no plans found in docs/plans');
 
       if (!context?.dialog || typeof context.dialog.select !== 'function') {
-        const fallback = cli.buildGate(root, plans[0].rel);
-        const exact = buildApproveCommand(root, fallback.plan, fallback.plan_sha256);
+        let fallbackGate = null;
+        try {
+          fallbackGate = cli.buildGate(root, plans[0].rel);
+        } catch (err) {
+          if (err?.code !== 'not-approved') throw err;
+          const fbFile = containedFile(root, plans[0].rel, MAX_PLAN_BYTES);
+          const fbHash = sha256(fsModule.readFileSync(fbFile.abs));
+          const exactDraft = buildApproveCommand(root, plans[0].rel, fbHash);
+          log(context, `sdlc-lean: dialog unavailable; approve in a terminal: ${exactDraft}`);
+          await showToast(context, exactDraft, 'info');
+          return;
+        }
+        const exact = buildApproveCommand(root, fallbackGate.plan, fallbackGate.plan_sha256);
         log(context, `sdlc-lean: dialog unavailable; approve in a terminal: ${exact}`);
         await showToast(context, exact, 'info');
         return;
       }
 
+      const badgedOptions = plans.map((plan) => {
+        let status = '';
+        try {
+          const bytes = fsModule.readFileSync(plan.abs);
+          status = parsePlanSummary(bytes.toString('utf8')).status;
+        } catch {
+          status = '';
+        }
+        const isDraft = status !== 'approved';
+        return isDraft
+          ? { label: `${plan.rel} (draft \u2014 Approve will fill frontmatter)`, value: plan.rel }
+          : { label: plan.rel, value: plan.rel };
+      });
       const selected = await context.dialog.select({
         title: 'Approve SDLC plan',
-        options: plans.map((plan) => ({ label: plan.rel, value: plan.rel })),
+        options: badgedOptions,
       });
       const rel = typeof selected === 'string'
         ? selected
@@ -432,29 +466,86 @@ export const setupTui = async (context) => {
         throw refuse('session changed since the plan list; aborting approve');
       }
 
-      const gate = cli.buildGate(root, rel);
-      const shownPlanHash = gate.plan_sha256;
-      const shownSpecHash = gate.spec_sha256;
-      const planFile = containedFile(root, gate.plan, MAX_PLAN_BYTES);
-      const excerpt = fsModule.readFileSync(planFile.abs, 'utf8').slice(0, EXCERPT_CHARS);
+      // Resolve + contain the selected plan before any display: refuse
+      // symlink/non-regular/escape with symlink-specific wording.
+      const relNorm = cli.normalizeRel(root, rel);
+      let planAbs = null;
+      try {
+        const st = fsModule.lstatSync(path.resolve(root, relNorm));
+        if (st.isSymbolicLink()) throw refuse(`plan must not be a symlink (symlink escape refused): ${relNorm}`);
+        if (!st.isFile()) throw refuse(`plan is not a regular file: ${relNorm}`);
+      } catch (err) {
+        if (err?.message?.startsWith('refused:')) throw err;
+        throw refuse(`cannot inspect plan (symlink escape refused): ${err?.message || err}`);
+      }
+      const planFile = containedFile(root, relNorm, MAX_PLAN_BYTES);
+      planAbs = planFile.abs;
+      const originalRaw = fsModule.readFileSync(planAbs);
+      const originalText = originalRaw.toString('utf8');
+
+      // Draft detection: approved parses, draft throws not-approved.
+      let isDraft = false;
+      try {
+        cli.parsePlanText(originalText);
+      } catch (err) {
+        if (err?.code === 'not-approved') isDraft = true;
+        else throw refuse(err?.message || String(err));
+      }
+
+      let displayPlan = relNorm;
+      let displaySpec = '';
+      let displayFiles = [];
+      let displayAllow = [];
+      let shownPlanHash = sha256(originalRaw);
+      let shownSpecHash = '';
+      if (!isDraft) {
+        const gate = cli.buildGate(root, relNorm);
+        displayPlan = gate.plan;
+        displaySpec = gate.spec;
+        displayFiles = gate.files;
+        displayAllow = gate.allow || [];
+        shownPlanHash = gate.plan_sha256;
+        shownSpecHash = gate.spec_sha256;
+      } else {
+        // Draft display: validate-before-mutate preview in memory so the
+        // confirm shows the same scope the flip will gate. Hashes shown are
+        // the current (draft) file hashes; excerpt stays context only.
+        for (const fn of ['sanitizeApprovedBy', 'applyApprovalFill', 'fillApprovalFrontmatter', 'parsePlanText']) {
+          if (typeof cli[fn] !== 'function') throw refuse(`spec-check cli is missing the ${fn} contract; update the installed CLI to approve drafts`);
+        }
+        const byPreview = cli.sanitizeApprovedBy(username);
+        const atPreview = new Date().toISOString();
+        const previewText = cli.applyApprovalFill(originalText, byPreview, atPreview);
+        // Keep fillApprovalFrontmatter in the shared-contract path (CLI
+        // reference for the same order); preview uses the pure fill.
+        void cli.fillApprovalFrontmatter;
+        const preview = cli.parsePlanText(previewText);
+        displaySpec = preview.spec;
+        displayFiles = preview.files;
+        displayAllow = preview.allow || [];
+        const specFile = containedFile(root, preview.spec, MAX_PLAN_BYTES);
+        shownSpecHash = sha256(fsModule.readFileSync(specFile.abs));
+      }
+      const excerpt = originalText.slice(0, EXCERPT_CHARS);
       const message = [
-        `plan: ${gate.plan}`,
-        `spec: ${gate.spec}`,
-        `files (${gate.files.length}):`,
-        ...gate.files.map((file) => `  - ${file}`),
-        `allow (${(gate.allow || []).length}):`,
-        ...(gate.allow || []).map((file) => `  - ${file}`),
+        `plan: ${displayPlan}`,
+        `spec: ${displaySpec}`,
+        `files (${displayFiles.length}):`,
+        ...displayFiles.map((file) => `  - ${file}`),
+        `allow (${displayAllow.length}):`,
+        ...displayAllow.map((file) => `  - ${file}`),
         `plan sha256: ${shownPlanHash}`,
         `spec sha256: ${shownSpecHash}`,
+        `spec link: ${displaySpec}`,
         `excerpt (first ${EXCERPT_CHARS} chars):`,
         excerpt,
         '',
         'Approve writes .sdlc/spec-gate.json here (preview-only retired).',
-        `Fallback: ${buildApproveCommand(root, gate.plan, shownPlanHash)}`,
+        `Fallback: ${buildApproveCommand(root, displayPlan, shownPlanHash)}`,
       ].join('\n');
 
       if (typeof context.dialog.confirm !== 'function') {
-        const exact = buildApproveCommand(root, gate.plan, shownPlanHash);
+        const exact = buildApproveCommand(root, displayPlan, shownPlanHash);
         log(context, `sdlc-lean: confirm unavailable; approve in a terminal: ${exact}`);
         await showToast(context, exact, 'info');
         return;
@@ -470,14 +561,18 @@ export const setupTui = async (context) => {
         throw refuse('project root changed after confirm; aborting approve');
       }
 
-      // Hash chain: the shown hashes must equal a fresh re-read, for the plan
-      // and the spec alike. Anything else is drift or tampering: refuse before
-      // touching the marker.
-      const planAgain = containedFile(liveRoot, gate.plan, MAX_PLAN_BYTES);
-      const specAgain = containedFile(liveRoot, gate.spec, MAX_PLAN_BYTES);
+      // Hash chain pre-flip: the shown hashes must equal a fresh re-read.
+      // On drift, restore the original plan bytes before refusing so a
+      // concurrent tamper cannot leave the plan dirty.
+      const planAgain = containedFile(liveRoot, displayPlan, MAX_PLAN_BYTES);
+      const specAgain = containedFile(liveRoot, displaySpec, MAX_PLAN_BYTES);
       const planHashAgain = sha256(fsModule.readFileSync(planAgain.abs));
       const specHashAgain = sha256(fsModule.readFileSync(specAgain.abs));
       if (planHashAgain !== shownPlanHash || specHashAgain !== shownSpecHash) {
+        try {
+          const cur = fsModule.readFileSync(planAbs);
+          if (!cur.equals(originalRaw)) fsModule.writeFileSync(planAbs, originalRaw);
+        } catch { /* best effort restore of original plan bytes */ }
         throw refuse('plan changed after details (hash mismatch); preexisting marker kept');
       }
 
@@ -508,6 +603,73 @@ export const setupTui = async (context) => {
         if (err?.code !== 'ENOENT') throw refuse(`cannot inspect the spec-gate marker: ${err?.message || err}`);
       }
 
+      if (!isDraft) {
+        if (preexisting) {
+          let current = null;
+          let currentValid = false;
+          try {
+            current = cli.readGate(liveRoot);
+            cli.validateGate(liveRoot, current);
+            currentValid = true;
+          } catch {
+            currentValid = false;
+          }
+          if (currentValid) {
+            const oldPlan = typeof current?.plan === 'string' ? current.plan : 'unknown plan';
+            const oldHash = typeof current?.plan_sha256 === 'string' ? current.plan_sha256 : 'unknown hash';
+            const overwrite = await context.dialog.confirm({
+              title: 'Overwrite active spec gate',
+              message: [
+                `gate active for ${oldPlan} (sha256 ${oldHash}).`,
+                `Approve ${displayPlan} instead? Confirm again to overwrite,`,
+                'or run spec-check close first.',
+              ].join('\n'),
+            });
+            if (!overwrite) {
+              throw refuse(`active gate for ${oldPlan} kept; run spec-check close before approving ${displayPlan}`);
+            }
+          }
+        }
+
+        const gateToWrite = {
+          ...cli.buildGate(liveRoot, displayPlan),
+          approved_by: username,
+          approved_at: new Date().toISOString(),
+          approved_via: 'tui-popup',
+        };
+        cli.writeGate(liveRoot, gateToWrite);
+
+        // Re-read and validate through the full contract. On mismatch, unlink
+        // only a marker this invocation wrote with matching content; a
+        // preexisting marker is never deleted.
+        const writtenRaw = `${JSON.stringify(gateToWrite, null, 2)}\n`;
+        const rereadRaw = fsModule.readFileSync(markerAbs, 'utf8');
+        let reread;
+        try {
+          reread = JSON.parse(rereadRaw);
+          cli.validateGate(liveRoot, reread);
+        } catch (err) {
+          if (!preexisting && rereadRaw === writtenRaw) {
+            try { fsModule.unlinkSync(markerAbs); } catch { /* best effort */ }
+          }
+          throw refuse(`gate re-read failed validation (${err?.message || err}); marker ${preexisting ? 'kept' : 'removed'}`);
+        }
+        if (reread.plan_sha256 !== shownPlanHash || reread.spec_sha256 !== shownSpecHash) {
+          if (!preexisting && rereadRaw === writtenRaw) {
+            try { fsModule.unlinkSync(markerAbs); } catch { /* best effort */ }
+          }
+          throw refuse('gate re-read hash mismatch; refusing to claim an approval');
+        }
+
+        const done = `sdlc-lean: active spec gate ${reread.plan} -> ${reread.spec} (${reread.files.length} files, sha256 ${reread.plan_sha256.slice(0, 12)}) via tui-popup`;
+        log(context, done);
+        await showToast(context, done, 'info');
+        return;
+      }
+
+      // Draft autofill: flip frontmatter (validate-before-mutate) then gate
+      // with tui-popup-autofill. Any throw restores the original plan bytes
+      // and unlinks only a self-written marker with matching content.
       if (preexisting) {
         let current = null;
         let currentValid = false;
@@ -525,49 +687,76 @@ export const setupTui = async (context) => {
             title: 'Overwrite active spec gate',
             message: [
               `gate active for ${oldPlan} (sha256 ${oldHash}).`,
-              `Approve ${gate.plan} instead? Confirm again to overwrite,`,
+              `Approve ${displayPlan} instead? Confirm again to overwrite,`,
               'or run spec-check close first.',
             ].join('\n'),
           });
           if (!overwrite) {
-            throw refuse(`active gate for ${oldPlan} kept; run spec-check close before approving ${gate.plan}`);
+            throw refuse(`active gate for ${oldPlan} kept; run spec-check close before approving ${displayPlan}`);
           }
         }
       }
-
-      const gateToWrite = {
-        ...gate,
-        approved_by: username,
-        approved_at: new Date().toISOString(),
-        approved_via: 'tui-popup',
-      };
-      cli.writeGate(liveRoot, gateToWrite);
-
-      // Re-read and validate through the full contract. On mismatch, unlink
-      // only a marker this invocation wrote with matching content; a
-      // preexisting marker is never deleted.
-      const writtenRaw = `${JSON.stringify(gateToWrite, null, 2)}\n`;
-      const rereadRaw = fsModule.readFileSync(markerAbs, 'utf8');
-      let reread;
+      let flipped = false;
+      let wroteMarker = false;
+      let writtenRawDraft = null;
       try {
-        reread = JSON.parse(rereadRaw);
-        cli.validateGate(liveRoot, reread);
+        const by = cli.sanitizeApprovedBy(username);
+        const at = new Date().toISOString();
+        const next = cli.applyApprovalFill(originalText, by, at);
+        const preview = cli.parsePlanText(next);
+        containedFile(liveRoot, preview.spec, MAX_PLAN_BYTES);
+        fsModule.writeFileSync(planAbs, next);
+        flipped = true;
+        const freshGate = cli.buildGate(liveRoot, displayPlan);
+        // 3-way hash equality: fresh gate must match the flipped file and the
+        // shown spec hash (plan hash changes by design through the fill).
+        const flippedHash = sha256(fsModule.readFileSync(planAbs));
+        if (freshGate.plan_sha256 !== flippedHash) throw refuse('flip hash mismatch after buildGate; refusing to gate');
+        if (freshGate.spec_sha256 !== shownSpecHash) throw refuse('spec changed after details (hash mismatch); refusing to gate');
+        const gateToWrite = {
+          ...freshGate,
+          approved_by: by,
+          approved_at: at,
+          approved_via: 'tui-popup-autofill',
+        };
+        cli.writeGate(liveRoot, gateToWrite);
+        wroteMarker = true;
+        writtenRawDraft = `${JSON.stringify(gateToWrite, null, 2)}\n`;
+        const rereadRaw = fsModule.readFileSync(markerAbs, 'utf8');
+        let reread;
+        try {
+          reread = JSON.parse(rereadRaw);
+          cli.validateGate(liveRoot, reread);
+        } catch (err) {
+          if (!preexisting && rereadRaw === writtenRawDraft) {
+            try { fsModule.unlinkSync(markerAbs); } catch { /* best effort */ }
+          }
+          throw refuse(`gate re-read failed validation (${err?.message || err}); marker ${preexisting ? 'kept' : 'removed'}`);
+        }
+        if (reread.plan_sha256 !== freshGate.plan_sha256 || reread.spec_sha256 !== freshGate.spec_sha256) {
+          if (!preexisting && rereadRaw === writtenRawDraft) {
+            try { fsModule.unlinkSync(markerAbs); } catch { /* best effort */ }
+          }
+          throw refuse('gate re-read hash mismatch; refusing to claim an approval');
+        }
+        const done = `sdlc-lean: active spec gate ${reread.plan} -> ${reread.spec} (${reread.files.length} files, sha256 ${reread.plan_sha256.slice(0, 12)}) via tui-popup-autofill`;
+        log(context, done);
+        await showToast(context, done, 'info');
       } catch (err) {
-        if (!preexisting && rereadRaw === writtenRaw) {
-          try { fsModule.unlinkSync(markerAbs); } catch { /* best effort */ }
+        if (flipped) {
+          try { fsModule.writeFileSync(planAbs, originalRaw); } catch { /* best effort restore original */ }
         }
-        throw refuse(`gate re-read failed validation (${err?.message || err}); marker ${preexisting ? 'kept' : 'removed'}`);
-      }
-      if (reread.plan_sha256 !== shownPlanHash || reread.spec_sha256 !== shownSpecHash) {
-        if (!preexisting && rereadRaw === writtenRaw) {
-          try { fsModule.unlinkSync(markerAbs); } catch { /* best effort */ }
+        // Content-matched unlink: only a marker this invocation wrote with
+        // matching content is removed; a preexisting marker is never deleted.
+        if (wroteMarker && writtenRawDraft !== null && !preexisting) {
+          try {
+            const cur = fsModule.readFileSync(markerAbs, 'utf8');
+            if (cur === writtenRawDraft) fsModule.unlinkSync(markerAbs);
+          } catch { /* best effort */ }
         }
-        throw refuse('gate re-read hash mismatch; refusing to claim an approval');
+        if (err?.message?.startsWith('refused:')) throw err;
+        throw refuse(`${err?.message || err}`);
       }
-
-      const done = `sdlc-lean: active spec gate ${reread.plan} -> ${reread.spec} (${reread.files.length} files, sha256 ${reread.plan_sha256.slice(0, 12)}) via tui-popup`;
-      log(context, done);
-      await showToast(context, done, 'info');
     } catch (err) {
       await refuseTui(context, err?.message?.replace(/^refused:\s*/, '') || err);
     }

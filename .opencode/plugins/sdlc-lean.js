@@ -446,23 +446,38 @@ export const checkSpecGate = (tool, args = {}, root, opts = {}) => {
 // The installed global CLI is preferred; the project copy is a fallback used
 // only when no global copy exists. A fresh module URL is used per invocation so
 // a re-installed CLI (or a test fake) is not served from the ESM cache.
+// Global-first contract import: the installed global copy wins, the project
+// copy is used only when no global exists, and two differing copies refuse
+// instead of risking cli drift (mirrors register.js loadContractCli).
 export const resolveApprovalCli = (root) => {
-  const configHome = process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config');
-  const globalCli = path.join(configHome, 'opencode', 'scripts', 'spec-check.mjs');
-  try {
-    if (fs.statSync(globalCli).isFile()) return globalCli;
-  } catch (err) {
-    // no global install; try the project copy
-  }
-  if (typeof root === 'string' && root) {
-    const projectCli = path.join(root, 'scripts', 'spec-check.mjs');
+  const base = process.env.XDG_CONFIG_HOME
+    ? process.env.XDG_CONFIG_HOME
+    : (process.env.HOME ? path.join(process.env.HOME, '.config') : null);
+  const globalCli = base ? path.join(base, 'opencode', 'scripts', 'spec-check.mjs') : null;
+  const projectCli = (typeof root === 'string' && root) ? path.join(root, 'scripts', 'spec-check.mjs') : null;
+  const inspectCli = (candidate) => {
+    if (!candidate) return null;
+    let st;
     try {
-      if (fs.statSync(projectCli).isFile()) return projectCli;
+      st = fs.lstatSync(candidate);
     } catch (err) {
-      // no project copy either
+      if (err?.code === 'ENOENT') return null;
+      throw new Error(`[sdlc-lean] cannot inspect the spec-check cli: ${err?.message || err}`);
+    }
+    if (st.isSymbolicLink()) throw new Error(`[sdlc-lean] spec-check cli must not be a symlink: ${candidate} (cli parity refused)`);
+    if (!st.isFile()) return null;
+    return candidate;
+  };
+  const globalFound = inspectCli(globalCli);
+  const projectFound = inspectCli(projectCli);
+  if (globalFound && projectFound) {
+    const globalBytes = fs.readFileSync(globalFound);
+    const projectBytes = fs.readFileSync(projectFound);
+    if (!globalBytes.equals(projectBytes)) {
+      throw new Error('[sdlc-lean] global and project spec-check copies differ (cli parity refused); make them byte-identical or remove one');
     }
   }
-  return null;
+  return globalFound || projectFound || null;
 };
 
 const APPROVAL_USAGE = 'usage: /approve <repo-relative-or-absolute-plan.md> [sha256:<hex>]';
@@ -512,58 +527,260 @@ const approvePlan = async (ctx, { sessionID, prompt } = {}) => {
 
     // 1. Build first, then 2. contain plan/spec with realpath, 3. hash compare.
     const rel = mod.normalizeRel(root, arg);
-    const gate = mod.buildGate(root, rel);
+    let gate = null;
+    let isDraftAutofill = false;
+    try {
+      gate = mod.buildGate(root, rel);
+    } catch (err) {
+      if (err?.code !== 'not-approved') throw err;
+      isDraftAutofill = true;
+    }
 
-    const realRoot = fs.realpathSync(root);
-    for (const [label, relPath] of [['plan', gate.plan], ['spec', gate.spec]]) {
-      const real = fs.realpathSync(path.resolve(realRoot, relPath));
-      const inside = path.relative(realRoot, real);
+    if (!isDraftAutofill) {
+      const realRoot = fs.realpathSync(root);
+      for (const [label, relPath] of [['plan', gate.plan], ['spec', gate.spec]]) {
+        const real = fs.realpathSync(path.resolve(realRoot, relPath));
+        const inside = path.relative(realRoot, real);
+        if (!inside || inside === '..' || inside.startsWith(`..${path.sep}`) || path.isAbsolute(inside)) {
+          throw new Error(`refused: ${label} escapes the project root`);
+        }
+      }
+
+      if (hash && hash !== gate.plan_sha256) {
+        throw new Error(`sha256 mismatch: expected ${gate.plan_sha256}, got ${hash}`);
+      }
+
+      const markerAbs = path.join(root, '.sdlc', 'spec-gate.json');
+      let preexistingMarker = true;
+      try {
+        fs.lstatSync(markerAbs);
+      } catch (err) {
+        if (err.code !== 'ENOENT') throw err;
+        preexistingMarker = false;
+      }
+
+      // Realpath containment for the marker home: a symlinked .sdlc would
+      // redirect the write outside the project, so refuse instead of writing
+      // (mirrors the popup register.js containment).
+      const sdlcAbs = path.join(root, '.sdlc');
+      try {
+        const sdlcSt = fs.lstatSync(sdlcAbs);
+        if (sdlcSt.isSymbolicLink()) throw new Error('refused: .sdlc must not be a symlink (escape refused)');
+        const realSdlc = fs.realpathSync(sdlcAbs);
+        if (realSdlc !== realRoot && !realSdlc.startsWith(`${realRoot}${path.sep}`)) {
+          throw new Error('refused: .sdlc escapes the project root (realpath escape refused)');
+        }
+      } catch (err) {
+        if (err?.message?.startsWith('refused:')) throw err;
+        if (err?.code !== 'ENOENT') throw new Error(`refused: cannot inspect .sdlc: ${err?.message || err}`);
+      }
+
+      // Overwrite guard (mirrors the popup second confirm naming the old
+      // plan and hash): the typed path cannot ask again, so a valid active
+      // gate is kept and the human must close first.
+      if (preexistingMarker) {
+        let current = null;
+        let currentValid = false;
+        try {
+          current = mod.readGate(root);
+          mod.validateGate(root, current);
+          currentValid = true;
+        } catch {
+          currentValid = false;
+        }
+        if (currentValid) {
+          const oldPlan = typeof current?.plan === 'string' ? current.plan : 'unknown plan';
+          const oldHash = typeof current?.plan_sha256 === 'string' ? current.plan_sha256 : 'unknown hash';
+          throw new Error(`refused: active gate for ${oldPlan} (sha256 ${oldHash}) kept; run spec-check close before approving ${gate.plan}`);
+        }
+      }
+
+      // 4. Write the host-user marker (plan file is never written).
+      const marker = {
+        ...gate,
+        approved_by: os.userInfo().username,
+        approved_at: new Date().toISOString(),
+        approved_via: hash ? 'tui-picker' : 'tui-command',
+      };
+      await mod.writeGate(root, marker);
+
+      // 5. Re-read, validate, and compare; delete only a marker this call wrote.
+      try {
+        const written = mod.readGate(root);
+        const valid = mod.validateGate(root, written);
+        for (const key of ['plan', 'spec', 'plan_sha256', 'spec_sha256']) {
+          if (valid[key] !== gate[key]) throw new Error(`spec gate drift after write: ${key}`);
+        }
+        if (JSON.stringify(valid.files) !== JSON.stringify(gate.files)
+          || JSON.stringify(valid.allow || []) !== JSON.stringify(gate.allow || [])) {
+          throw new Error('spec gate drift after write: files/allow');
+        }
+      } catch (err) {
+        if (!preexistingMarker) {
+          try { fs.unlinkSync(markerAbs); } catch (cleanupErr) { /* best effort */ }
+        }
+        throw err;
+      }
+
+      await notify(`[sdlc-lean] spec gate active: ${marker.plan} -> ${marker.spec} (${marker.files.length} files, plan sha256 ${marker.plan_sha256.slice(0, 12)})`);
+      return;
+    }
+
+    // Symmetric draft autofill: same helpers/order/restore as the popup and
+    // the CLI approve (sanitizeApprovedBy -> applyApprovalFill ->
+    // parsePlanText preview + spec regular-file check -> write -> buildGate
+    // -> writeGate -> re-read -> validateGate). Pipe still refused: there is
+    // no pipe path here; a human invoking /approve is the approval.
+    // Keep fillApprovalFrontmatter in the shared-contract path (CLI reference
+    // for the same order); this path uses the pure fill for restore control.
+    void mod.fillApprovalFrontmatter;
+    const planAbsDraft = path.resolve(root, rel);
+    try {
+      const st = fs.lstatSync(planAbsDraft);
+      if (st.isSymbolicLink()) throw new Error('refused: plan must not be a symlink');
+      if (!st.isFile()) throw new Error('refused: plan is not a regular file');
+    } catch (err) {
+      if (err?.message?.startsWith('refused:')) throw err;
+      throw err;
+    }
+    const originalText = fs.readFileSync(planAbsDraft, 'utf8');
+    const draftHash = crypto.createHash('sha256').update(fs.readFileSync(planAbsDraft)).digest('hex');
+    if (hash && hash !== draftHash) {
+      throw new Error(`sha256 mismatch: expected ${draftHash}, got ${hash}`);
+    }
+    const realRootDraft = fs.realpathSync(root);
+    {
+      const real = fs.realpathSync(planAbsDraft);
+      const inside = path.relative(realRootDraft, real);
       if (!inside || inside === '..' || inside.startsWith(`..${path.sep}`) || path.isAbsolute(inside)) {
-        throw new Error(`refused: ${label} escapes the project root`);
+        throw new Error('refused: plan escapes the project root');
       }
     }
-
-    if (hash && hash !== gate.plan_sha256) {
-      throw new Error(`sha256 mismatch: expected ${gate.plan_sha256}, got ${hash}`);
+    const draftUsername = os.userInfo().username;
+    const by = mod.sanitizeApprovedBy(draftUsername);
+    const at = new Date().toISOString();
+    const next = mod.applyApprovalFill(originalText, by, at);
+    const preview = mod.parsePlanText(next);
+    {
+      const specAbs = path.resolve(root, preview.spec);
+      let sst;
+      try {
+        sst = fs.lstatSync(specAbs);
+      } catch (err) {
+        throw err;
+      }
+      if (sst.isSymbolicLink()) throw new Error('refused: spec must not be a symlink');
+      if (!sst.isFile()) throw new Error('refused: spec is not a regular file');
+      const realSpec = fs.realpathSync(specAbs);
+      const inside = path.relative(realRootDraft, realSpec);
+      if (!inside || inside === '..' || inside.startsWith(`..${path.sep}`) || path.isAbsolute(inside)) {
+        throw new Error('refused: spec escapes the project root');
+      }
     }
-
-    const markerAbs = path.join(root, '.sdlc', 'spec-gate.json');
-    let preexistingMarker = true;
+    const markerAbsDraft = path.join(root, '.sdlc', 'spec-gate.json');
+    let preexistingDraft = true;
     try {
-      fs.lstatSync(markerAbs);
+      const mst = fs.lstatSync(markerAbsDraft);
+      if (mst.isSymbolicLink()) throw new Error('refused: spec-gate marker must not be a symlink (escape refused)');
+      if (!mst.isFile()) preexistingDraft = true;
     } catch (err) {
+      if (err?.message?.startsWith('refused:')) throw err;
       if (err.code !== 'ENOENT') throw err;
-      preexistingMarker = false;
+      preexistingDraft = false;
     }
-
-    // 4. Write the host-user marker (plan file is never written).
-    const marker = {
-      ...gate,
-      approved_by: os.userInfo().username,
-      approved_at: new Date().toISOString(),
-      approved_via: hash ? 'tui-picker' : 'tui-command',
-    };
-    await mod.writeGate(root, marker);
-
-    // 5. Re-read, validate, and compare; delete only a marker this call wrote.
+    // Realpath containment for the marker home: a symlinked .sdlc would
+    // redirect the flip-then-gate writes outside the project, so refuse
+    // before mutating either file (mirrors the popup register.js containment).
+    const sdlcAbsDraft = path.join(root, '.sdlc');
     try {
-      const written = mod.readGate(root);
-      const valid = mod.validateGate(root, written);
-      for (const key of ['plan', 'spec', 'plan_sha256', 'spec_sha256']) {
-        if (valid[key] !== gate[key]) throw new Error(`spec gate drift after write: ${key}`);
-      }
-      if (JSON.stringify(valid.files) !== JSON.stringify(gate.files)
-        || JSON.stringify(valid.allow || []) !== JSON.stringify(gate.allow || [])) {
-        throw new Error('spec gate drift after write: files/allow');
+      const sdlcSt = fs.lstatSync(sdlcAbsDraft);
+      if (sdlcSt.isSymbolicLink()) throw new Error('refused: .sdlc must not be a symlink (escape refused)');
+      const realSdlc = fs.realpathSync(sdlcAbsDraft);
+      if (realSdlc !== realRootDraft && !realSdlc.startsWith(`${realRootDraft}${path.sep}`)) {
+        throw new Error('refused: .sdlc escapes the project root (realpath escape refused)');
       }
     } catch (err) {
-      if (!preexistingMarker) {
-        try { fs.unlinkSync(markerAbs); } catch (cleanupErr) { /* best effort */ }
+      if (err?.message?.startsWith('refused:')) throw err;
+      if (err?.code !== 'ENOENT') throw new Error(`refused: cannot inspect .sdlc: ${err?.message || err}`);
+    }
+    // Overwrite guard (mirrors the popup second confirm naming the old
+    // plan and hash): the typed path cannot ask again, so a valid active
+    // gate is kept and the human must close first — before the flip.
+    if (preexistingDraft) {
+      let current = null;
+      let currentValid = false;
+      try {
+        current = mod.readGate(root);
+        mod.validateGate(root, current);
+        currentValid = true;
+      } catch {
+        currentValid = false;
+      }
+      if (currentValid) {
+        const oldPlan = typeof current?.plan === 'string' ? current.plan : 'unknown plan';
+        const oldHash = typeof current?.plan_sha256 === 'string' ? current.plan_sha256 : 'unknown hash';
+        throw new Error(`refused: active gate for ${oldPlan} (sha256 ${oldHash}) kept; run spec-check close before approving ${rel}`);
+      }
+    }
+    let flipped = false;
+    let wroteMarker = false;
+    let writtenRawDraft = null;
+    try {
+      fs.writeFileSync(planAbsDraft, next);
+      flipped = true;
+      gate = mod.buildGate(root, rel);
+      const flippedHash = crypto.createHash('sha256').update(fs.readFileSync(planAbsDraft)).digest('hex');
+      if (gate.plan_sha256 !== flippedHash) throw new Error('refused: flip hash mismatch after buildGate');
+      for (const [label, relPath] of [['plan', gate.plan], ['spec', gate.spec]]) {
+        const real = fs.realpathSync(path.resolve(realRootDraft, relPath));
+        const inside = path.relative(realRootDraft, real);
+        if (!inside || inside === '..' || inside.startsWith(`..${path.sep}`) || path.isAbsolute(inside)) {
+          throw new Error(`refused: ${label} escapes the project root`);
+        }
+      }
+      const marker = {
+        ...gate,
+        approved_by: by,
+        approved_at: at,
+        approved_via: 'tui-popup-autofill',
+      };
+      await mod.writeGate(root, marker);
+      wroteMarker = true;
+      writtenRawDraft = `${JSON.stringify(marker, null, 2)}\n`;
+      try {
+        const written = mod.readGate(root);
+        const valid = mod.validateGate(root, written);
+        for (const key of ['plan', 'spec', 'plan_sha256', 'spec_sha256']) {
+          if (valid[key] !== gate[key]) throw new Error(`spec gate drift after write: ${key}`);
+        }
+        if (JSON.stringify(valid.files) !== JSON.stringify(gate.files)
+          || JSON.stringify(valid.allow || []) !== JSON.stringify(gate.allow || [])) {
+          throw new Error('spec gate drift after write: files/allow');
+        }
+      } catch (err) {
+        if (!preexistingDraft && wroteMarker && writtenRawDraft !== null) {
+          try {
+            const cur = fs.readFileSync(markerAbsDraft, 'utf8');
+            if (cur === writtenRawDraft) fs.unlinkSync(markerAbsDraft);
+          } catch (cleanupErr) { /* best effort */ }
+        } else if (!preexistingDraft) {
+          try { fs.unlinkSync(markerAbsDraft); } catch (cleanupErr) { /* best effort */ }
+        }
+        throw err;
+      }
+      await notify(`[sdlc-lean] spec gate active: ${marker.plan} -> ${marker.spec} (${marker.files.length} files, plan sha256 ${marker.plan_sha256.slice(0, 12)})`);
+    } catch (err) {
+      if (flipped) {
+        try { fs.writeFileSync(planAbsDraft, originalText); } catch (restoreErr) { /* best effort restore original */ }
+      }
+      if (wroteMarker && !preexistingDraft && writtenRawDraft !== null) {
+        try {
+          const cur = fs.readFileSync(markerAbsDraft, 'utf8');
+          if (cur === writtenRawDraft) fs.unlinkSync(markerAbsDraft);
+        } catch (cleanupErr) { /* best effort */ }
       }
       throw err;
     }
-
-    await notify(`[sdlc-lean] spec gate active: ${marker.plan} -> ${marker.spec} (${marker.files.length} files, plan sha256 ${marker.plan_sha256.slice(0, 12)})`);
   } catch (err) {
     await notify(`[sdlc-lean] /approve refused: ${err?.message || err}`);
   }

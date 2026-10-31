@@ -186,7 +186,7 @@ export const evidenceFor = (plan) => plan.replace(/\.md$/, '') + '-evidence.json
  * The pre-collapse check rejects multiline/YAML-comment injection (`\n`, `:`,
  * `#`); the post-check is belt-and-braces on the value written to the file.
  */
-const sanitizeApprovedBy = (value) => {
+export const sanitizeApprovedBy = (value) => {
   const candidate = (typeof value === 'string' && value.trim())
     || process.env.USER || process.env.USERNAME || 'human';
   const trimmed = String(candidate).trim();
@@ -201,7 +201,7 @@ const sanitizeApprovedBy = (value) => {
 };
 
 /** Pure fill: return the plan text with approval frontmatter applied (no I/O). */
-const applyApprovalFill = (text, by, at) => {
+export const applyApprovalFill = (text, by, at) => {
   const m = text.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
   if (!m) fail('missing-frontmatter', 'plan must start with YAML frontmatter');
   const updated = [];

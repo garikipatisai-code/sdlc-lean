@@ -218,7 +218,6 @@ const REFUSALS = [
   { label: 'parent escape', text: '../outside.md', pattern: /refused/i },
   { label: 'absolute path', text: '/etc/passwd', pattern: /refused/i },
   { label: 'missing plan', text: 'docs/plans/missing.md', pattern: /refused/i },
-  { label: 'draft plan', text: PLAN, plan: planText({ status: 'draft' }), pattern: /refused/i },
   { label: 'unsafe files', text: PLAN, plan: planText({ files: ['../secret'] }), pattern: /refused/i },
   { label: 'glob plan path', text: 'docs/plans/*.md', pattern: /refused/i },
 ];
@@ -240,6 +239,20 @@ test('behavior: refusals leave no marker and send a synthetic refusal', async (t
     assert.equal(ctx.prompts.length, 0, `${refusal.label}: no model prompt`);
     assert.equal(ctx.sessionCommands.length, 0, `${refusal.label}: no session command`);
   }
+});
+
+test('behavior: draft plan autofills frontmatter and records tui-popup-autofill', async (t) => {
+  clearGlobalCli();
+  t.after(clearGlobalCli);
+  const root = tempRepo(t, { plan: planText({ status: 'draft', approvedBy: '', approvedAt: '' }) });
+  const ctx = await preparedCtx(root);
+
+  await invoke(ctx, PLAN);
+
+  assert.ok(fs.existsSync(markerPath(root)), 'draft approval must write a marker');
+  const marker = JSON.parse(fs.readFileSync(markerPath(root), 'utf8'));
+  assert.equal(marker.approved_via, 'tui-popup-autofill');
+  assert.match(fs.readFileSync(path.join(root, PLAN), 'utf8'), /^status:\s*approved\s*$/m, 'draft status must be flipped');
 });
 
 test('behavior: no approval tool is registered', async (t) => {
@@ -286,7 +299,7 @@ test('behavior: non-TTY CLI still refuses approval', (t) => {
   assert.equal(fs.existsSync(markerPath(root)), false, 'a non-TTY approval must not write a marker');
 });
 
-test('behavior: prefers the installed global CLI over the project copy', async (t) => {
+test('behavior: refuses differing installed global and project CLIs', async (t) => {
   clearGlobalCli();
   t.after(clearGlobalCli);
   const root = tempRepo(t);
@@ -299,7 +312,8 @@ test('behavior: prefers the installed global CLI over the project copy', async (
   await invoke(ctx, PLAN);
 
   assert.equal(fs.existsSync(sentinel), false, 'the project CLI must not be imported when a global CLI exists');
-  assert.ok(fs.existsSync(markerPath(root)), 'the global CLI must approve the plan');
+  assert.equal(fs.existsSync(markerPath(root)), false, 'differing CLI copies must not approve the plan');
+  assert.match(syntheticText(ctx), /differ|parity|drift|refused/i);
 });
 
 test('behavior: falls back to the project CLI when no global CLI exists', async (t) => {
@@ -348,7 +362,7 @@ test('behavior: a mismatched marker written by the CLI is deleted and refused', 
   t.after(clearGlobalCli);
   const root = tempRepo(t);
   const sentinel = path.join(root, 'write-gate-called');
-  installGlobalModule(`import fs from 'node:fs';
+  const fakeCli = `import fs from 'node:fs';
 import path from 'node:path';
 import * as real from ${JSON.stringify(pathToFileURL(cliSource).href)};
 export const normalizeRel = real.normalizeRel;
@@ -362,7 +376,9 @@ export const writeGate = (root, gate) => {
   fs.writeFileSync(${JSON.stringify(sentinel)}, 'called');
   return p;
 };
-`);
+`;
+  installGlobalModule(fakeCli);
+  fs.writeFileSync(path.join(root, 'scripts', 'spec-check.mjs'), fakeCli);
   const ctx = await preparedCtx(root);
 
   await invoke(ctx, PLAN);

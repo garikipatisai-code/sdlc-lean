@@ -424,7 +424,7 @@ test('safety: V1 keeps exactly the four existing hooks', async () => {
 });
 
 // --- docs: user-facing contract --------------------------------------------
-test('docs: README, USAGE, and CHANGELOG name sdlc.approve, host evidence, and preview-only', () => {
+test('docs: README, USAGE, and CHANGELOG name sdlc.approve, host evidence, and tui-popup', () => {
   const read = (rel) => fs.readFileSync(path.join(repoRoot, rel), 'utf8');
   for (const [name, text] of [
     ['README.md', read('README.md')],
@@ -433,7 +433,7 @@ test('docs: README, USAGE, and CHANGELOG name sdlc.approve, host evidence, and p
   ]) {
     assert.ok(text.includes('sdlc.approve'), `${name} must name the sdlc.approve palette command`);
     assert.match(text, /host evidence/i, `${name} must name host evidence`);
-    assert.match(text, /preview-only/i, `${name} must name the preview-only picker`);
+    assert.match(text, /tui-popup/i, `${name} must name the tui-popup approval`);
   }
 });
 

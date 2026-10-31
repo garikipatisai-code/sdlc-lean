@@ -160,20 +160,22 @@ Every pipeline also has an explicit slash command when you want determinism:
   `simplified-technical-english` (STE-informed, not certified).
 - **Debt ledger** — deferred shortcuts are logged in `docs/debt-ledger.md`
   (format in the `lean-review` skill) instead of expanding an unrelated diff.
-- **Spec gate** — the V2 TUI palette command `sdlc.approve` is preview-only: it
-  shows the plan's `files`/`allow` patterns and SHA-256, then prints the exact
-  typed `/approve <absolute-path> sha256:<hex>` command. The human runs that
-  command (or the `spec-check approve` TTY fallback); the optional
-  `sha256:<hex>` binds approval to the plan bytes as `.sdlc/spec-gate.json` is
+- **Spec gate** — the V2 TUI palette command `sdlc.approve` is primary: it
+  shows the plan's `files`/`allow` patterns and SHA-256, and Approve writes
+  the normal `.sdlc/spec-gate.json` (`approved_via: tui-popup`). Typed
+  `/approve <absolute-path> sha256:<hex>` and the `spec-check approve` TTY
+  fallback stay; headless/SSH uses the TTY CLI; V1 loads no TUI part. The
+  optional `sha256:<hex>` binds approval to the plan bytes as `.sdlc/spec-gate.json` is
   written. Edits outside the plan's `files`/`allow` scope are blocked for
   `edit`/`write`/`patch`/`apply_patch`, and the plan/spec are immutable until
   `close` + re-approval. Bash redirection is outside the gate: it is a drift
-  guard, not a sandbox.
+  guard, not a sandbox. `approved_via: tui-popup` is informational and
+  bash-forgeable — trust comes from close evidence binding, not the label.
 
 ### Spec gate commands
 
 ```sh
-# V2 TUI palette: sdlc.approve (preview-only) and sdlc.status
+# V2 TUI palette: sdlc.approve (primary, approved_via: tui-popup) and sdlc.status
 /approve docs/plans/<slug>.md                              # V2 typed command (human-only)
 /approve docs/plans/<slug>.md sha256:<hex>                 # hash-bound typed approval
 node scripts/spec-check.mjs approve docs/plans/<slug>.md   # TTY fallback (human terminal)

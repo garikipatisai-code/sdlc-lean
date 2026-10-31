@@ -1,0 +1,30 @@
+{
+  "plan": "docs/plans/2026-10-31-popup-approval.md",
+  "plan_sha256": "e3027add2ef93504dd1b4b9e93ca5b5916b882c2cb5425ea1b4435053872633a",
+  "tasks": [
+    {
+      "task": 1,
+      "verify": "! node --test tests/opencode/test-tui-brain.mjs",
+      "exit": 0,
+      "at": "2026-10-31T01:45:50Z"
+    },
+    {
+      "task": 2,
+      "verify": "node --test tests/opencode/test-tui-brain.mjs",
+      "exit": 0,
+      "at": "2026-10-31T01:54:20Z"
+    },
+    {
+      "task": 3,
+      "verify": "grep -q tui-popup README.md USAGE.md CHANGELOG.md",
+      "exit": 0,
+      "at": "2026-10-31T01:55:12Z"
+    },
+    {
+      "task": 4,
+      "verify": "npm run verify && node eval/run.mjs",
+      "exit": 0,
+      "at": "2026-10-31T01:58:17Z"
+    }
+  ]
+}

@@ -3,6 +3,7 @@
 // that cannot provide it still lets the prompt fallback work.
 import crypto from 'node:crypto';
 import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const PLAN_DIR = 'docs/plans';
 const MARKER_REL = '.sdlc/spec-gate.json';
@@ -28,6 +29,9 @@ const loadFs = async () => {
 await loadFs();
 
 let activationToastShown = false;
+let tuiRegistered = false;
+
+const EXCERPT_CHARS = 2000;
 
 const sanitize = (value) => (typeof value === 'string' ? value.replace(CONTROL_CHARS, '') : '');
 
@@ -269,6 +273,91 @@ export const activationText = (count) => (
 
 export const resetTuiState = () => {
   activationToastShown = false;
+  tuiRegistered = false;
+};
+
+// Per-open project root: only the TUI location counts. Never the process
+// working directory and never a setup-time capture, so a stale checkout
+// cannot receive the gate.
+export const resolveTuiRoot = (context) => {
+  const dir = context?.data?.location?.directory ?? context?.location?.directory;
+  return typeof dir === 'string' && dir !== '' ? dir : null;
+};
+
+const refuse = (reason) => new Error(`refused: ${reason}`);
+
+const refuseTui = async (context, reason) => {
+  log(context, `sdlc-lean: refused: ${reason}`);
+  await showToast(context, 'refused — see session message', 'error');
+};
+
+// Global-first contract import: the installed global copy wins, the project
+// copy is used only when no global exists, and two differing copies refuse
+// instead of risking cli drift. Display must come from buildGate output.
+const loadContractCli = async (root) => {
+  if (!fsModule) throw refuse('filesystem unavailable; cannot load the spec-check contract');
+  const base = process.env.XDG_CONFIG_HOME
+    ? process.env.XDG_CONFIG_HOME
+    : (process.env.HOME ? path.join(process.env.HOME, '.config') : null);
+  const globalCli = base ? path.join(base, 'opencode', 'scripts', 'spec-check.mjs') : null;
+  const projectCli = path.join(root, 'scripts', 'spec-check.mjs');
+
+  const inspectCli = (candidate) => {
+    if (!candidate) return null;
+    let st;
+    try {
+      st = fsModule.lstatSync(candidate);
+    } catch (err) {
+      if (err?.code === 'ENOENT') return null;
+      throw refuse(`cannot inspect the spec-check cli: ${err?.message || err}`);
+    }
+    if (st.isSymbolicLink()) throw refuse(`spec-check cli must not be a symlink: ${candidate} (cli parity refused)`);
+    if (!st.isFile()) return null;
+    return candidate;
+  };
+
+  const globalFound = inspectCli(globalCli);
+  const projectFound = inspectCli(projectCli);
+  if (globalFound && projectFound) {
+    const globalBytes = fsModule.readFileSync(globalFound);
+    const projectBytes = fsModule.readFileSync(projectFound);
+    if (!globalBytes.equals(projectBytes)) {
+      throw refuse('global and project spec-check copies differ (cli parity refused); make them byte-identical or remove one');
+    }
+  }
+  let chosen = globalFound || projectFound;
+  if (!chosen) {
+    const bundled = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'scripts', 'spec-check.mjs');
+    if (!inspectCli(bundled)) {
+      throw refuse('no spec-check cli found (global or project copy required); approve in a terminal instead');
+    }
+    chosen = bundled;
+  }
+  let mod;
+  try {
+    mod = await import(pathToFileURL(chosen).href);
+  } catch (err) {
+    throw refuse(`cannot import the spec-check cli: ${err?.message || err}`);
+  }
+  for (const fn of ['buildGate', 'readGate', 'writeGate', 'validateGate']) {
+    if (typeof mod[fn] !== 'function') throw refuse(`spec-check cli is missing the ${fn} contract`);
+  }
+  return mod;
+};
+
+// Host username comes from a dynamic node:os import. Refuse when the host
+// cannot provide it instead of recording a forged or empty owner.
+const readOsUsername = async () => {
+  let userInfo;
+  try {
+    const osMod = await import('node:os');
+    userInfo = osMod.userInfo();
+  } catch (err) {
+    throw refuse(`host username unavailable (node:os userInfo failed: ${err?.message || err})`);
+  }
+  const name = typeof userInfo?.username === 'string' ? userInfo.username : '';
+  if (name === '') throw refuse('host username unavailable (node:os returned an empty username)');
+  return name;
 };
 
 const activationCount = async (context) => {
@@ -285,9 +374,11 @@ const activationCount = async (context) => {
 };
 
 export const setupTui = async (context) => {
-  const root = context?.data?.location?.directory
-    || context?.location?.directory
-    || context?.directory;
+  const keymap = context?.keymap;
+  if (!keymap || typeof keymap.layer !== 'function') {
+    log(context, 'sdlc-lean: TUI keymap unavailable; palette commands not registered');
+    return;
+  }
 
   try {
     const count = await activationCount(context);
@@ -303,19 +394,32 @@ export const setupTui = async (context) => {
     log(context, `sdlc-lean: activation failed: ${err?.message || err}`);
   }
 
+  if (tuiRegistered) {
+    log(context, 'sdlc-lean: palette already registered; skipping duplicate layer');
+    return;
+  }
+
   const openPicker = async () => {
     try {
       const sessionID = resolveSessionID(context);
-      if (!sessionID) {
-        await showToast(context, 'sdlc-lean: no current session; refusing to pick a plan', 'warning');
-        return;
-      }
+      if (!sessionID) throw refuse('no current session; refusing to pick a plan');
+      const root = resolveTuiRoot(context);
+      if (!root) throw refuse('TUI location unknown; refusing to approve without a project root');
+      if (!fsModule) throw refuse('filesystem unavailable (gate status unknown); approve in a terminal with /approve <absolute plan path> sha256:<plan hash>');
+      const cli = await loadContractCli(root);
+      const username = await readOsUsername();
       const plans = listPlans(root);
-      if (plans.length === 0) {
-        await showToast(context, 'sdlc-lean: no plans found in docs/plans', 'warning');
+      if (plans.length === 0) throw refuse('no plans found in docs/plans');
+
+      if (!context?.dialog || typeof context.dialog.select !== 'function') {
+        const fallback = cli.buildGate(root, plans[0].rel);
+        const exact = buildApproveCommand(root, fallback.plan, fallback.plan_sha256);
+        log(context, `sdlc-lean: dialog unavailable; approve in a terminal: ${exact}`);
+        await showToast(context, exact, 'info');
         return;
       }
-      const selected = await context?.dialog?.select?.({
+
+      const selected = await context.dialog.select({
         title: 'Approve SDLC plan',
         options: plans.map((plan) => ({ label: plan.rel, value: plan.rel })),
       });
@@ -324,34 +428,160 @@ export const setupTui = async (context) => {
         : selected?.value ?? selected?.rel ?? selected?.label;
       if (!rel) return;
 
-      const details = planDetails(root, rel);
-      const command = buildApproveCommand(root, rel, details.plan_sha256);
+      if (resolveSessionID(context) !== sessionID) {
+        throw refuse('session changed since the plan list; aborting approve');
+      }
+
+      const gate = cli.buildGate(root, rel);
+      const shownPlanHash = gate.plan_sha256;
+      const shownSpecHash = gate.spec_sha256;
+      const planFile = containedFile(root, gate.plan, MAX_PLAN_BYTES);
+      const excerpt = fsModule.readFileSync(planFile.abs, 'utf8').slice(0, EXCERPT_CHARS);
       const message = [
-        `plan: ${details.plan}`,
-        `status: ${details.status || 'unknown'}`,
-        `spec: ${details.spec}`,
-        'files:',
-        ...details.files.map((file) => `  - ${file}`),
-        'allow:',
-        ...details.allow.map((file) => `  - ${file}`),
-        `plan sha256: ${details.plan_sha256}`,
+        `plan: ${gate.plan}`,
+        `spec: ${gate.spec}`,
+        `files (${gate.files.length}):`,
+        ...gate.files.map((file) => `  - ${file}`),
+        `allow (${(gate.allow || []).length}):`,
+        ...(gate.allow || []).map((file) => `  - ${file}`),
+        `plan sha256: ${shownPlanHash}`,
+        `spec sha256: ${shownSpecHash}`,
+        `excerpt (first ${EXCERPT_CHARS} chars):`,
+        excerpt,
         '',
-        'preview-only: review the scope, then run this command yourself:',
-        command,
+        'Approve writes .sdlc/spec-gate.json here (preview-only retired).',
+        `Fallback: ${buildApproveCommand(root, gate.plan, shownPlanHash)}`,
       ].join('\n');
 
-      const confirmed = await context?.dialog?.confirm?.({ title: 'Approve SDLC plan', message });
+      if (typeof context.dialog.confirm !== 'function') {
+        const exact = buildApproveCommand(root, gate.plan, shownPlanHash);
+        log(context, `sdlc-lean: confirm unavailable; approve in a terminal: ${exact}`);
+        await showToast(context, exact, 'info');
+        return;
+      }
+      const confirmed = await context.dialog.confirm({ title: 'Approve SDLC plan', message });
       if (!confirmed) return;
-      await showToast(context, 'preview-only: run the command shown', 'info');
+
+      if (resolveSessionID(context) !== sessionID) {
+        throw refuse('session changed after confirm; aborting approve');
+      }
+      const liveRoot = resolveTuiRoot(context);
+      if (!liveRoot || path.resolve(liveRoot) !== path.resolve(root)) {
+        throw refuse('project root changed after confirm; aborting approve');
+      }
+
+      // Hash chain: the shown hashes must equal a fresh re-read, for the plan
+      // and the spec alike. Anything else is drift or tampering: refuse before
+      // touching the marker.
+      const planAgain = containedFile(liveRoot, gate.plan, MAX_PLAN_BYTES);
+      const specAgain = containedFile(liveRoot, gate.spec, MAX_PLAN_BYTES);
+      const planHashAgain = sha256(fsModule.readFileSync(planAgain.abs));
+      const specHashAgain = sha256(fsModule.readFileSync(specAgain.abs));
+      if (planHashAgain !== shownPlanHash || specHashAgain !== shownSpecHash) {
+        throw refuse('plan changed after details (hash mismatch); preexisting marker kept');
+      }
+
+      // Realpath containment for the marker home: a symlinked .sdlc would
+      // redirect the write outside the project, so refuse instead of writing.
+      const sdlcAbs = path.resolve(liveRoot, '.sdlc');
+      const realRoot = fsModule.realpathSync(path.resolve(liveRoot));
+      try {
+        const sdlcSt = fsModule.lstatSync(sdlcAbs);
+        if (sdlcSt.isSymbolicLink()) throw refuse('.sdlc must not be a symlink (escape refused)');
+        const realSdlc = fsModule.realpathSync(sdlcAbs);
+        if (realSdlc !== realRoot && !realSdlc.startsWith(`${realRoot}${path.sep}`)) {
+          throw refuse('.sdlc escapes the project root (realpath escape refused)');
+        }
+      } catch (err) {
+        if (err?.message?.startsWith('refused:')) throw err;
+        if (err?.code !== 'ENOENT') throw refuse(`cannot inspect .sdlc: ${err?.message || err}`);
+      }
+
+      const markerAbs = path.resolve(liveRoot, MARKER_REL);
+      let preexisting = false;
+      try {
+        const markerSt = fsModule.lstatSync(markerAbs);
+        if (markerSt.isSymbolicLink()) throw refuse('spec-gate marker must not be a symlink (escape refused)');
+        if (markerSt.isFile()) preexisting = true;
+      } catch (err) {
+        if (err?.message?.startsWith('refused:')) throw err;
+        if (err?.code !== 'ENOENT') throw refuse(`cannot inspect the spec-gate marker: ${err?.message || err}`);
+      }
+
+      if (preexisting) {
+        let current = null;
+        let currentValid = false;
+        try {
+          current = cli.readGate(liveRoot);
+          cli.validateGate(liveRoot, current);
+          currentValid = true;
+        } catch {
+          currentValid = false;
+        }
+        if (currentValid) {
+          const oldPlan = typeof current?.plan === 'string' ? current.plan : 'unknown plan';
+          const oldHash = typeof current?.plan_sha256 === 'string' ? current.plan_sha256 : 'unknown hash';
+          const overwrite = await context.dialog.confirm({
+            title: 'Overwrite active spec gate',
+            message: [
+              `gate active for ${oldPlan} (sha256 ${oldHash}).`,
+              `Approve ${gate.plan} instead? Confirm again to overwrite,`,
+              'or run spec-check close first.',
+            ].join('\n'),
+          });
+          if (!overwrite) {
+            throw refuse(`active gate for ${oldPlan} kept; run spec-check close before approving ${gate.plan}`);
+          }
+        }
+      }
+
+      const gateToWrite = {
+        ...gate,
+        approved_by: username,
+        approved_at: new Date().toISOString(),
+        approved_via: 'tui-popup',
+      };
+      cli.writeGate(liveRoot, gateToWrite);
+
+      // Re-read and validate through the full contract. On mismatch, unlink
+      // only a marker this invocation wrote with matching content; a
+      // preexisting marker is never deleted.
+      const writtenRaw = `${JSON.stringify(gateToWrite, null, 2)}\n`;
+      const rereadRaw = fsModule.readFileSync(markerAbs, 'utf8');
+      let reread;
+      try {
+        reread = JSON.parse(rereadRaw);
+        cli.validateGate(liveRoot, reread);
+      } catch (err) {
+        if (!preexisting && rereadRaw === writtenRaw) {
+          try { fsModule.unlinkSync(markerAbs); } catch { /* best effort */ }
+        }
+        throw refuse(`gate re-read failed validation (${err?.message || err}); marker ${preexisting ? 'kept' : 'removed'}`);
+      }
+      if (reread.plan_sha256 !== shownPlanHash || reread.spec_sha256 !== shownSpecHash) {
+        if (!preexisting && rereadRaw === writtenRaw) {
+          try { fsModule.unlinkSync(markerAbs); } catch { /* best effort */ }
+        }
+        throw refuse('gate re-read hash mismatch; refusing to claim an approval');
+      }
+
+      const done = `sdlc-lean: active spec gate ${reread.plan} -> ${reread.spec} (${reread.files.length} files, sha256 ${reread.plan_sha256.slice(0, 12)}) via tui-popup`;
+      log(context, done);
+      await showToast(context, done, 'info');
     } catch (err) {
-      log(context, `sdlc-lean: plan picker refused: ${err?.message || err}`);
-      await showToast(context, 'refused — see session message', 'error');
+      await refuseTui(context, err?.message?.replace(/^refused:\s*/, '') || err);
     }
   };
 
   const showStatus = async () => {
     try {
-      const gate = gateSummary(root);
+      const liveRoot = resolveTuiRoot(context);
+      if (!liveRoot) throw refuse('TUI location unknown; no project root for status');
+      if (!fsModule) {
+        await showToast(context, 'sdlc-lean: gate status unknown (filesystem unavailable)', 'warning');
+        return;
+      }
+      const gate = gateSummary(liveRoot);
       if (gate?.active && gate.invalid) {
         await showToast(context, 'gate invalid', 'error');
         return;
@@ -360,7 +590,7 @@ export const setupTui = async (context) => {
         await showToast(context, 'no active spec gate', 'info');
         return;
       }
-      const evidence = hostEvidenceSummary(root, gate);
+      const evidence = hostEvidenceSummary(liveRoot, gate);
       const message = [
         'gate: active',
         `plan: ${gate.plan}`,
@@ -371,29 +601,27 @@ export const setupTui = async (context) => {
       ].join('\n');
       await showToast(context, message, 'info');
     } catch (err) {
-      log(context, `sdlc-lean: status refused: ${err?.message || err}`);
-      await showToast(context, 'refused — see session message', 'error');
+      await refuseTui(context, err?.message?.replace(/^refused:\s*/, '') || err);
     }
   };
-
-  const keymap = context?.keymap;
-  if (!keymap || typeof keymap.layer !== 'function') {
-    log(context, 'sdlc-lean: TUI keymap unavailable; palette commands not registered');
-    return;
-  }
 
   const commands = [
     { id: 'sdlc.approve', title: 'Approve SDLC plan', palette: true, bind: 'ctrl+shift+a', run: openPicker },
     { id: 'sdlc.status', title: 'SDLC status', palette: true, run: showStatus },
   ];
 
+  const registerLayer = (layerCommands) => {
+    keymap.layer(() => ({ mode: 'global', commands: layerCommands }));
+    tuiRegistered = true;
+  };
+
   try {
-    keymap.layer(() => ({ mode: 'global', commands }));
+    registerLayer(commands);
   } catch (err) {
     log(context, `sdlc-lean: keymap bind rejected (${err?.message || err}); retrying palette-only`);
     const paletteOnly = commands.map(({ bind, ...command }) => command);
     try {
-      keymap.layer(() => ({ mode: 'global', commands: paletteOnly }));
+      registerLayer(paletteOnly);
     } catch (retryErr) {
       log(context, `sdlc-lean: TUI palette registration failed: ${retryErr?.message || retryErr}`);
     }

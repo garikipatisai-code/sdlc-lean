@@ -21,6 +21,18 @@ Scope: persisted bootstrap injection, TUI plan discovery/approval, hash-only hos
 | Installer → V1 | V1 loads the TUI directory and breaks startup | low | V1 loads plugin files, not directories; installer test asserts the server file stays a file; V1 hooks unchanged | plugin |
 | Host evidence script → close | Malformed/oversized lines throw or block close | low | Skip malformed lines with a count; cap line length; script is read-only; default advisory; `--require-host` opt-in | plugin |
 
+## 2026-10-31 — Popup approval (TUI direct write)
+
+Scope: palette/keybind picker lists plans, shows files/allow plus plan SHA-256 and spec, and the TUI process writes `.sdlc/spec-gate.json` directly with `approved_via: tui-popup`. No `session.command`, no agent write, no CLI change.
+
+| boundary | threat | risk | mitigation | residual owner |
+|---|---|---|---|---|
+| Human → TUI popup | A spoofed dialog, automation, or second plugin clicks Approve without a deliberate human act | high | Palette/keybind plus `dialog.select`/`dialog.confirm` are user-invoked; no agent or `session.command` path; shown hash is compared before write; marker is re-read and validated; `approved_via: tui-popup` distinguishes the path | host user |
+| Agent → gate file | An agent with bash writes `.sdlc/spec-gate.json` directly, forging a popup approval | high | Agent bypass (D-013) remains; close validates plan/spec hashes against files; host evidence stays advisory; documented as not tamper-proof, no sandbox claimed | host user |
+| TUI → filesystem | A crafted plan name escapes `docs/plans`, follows a symlink, or exhausts memory | low | Immediate `*.md` only; skip progress/evidence/symlink/non-regular/>1MB/control/whitespace; realpath containment under the project root; import the installed CLI | plugin |
+| TUI → wrong project | The popup resolves the wrong root or session and approves another checkout | high | Root from the TUI location only, never `cwd`; current session route only, refuse otherwise; absolute plan path; hash compare before write | plugin |
+| Marker → user | A tampered marker or changed plan file is displayed as valid | high | Verify `plan_sha256`/`spec_sha256` against file bytes before display; mismatch returns invalid and the status shows `gate invalid` only | plugin |
+
 ## Rules
 
 - No finding without a traced path.

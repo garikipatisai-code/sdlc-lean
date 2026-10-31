@@ -433,3 +433,289 @@ test('tui: the part is plain JS with no JSX and no npm import', () => {
     }
   }
 });
+
+// --- Task 1 RED: direct-write contract (must FAIL against preview-only register.js) ---
+// Future register.js resolves the project root per open from the TUI location
+// only (data.location.directory else location.directory), never cwd or
+// ctx.directory. Session is re-checked after confirm. CLI parity is
+// global-first with byte-compare refuse. Hash chain, lstat preexistence,
+// content-matched delete, second confirm on overwrite, validateGate display,
+// fallback matrix, module guard, tui-popup token, 2000-char View cap.
+
+test('tui: approve resolves the project root per open from the TUI location', async (t) => {
+  const rootA = tempRoot(t);
+  const rootB = tempRoot(t);
+  fs.writeFileSync(path.join(rootB, OTHER_REL), planText({ files: ['b-only-marker.js'] }));
+  register.resetTuiState();
+  const made = makeTuiCtx({ root: rootA, select: OTHER_REL, confirm: false });
+  await register.setupTui(made.context);
+  made.context.location.directory = rootB;
+  if (made.context.data?.location) {
+    try { made.context.data.location.directory = rootB; } catch { /* ignore */ }
+  }
+  await commandById(made, 'sdlc.approve').run();
+  const text = allText(made.calls);
+  assert.ok(text.includes('b-only-marker.js'), `listing/details must resolve root B per open, got: ${text.slice(0, 800)}`);
+  assert.equal(made.calls.sessionCommand.length, 0);
+  assert.equal(made.calls.sessionPrompt.length, 0);
+});
+
+test('tui: approve refuses without a TUI location and never uses cwd or ctx.directory', async (t) => {
+  const root = tempRoot(t);
+  register.resetTuiState();
+  const made = makeTuiCtx({ root, location: false, dataDirectory: false });
+  made.context.directory = root;
+  try { delete made.context.location; } catch { /* ignore */ }
+  await register.setupTui(made.context);
+  await commandById(made, 'sdlc.approve').run();
+  const text = allText(made.calls);
+  assert.match(text, /location|root|refus/i);
+  assert.equal(made.calls.select.length, 0, 'missing TUI location must not open the picker');
+  assert.equal(fs.existsSync(path.join(root, '.sdlc', 'spec-gate.json')), false);
+  assert.equal(made.calls.sessionCommand.length, 0);
+  assert.equal(made.calls.sessionPrompt.length, 0);
+});
+
+test('tui: approve aborts when the session changes between select and confirm', async (t) => {
+  const root = tempRoot(t);
+  register.resetTuiState();
+  const made = makeTuiCtx({ root, select: PLAN_REL, confirm: true });
+  await register.setupTui(made.context);
+  let calls = 0;
+  made.context.ui.router.current = () => {
+    calls += 1;
+    return calls === 1
+      ? { type: 'session', sessionID: 'sess-S1' }
+      : { type: 'session', sessionID: 'sess-S2' };
+  };
+  await commandById(made, 'sdlc.approve').run();
+  const text = allText(made.calls);
+  assert.match(text, /session|switch|abort|changed|refus/i);
+  const hash = sha256(fs.readFileSync(path.join(root, PLAN_REL)));
+  const exact = `/approve ${path.resolve(root, PLAN_REL)} sha256:${hash}`;
+  assert.ok(!text.includes(exact), 'must not show the approve command after a session switch');
+  assert.equal(fs.existsSync(path.join(root, '.sdlc', 'spec-gate.json')), false);
+  assert.equal(made.calls.sessionCommand.length, 0);
+  assert.equal(made.calls.sessionPrompt.length, 0);
+});
+
+test('tui: approve refuses when the global CLI differs from the project CLI', async (t) => {
+  const root = tempRoot(t);
+  const projDir = path.join(root, 'scripts');
+  fs.mkdirSync(projDir, { recursive: true });
+  fs.writeFileSync(path.join(projDir, 'spec-check.mjs'), '// project cli v1\n');
+  const xdg = fs.mkdtempSync(path.join(os.tmpdir(), 'sdlc-xdg-'));
+  t.after(() => fs.rmSync(xdg, { recursive: true, force: true }));
+  const globalDir = path.join(xdg, 'opencode', 'scripts');
+  fs.mkdirSync(globalDir, { recursive: true });
+  fs.writeFileSync(path.join(globalDir, 'spec-check.mjs'), '// global cli v2 different\n');
+  const prevXdg = process.env.XDG_CONFIG_HOME;
+  const prevHome = process.env.HOME;
+  process.env.XDG_CONFIG_HOME = xdg;
+  process.env.HOME = xdg;
+  t.after(() => {
+    if (prevXdg === undefined) delete process.env.XDG_CONFIG_HOME;
+    else process.env.XDG_CONFIG_HOME = prevXdg;
+    if (prevHome === undefined) delete process.env.HOME;
+    else process.env.HOME = prevHome;
+  });
+  register.resetTuiState();
+  const made = makeTuiCtx({ root, select: PLAN_REL, confirm: true });
+  await register.setupTui(made.context);
+  await commandById(made, 'sdlc.approve').run();
+  const text = allText(made.calls);
+  assert.match(text, /cli|diverg|differ|parity|drift/i);
+  assert.equal(fs.existsSync(path.join(root, '.sdlc', 'spec-gate.json')), false);
+  assert.equal(made.calls.sessionCommand.length, 0);
+  assert.equal(made.calls.sessionPrompt.length, 0);
+});
+
+test('tui: approve refuses when the plan changes after details and keeps a preexisting marker', async (t) => {
+  const root = tempRoot(t, { gate: true });
+  const markerPath = path.join(root, '.sdlc', 'spec-gate.json');
+  const before = fs.readFileSync(markerPath, 'utf8');
+  register.resetTuiState();
+  const made = makeTuiCtx({ root, select: PLAN_REL, confirm: true });
+  await register.setupTui(made.context);
+  const origConfirm = made.context.dialog.confirm;
+  made.context.dialog.confirm = async (input) => {
+    fs.appendFileSync(path.join(root, PLAN_REL), '\n# tampered after details\n');
+    return origConfirm(input);
+  };
+  await commandById(made, 'sdlc.approve').run();
+  const text = allText(made.calls);
+  assert.match(text, /mismatch|drift|changed|tamper|rewrit|hash|refus/i);
+  assert.ok(fs.existsSync(markerPath), 'preexisting marker must survive a failed approve');
+  assert.equal(fs.readFileSync(markerPath, 'utf8'), before);
+  assert.equal(made.calls.sessionCommand.length, 0);
+  assert.equal(made.calls.sessionPrompt.length, 0);
+});
+
+test('tui: approve refuses symlink escapes without writing outside the root', async (t) => {
+  const root = tempRoot(t);
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'sdlc-outside-'));
+  t.after(() => fs.rmSync(outside, { recursive: true, force: true }));
+  const outsidePlan = path.join(outside, 'evil.md');
+  fs.writeFileSync(outsidePlan, planText());
+  try { fs.symlinkSync(outsidePlan, path.join(root, 'docs', 'plans', 'linked-evil.md')); } catch { /* ignore */ }
+  const outsideSdlc = path.join(outside, 'sdlc');
+  fs.mkdirSync(outsideSdlc, { recursive: true });
+  try { fs.symlinkSync(outsideSdlc, path.join(root, '.sdlc')); } catch { /* ignore */ }
+  register.resetTuiState();
+  const made = makeTuiCtx({ root, select: PLAN_REL, confirm: true });
+  await register.setupTui(made.context);
+  await commandById(made, 'sdlc.approve').run();
+  const text = allText(made.calls);
+  assert.match(text, /symlink|escape|outside|realpath|refus/i);
+  assert.equal(fs.existsSync(path.join(outside, 'spec-gate.json')), false);
+  assert.equal(fs.existsSync(path.join(outsideSdlc, 'spec-gate.json')), false);
+  assert.equal(made.calls.sessionCommand.length, 0);
+  assert.equal(made.calls.sessionPrompt.length, 0);
+});
+
+test('tui: approve refuses to overwrite an active gate with a single confirm and hints close', async (t) => {
+  const root = tempRoot(t, { gate: true });
+  fs.writeFileSync(path.join(root, OTHER_REL), planText({ files: ['other.js'] }));
+  register.resetTuiState();
+  const made = makeTuiCtx({ root, select: OTHER_REL, confirm: true });
+  await register.setupTui(made.context);
+  let confirmCalls = 0;
+  made.context.dialog.confirm = async (input) => {
+    made.calls.confirm.push(input);
+    confirmCalls += 1;
+    return confirmCalls === 1;
+  };
+  const before = fs.readFileSync(path.join(root, '.sdlc', 'spec-gate.json'), 'utf8');
+  await commandById(made, 'sdlc.approve').run();
+  const text = allText(made.calls);
+  assert.match(text, /close/i);
+  assert.match(text, /refus|overwrite|active/i);
+  assert.equal(fs.readFileSync(path.join(root, '.sdlc', 'spec-gate.json'), 'utf8'), before);
+  assert.equal(made.calls.sessionCommand.length, 0);
+  assert.equal(made.calls.sessionPrompt.length, 0);
+});
+
+test('tui: approve overwrites only with a second confirm naming the old plan and hash', async (t) => {
+  const root = tempRoot(t, { gate: true });
+  fs.writeFileSync(path.join(root, OTHER_REL), planText({ files: ['other.js'] }));
+  const oldGate = spec.readGate(root);
+  register.resetTuiState();
+  const made = makeTuiCtx({ root, select: OTHER_REL, confirm: true });
+  await register.setupTui(made.context);
+  await commandById(made, 'sdlc.approve').run();
+  assert.ok(made.calls.confirm.length >= 2, 'overwrite needs a second confirm');
+  const second = JSON.stringify(made.calls.confirm[1] || {});
+  assert.ok(second.includes(oldGate.plan), 'second confirm must name the old plan');
+  assert.ok(
+    second.includes(oldGate.plan_sha256) || second.includes(oldGate.plan_sha256.slice(0, 12)),
+    'second confirm must name the old hash',
+  );
+  const after = spec.readGate(root);
+  assert.equal(after.plan, OTHER_REL);
+  assert.equal(after.approved_via, 'tui-popup');
+  assert.equal(made.calls.sessionCommand.length, 0);
+  assert.equal(made.calls.sessionPrompt.length, 0);
+});
+
+test('tui: approve without dialog shows the exact approve command via toast or log', async (t) => {
+  const root = tempRoot(t);
+  register.resetTuiState();
+  const made = makeTuiCtx({ root });
+  delete made.context.dialog;
+  await register.setupTui(made.context);
+  await commandById(made, 'sdlc.approve').run();
+  const hash = sha256(fs.readFileSync(path.join(root, PLAN_REL)));
+  const exact = `/approve ${path.resolve(root, PLAN_REL)} sha256:${hash}`;
+  const text = allText(made.calls);
+  assert.ok(text.includes(exact), `dialog fallback must show the exact command: ${exact}`);
+});
+
+test('tui: setup without keymap logs only and never toasts', async (t) => {
+  const root = tempRoot(t);
+  register.resetTuiState();
+  const made = makeTuiCtx({ root, skillList: [1, 2] });
+  delete made.context.keymap;
+  await register.setupTui(made.context);
+  assert.equal(made.calls.toast.length, 0, 'keymap missing must not toast');
+  assert.ok(made.calls.log.length >= 1, 'keymap missing must log');
+  assert.match(JSON.stringify(made.calls.log), /keymap|palette/i);
+});
+
+test('tui: palette survives a bind parse error and approve still writes without session command', async (t) => {
+  const root = tempRoot(t);
+  register.resetTuiState();
+  const made = makeTuiCtx({ root, bindFailsOnce: true, select: PLAN_REL, confirm: true });
+  await register.setupTui(made.context);
+  assert.ok(made.getCommands().some((c) => c.id === 'sdlc.approve'), 'the palette survives');
+  await commandById(made, 'sdlc.approve').run();
+  const gate = spec.readGate(root);
+  assert.ok(gate, 'approve must write a marker even after bind retry');
+  assert.equal(made.calls.sessionCommand.length, 0);
+  assert.equal(made.calls.sessionPrompt.length, 0);
+});
+
+test('tui: two setupTui calls register sdlc.approve once', async (t) => {
+  const root = tempRoot(t);
+  register.resetTuiState();
+  const first = makeTuiCtx({ root });
+  const second = makeTuiCtx({ root });
+  await register.setupTui(first.context);
+  await register.setupTui(second.context);
+  const layers = [...first.calls.layers, ...second.calls.layers];
+  const approves = layers.flatMap((l) => l.commands || []).filter((c) => c.id === 'sdlc.approve');
+  assert.equal(approves.length, 1, 'module guard must register approve once');
+});
+
+test('tui: success marker carries tui-popup, UTC time, and host username', async (t) => {
+  const root = tempRoot(t);
+  register.resetTuiState();
+  const made = makeTuiCtx({ root, select: PLAN_REL, confirm: true });
+  await register.setupTui(made.context);
+  await commandById(made, 'sdlc.approve').run();
+  const gate = spec.readGate(root);
+  assert.ok(gate, 'approve must write a marker');
+  assert.equal(gate.approved_via, 'tui-popup');
+  assert.match(String(gate.approved_at), /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/);
+  assert.equal(gate.approved_by, os.userInfo().username);
+  assert.equal(made.calls.sessionCommand.length, 0);
+  assert.equal(made.calls.sessionPrompt.length, 0);
+});
+
+test('tui: approve refuses when node:os is unavailable', async () => {
+  const src = fs.readFileSync(path.join(tuiDir, 'register.js'), 'utf8');
+  assert.ok(src.includes('node:os'), 'register must dynamically import node:os for username');
+  assert.ok(/refus/i.test(src), 'register must refuse when the username is unavailable');
+});
+
+test('tui: approve details cap the plan excerpt at 2000 chars with file and allow counts', async (t) => {
+  const root = tempRoot(t);
+  const bigRel = 'docs/plans/2026-10-31-big.md';
+  fs.writeFileSync(path.join(root, bigRel), `${planText()}\n${'A'.repeat(5000)}\n`);
+  register.resetTuiState();
+  const made = makeTuiCtx({ root, select: bigRel, confirm: false });
+  await register.setupTui(made.context);
+  await commandById(made, 'sdlc.approve').run();
+  const input = made.calls.confirm[0];
+  const msg = typeof input === 'string' ? input : JSON.stringify(input);
+  assert.ok(msg.includes('A'.repeat(500)), 'details must include a capped excerpt');
+  assert.ok(!msg.includes('A'.repeat(5000)), 'excerpt must be truncated, not the full body');
+  assert.match(msg, /file|allow/i);
+  assert.match(msg, /2|count/i);
+});
+
+test('tui: no approve or status path uses client.session.command or session.prompt', async (t) => {
+  const src = fs.readFileSync(path.join(tuiDir, 'register.js'), 'utf8');
+  assert.ok(!src.includes('session.command'), 'register must not use session.command');
+  assert.ok(!src.includes('session.prompt'), 'register must not use session.prompt');
+  assert.ok(!src.includes('client.session'), 'register must not use client.session');
+  const root = tempRoot(t);
+  register.resetTuiState();
+  const made = makeTuiCtx({ root, select: PLAN_REL, confirm: true });
+  await register.setupTui(made.context);
+  await commandById(made, 'sdlc.approve').run();
+  await commandById(made, 'sdlc.status').run();
+  assert.equal(made.calls.sessionCommand.length, 0);
+  assert.equal(made.calls.sessionPrompt.length, 0);
+  const gate = spec.readGate(root);
+  assert.ok(gate, 'approve path must be exercised (marker written)');
+});

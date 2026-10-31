@@ -19,6 +19,12 @@ All notable changes to this project are documented here. Format follows
   optional `sha256:<hex>`, realpath-checks the plan and spec, and re-reads plus
   validates the marker after writing (`approved_via: tui-picker` with a hash,
   else `tui-command`). The plan file is never written.
+- Popup approval primary: the V2 TUI palette `sdlc.approve` lists plans and
+  Approve writes the normal marker (`approved_via: tui-popup`); typed
+  `/approve` and `spec-check approve` TTY fallback stay; headless/SSH uses the
+  TTY CLI; V1 loads no TUI part. `approved_via: tui-popup` is informational
+  and bash-forgeable — trust comes from close evidence binding; no sandbox
+  claimed.
 
 ### Added
 - Persisted V2 prompt hook: `ctx.session.hook('prompt')` appends the bootstrap

@@ -2,7 +2,7 @@
 
 ## Status
 
-proposed
+accepted (accepted-by appusai in chat 2026-10-31 "good"; accepted-at 2026-10-31)
 
 ## Context
 
@@ -12,7 +12,7 @@ Solo-dev speed on a trusted local repo is gated by per-step approval friction. R
 
 We will pilot an ENVELOPE-AUTHORIZED MACHINE-CLOSED loop for Auto-tier runs on this repo. The standing envelope is the ONLY human act: authorized once per goal, version-controlled, in human-readable risk terms — allowed paths, reversibility requirement, no external side effects, iteration/time budgets. Inside the envelope, no human keystrokes occur.
 
-Inside the envelope: the agent authors plan/spec MDs as REFERENCE (auto-written, never approved — audit trail only, never an authorization input), implements, then the gate OPENS and CLOSES on machine authority alone. Machine-close condition (all required, zero human keystrokes): named check green (default `npm run verify`) + independent critic pass + evidence rows recorded + reversal commit present + audit-ledger row written (`date | tier | check | result | reversal`).
+Inside the envelope: the agent authors plan/spec MDs as REFERENCE (auto-written, never approved — audit trail only, never an authorization input), implements, then the gate OPENS and CLOSES on machine authority alone. Machine-close condition (all required, zero human keystrokes): named check green (default `npm run verify`) + independent critic pass + evidence rows recorded + reversal commit present + audit-ledger row written (`date | tier | check | result | reversal`). Built form: `node scripts/spec-check.mjs close --machine --check "<cmd>" --critics <file> --reversal <sha> [--envelope <file>]` (`closeMachineGate` in `scripts/spec-check.mjs`).
 
 Honest boundary, stated plainly: inside-the-machine (local repo, reversible work) = human-out-of-loop is achievable and is what this pilot covers. IRREVERSIBLE EXTERNAL acts stay ALWAYS-human — the only human gates: merge to shared remote / PR to a shared branch; publish/release; spend (money, paid API beyond budget, provisioned resources); network writes to prod or any external system; grader assertion changes; red close (closing while checks are red). Everything else inside the envelope is autonomous.
 
@@ -80,14 +80,19 @@ flowchart LR
 | Reference plan is auto-written, never approved | Decision | Plan MD exists as reference output; no approval record sought or counted; tests prove machine-close criteria instead |
 | Outer-loop sampling replaces per-step approval | Decision / Consequences | Audit ledger stays human-readable (pass/fail, counts, cited sources); sampling cadence recorded (e.g. weekly review, not per-run) |
 | Irreversible-external acts stay human | Decision | Explicit human-gate list (shared-remote merge/PR, publish/release, spend, prod/external network writes, grader changes, red close); `git status` + gate history show zero such acts by the agent |
+| 3-source grader-immutability anchored at approval | Decision | `listGraderChanges` (working tree vs reversal) + `listReversalGraderFiles` + `listGraderCommitsSince` (`--since=<approved_at>`) in `scripts/spec-check.mjs`; machine-close refuses `grader-changed`, fail-closed `grader-unknown` on git failure |
+| Envelope-immutability | Decision | `checkEnvelopeClean` in `scripts/spec-check.mjs` (mirrored by `checkCloser` in the plugin): envelope file git-clean AND unchanged since `approved_at`; machine-close refuses `envelope-changed`, fail-closed `envelope-unknown` |
+| Exactly one audit row per run (no double-close) | Decision | `ledgerHasReversal` exact 5th-column ledger match in `scripts/spec-check.mjs`; machine-close refuses `duplicate-reversal` |
 
 ## Review findings
 
-_Awaiting human written findings. Do not approve until this table holds individual written findings with dispositions. Do not fabricate._
+Accepted by appusai in chat 2026-10-31 ("good"). Human written findings and dispositions:
 
 | # | Reviewer / perspective | Finding | Disposition (accept / reject + reason / defer + owner) |
 |---|---|---|---|
-| | | | |
+| 1 | appusai (operator, chat 2026-10-31) | Rubber-stamp hazard: on experimental work the human lacks the domain knowledge to judge plan/scope correctness, so any correctness-approval sought degrades into a rubber stamp — false trust worse than useless | accept — design takes only envelope approval from the human; correctness evidence comes from checks + critics + cited research (see Non-goals) |
+| 2 | appusai (operator, chat 2026-10-31) | Human-out-of-loop directive: safely remove the human from the inner loop entirely; plans/scope MDs stay FOR REFERENCE (auto-maintained audit trail), never approval artifacts | accept — envelope-authorized machine-closed loop; the standing envelope is the only human act; zero human keystrokes inside |
+| 3 | appusai (operator, chat 2026-10-31) | Envelope-vs-judgment split: the human authorizes the risk envelope once per goal (paths, reversibility, no external effects, budgets); correctness-judgment goes to machine-verifiable checks + independent critics + cited research evidence | accept — experimental track adds a smaller envelope + more evidence, never auto-merge/publish |
 
 ## Leading indicators
 

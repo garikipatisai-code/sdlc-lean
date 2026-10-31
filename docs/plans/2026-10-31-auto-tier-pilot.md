@@ -33,9 +33,9 @@ flowchart LR
 
 ## Architecture
 
-- Components touched: `scripts/spec-check.mjs` (envelope validation + `close --machine`), `.opencode/plugins/sdlc-lean.js` (envelope/SoP enforcement in `checkSpecGate` + tool hooks), `docs/auto-envelope.template.md` (new pre-approval record), `docs/audit-ledger.md` (row format + sampling header), two new regression test files.
+- Components touched: `scripts/spec-check.mjs` (envelope validation + `close --machine`), `.opencode/plugins/sdlc-lean.js` (SoP role checks in `checkSpecGate` opts + envelope/expected-outcome guards at closer time via `checkCloser`/`checkEnvelopeClean`), `docs/auto-envelope.template.md` (new pre-approval record), `docs/audit-ledger.md` (row format + sampling header), two new regression test files.
 - Interfaces consumed: existing gate contract (`buildGate`/`validateGate`/`checkPath`/`closeGate`), existing `npm run verify` (= `lint` + `node --test`), existing audit-ledger row shape (`date | tier | check | result | reversal`).
-- Interfaces produced: `node scripts/spec-check.mjs envelope check <file>`; `node scripts/spec-check.mjs close --machine --check "<cmd>" --critics <file> --reversal <sha>`; machine-close audit-row append.
+- Interfaces produced: `node scripts/spec-check.mjs envelope check <file>`; `node scripts/spec-check.mjs close --machine --check "<cmd>" --critics <file> --reversal <sha> [--envelope <file>]`; machine-close audit-row append.
 
 ## Tech Stack
 
@@ -56,7 +56,7 @@ flowchart LR
 ## Lean Constraints
 
 - Reuse-first: extend `spec-check.mjs` and `checkSpecGate` rather than new services, new deps, or new abstractions. Lowest rung that holds: template MD + CLI flags + hook checks + tests.
-- No new skill, no new agent, no new command surface beyond two CLI subpaths.
+- No new skill, no new agent, no new command surface beyond one subcommand (`envelope check`) + one flag-mode (`close --machine`).
 
 ## Review Focus
 
@@ -80,4 +80,4 @@ flowchart LR
 
 - Coverage: ENV-1→T1; MC-1→T2,T5; SOP-1→T3,T5; AUD-1→T4,T5; RH-1→T4,T5; ESC-1→T4; EXT-1→T6; REF-1→T6; SAMP-1→T6. Every task names a spec req; no orphan task; no task edits its own grader.
 - Consistency: T2 keeps human close intact; T3 matches subagent-driven-development; T4 ledger shape matches autonomy-dial; files cover every edited path.
-- Leanness: no new service/skill/agent/dependency; two CLI subpaths + template + hooks + two test files.
+- Leanness: no new service/skill/agent/dependency; one subcommand (`envelope check`) + one flag-mode (`close --machine`) + template + hooks + two test files.

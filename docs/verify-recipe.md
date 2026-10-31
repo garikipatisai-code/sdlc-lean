@@ -11,3 +11,5 @@ node scripts/spec-check.mjs verify --require-active   # active spec gate: no dri
 
 Live probes are opt-in and never required for completion claims:
 `node eval/run.mjs --run --max-probes N` (spends tokens; manual only).
+
+Discovery aid (not a completion claim): `node scripts/spec-check.mjs envelope check <file>` + `close --machine` criteria (see `docs/design/0001-auto-tier-pilot.md`).

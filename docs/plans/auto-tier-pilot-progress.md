@@ -1,3 +1,5 @@
+> Superseded by docs/plans/2026-10-31-auto-tier-pilot-progress.md (dated, gate-linked, authoritative); the rest below is kept as history.
+
 # Progress — auto-tier pilot (design round, docs-only)
 
 - UTC: 2026-10-31

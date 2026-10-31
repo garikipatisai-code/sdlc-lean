@@ -183,6 +183,8 @@ node scripts/spec-check.mjs status                         # active plan + hashe
 node scripts/spec-check.mjs verify                         # fail on drift
 node scripts/spec-check.mjs check <path>                   # is this path in scope?
 node scripts/spec-check.mjs close                          # after evidence is recorded
+node scripts/spec-check.mjs envelope check <envelope-file>  # validate a standing auto-tier envelope
+node scripts/spec-check.mjs close --machine --check "<cmd>" --critics <file> --reversal <sha> [--envelope <file>]  # machine-close an Auto run
 node scripts/host-evidence.mjs status                       # advisory host evidence match check
 ```
 

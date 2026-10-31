@@ -11,6 +11,9 @@
   - Machine check: `node scripts/spec-check.mjs envelope check <this-file> --root .`
     must exit 0. It rejects absolute paths, `..` escapes, globs escaping the
     root, an empty reversibility section, and any affirmative external effect.
+   - Expected outcomes: fill ONLY when the run adds new behavior (one bullet
+     per outcome, declared before implementation). An absent list refuses
+     new-behavior rows at machine-close time.
 -->
 
 <!-- Human risk terms: this envelope authorizes unattended local writes ONLY.
@@ -69,3 +72,16 @@
 - max-iterations: 3
 - check: npm run verify
 - stop-on: same check fails twice with the same output; unclear scope or reversibility; any out-of-envelope file; any external effect requested
+
+## Expected outcomes (required only when the run adds new behavior)
+
+<!--
+  Declare each NEW behavior here BEFORE implementation, one `- ` bullet each
+  (e.g. `- new flag --json emits machine-readable output`).
+  Absent list refuses new-behavior rows: any evidence row marked new behavior
+  fails machine-close (`missing-expected-outcomes` with no list here,
+  `expected-outcome-mismatch` when its outcome matches no entry here).
+  No new behavior this run → delete the placeholder bullet and leave empty.
+-->
+
+- <expected outcome: one bullet per new behavior, declared before implementation>

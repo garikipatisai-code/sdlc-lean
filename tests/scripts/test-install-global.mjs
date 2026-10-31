@@ -13,7 +13,7 @@ const protocolURL = pathToFileURL(path.resolve(import.meta.dirname, '../../scrip
 const { resolveProtocolModule } = await import(protocolURL);
 
 const mkTmp = (p) => fs.mkdtempSync(path.join(os.tmpdir(), p));
-const fakeRepo = (root, { skills = ['alpha'], agents = ['a.md'] } = {}) => {
+const fakeRepo = (root, { skills = ['alpha'], agents = ['a.md'], tui = true, hostEvidence = true } = {}) => {
   fs.mkdirSync(path.join(root, '.opencode', 'plugins'), { recursive: true });
   fs.mkdirSync(path.join(root, '.opencode', 'commands'), { recursive: true });
   for (const s of skills) {
@@ -26,6 +26,17 @@ const fakeRepo = (root, { skills = ['alpha'], agents = ['a.md'] } = {}) => {
   }
   fs.writeFileSync(path.join(root, '.opencode', 'commands', 'feature.md'), '# feature');
   fs.writeFileSync(path.join(root, '.opencode', 'plugins', 'sdlc-lean.js'), '// plugin');
+  if (tui) {
+    const tuiDir = path.join(root, '.opencode', 'plugins', 'sdlc-lean-tui');
+    fs.mkdirSync(tuiDir, { recursive: true });
+    for (const file of ['index.js', 'tui.js', 'register.js']) {
+      fs.writeFileSync(path.join(tuiDir, file), `// ${file}`);
+    }
+  }
+  if (hostEvidence) {
+    fs.mkdirSync(path.join(root, 'scripts'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'scripts', 'host-evidence.mjs'), '// host evidence');
+  }
   return root;
 };
 
@@ -125,6 +136,68 @@ test('installs scripts/spec-check.mjs byte-identical and tracks it in the manife
   assert.ok(manifest.files.includes(path.join('scripts', 'spec-check.mjs')));
 });
 
+test('installs the TUI directory and host-evidence script and tracks them', () => {
+  const target = mkTmp('sdlc-tui-');
+  const repo = fakeRepo(mkTmp('sdlc-repo-'));
+  const summary = mod.installGlobal({ repo, target });
+
+  assert.equal(summary.tui, 3, 'the TUI part is a three-file directory source');
+  assert.equal(summary.hostEvidence, 1, 'the host-evidence script is a file source');
+  for (const file of ['index.js', 'tui.js', 'register.js']) {
+    assert.ok(fs.existsSync(path.join(target, 'plugins', 'sdlc-lean-tui', file)), `${file} must be installed`);
+  }
+  assert.ok(fs.existsSync(path.join(target, 'scripts', 'host-evidence.mjs')));
+  const manifest = JSON.parse(fs.readFileSync(path.join(target, mod.MANIFEST), 'utf8'));
+  for (const file of ['index.js', 'tui.js', 'register.js']) {
+    assert.ok(manifest.files.includes(path.join('plugins', 'sdlc-lean-tui', file)));
+  }
+  assert.ok(manifest.files.includes(path.join('scripts', 'host-evidence.mjs')));
+});
+
+test('installs the real TUI part and host-evidence script byte-identical', () => {
+  const target = mkTmp('sdlc-tui-real-');
+  const summary = mod.installGlobal({ repo: mod.repoRoot, target });
+
+  assert.equal(summary.tui, 3);
+  assert.equal(summary.hostEvidence, 1);
+  for (const file of ['index.js', 'tui.js', 'register.js']) {
+    const installed = fs.readFileSync(path.join(target, 'plugins', 'sdlc-lean-tui', file));
+    const repoCopy = fs.readFileSync(path.join(mod.repoRoot, '.opencode', 'plugins', 'sdlc-lean-tui', file));
+    assert.ok(installed.equals(repoCopy), `${file} must be byte-identical`);
+  }
+  const installedScript = fs.readFileSync(path.join(target, 'scripts', 'host-evidence.mjs'));
+  const repoScript = fs.readFileSync(path.join(mod.repoRoot, 'scripts', 'host-evidence.mjs'));
+  assert.ok(installedScript.equals(repoScript), 'host-evidence.mjs must be byte-identical');
+
+  const manifest = JSON.parse(fs.readFileSync(path.join(target, mod.MANIFEST), 'utf8'));
+  for (const file of ['index.js', 'tui.js', 'register.js']) {
+    assert.ok(manifest.files.includes(path.join('plugins', 'sdlc-lean-tui', file)));
+  }
+  assert.ok(manifest.files.includes(path.join('scripts', 'host-evidence.mjs')));
+});
+
+test('prune removes a stale TUI file and keeps the rest', () => {
+  const target = mkTmp('sdlc-tui-prune-');
+  const repo = fakeRepo(mkTmp('sdlc-repo-'));
+  mod.installGlobal({ repo, target });
+  assert.ok(fs.existsSync(path.join(target, 'plugins', 'sdlc-lean-tui', 'tui.js')));
+
+  fs.rmSync(path.join(repo, '.opencode', 'plugins', 'sdlc-lean-tui', 'tui.js'));
+  const summary = mod.installGlobal({ repo, target });
+
+  assert.equal(fs.existsSync(path.join(target, 'plugins', 'sdlc-lean-tui', 'tui.js')), false, 'stale TUI file must be pruned');
+  assert.ok(fs.existsSync(path.join(target, 'plugins', 'sdlc-lean-tui', 'index.js')), 'current TUI files must stay');
+  assert.ok(fs.existsSync(path.join(target, 'plugins', 'sdlc-lean-tui', 'register.js')));
+  assert.ok(summary.pruned >= 1);
+});
+
+test('the V1 plugin installs as a regular file, not a directory', () => {
+  const target = mkTmp('sdlc-v1-plugin-');
+  mod.installGlobal({ repo: mod.repoRoot, target });
+  const st = fs.lstatSync(path.join(target, 'plugins', 'sdlc-lean.js'));
+  assert.ok(st.isFile(), 'plugins/sdlc-lean.js must stay a regular file');
+  assert.ok(!st.isSymbolicLink());
+});
 test('prune removes stale research files but preserves user files', () => {
   const target = mkTmp('sdlc-research-prune-');
   const repo = fakeRepo(mkTmp('sdlc-repo-'));

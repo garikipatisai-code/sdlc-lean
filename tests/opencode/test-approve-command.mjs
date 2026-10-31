@@ -4,6 +4,7 @@
 // real contract, never stubbed.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import crypto from 'crypto';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -13,6 +14,10 @@ import { pathToFileURL } from 'url';
 // Isolate the activation status file before importing the plugin (the module
 // computes the status path from XDG_STATE_HOME at load time).
 process.env.XDG_STATE_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'sdlc-lean-approve-state-'));
+// Isolate the global approval CLI lookup: an empty config home forces the
+// project fallback unless a test installs a global copy.
+const configHome = fs.mkdtempSync(path.join(os.tmpdir(), 'sdlc-lean-approve-config-'));
+process.env.XDG_CONFIG_HOME = configHome;
 
 const repoRoot = path.resolve(import.meta.dirname, '../..');
 const pluginURL = pathToFileURL(path.join(repoRoot, '.opencode', 'plugins', 'sdlc-lean.js')).href;
@@ -66,6 +71,28 @@ const tempRepo = (t, options) => {
   const root = makeRepo(options);
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   return root;
+};
+
+// --- global approval CLI fixtures -------------------------------------------
+const globalConfigDir = path.join(configHome, 'opencode');
+const globalScriptsDir = path.join(globalConfigDir, 'scripts');
+
+const clearGlobalCli = () => {
+  fs.rmSync(globalConfigDir, { recursive: true, force: true });
+};
+
+const installGlobalCli = () => {
+  fs.mkdirSync(globalScriptsDir, { recursive: true });
+  const dest = path.join(globalScriptsDir, 'spec-check.mjs');
+  fs.copyFileSync(cliSource, dest);
+  return dest;
+};
+
+const installGlobalModule = (source) => {
+  fs.mkdirSync(globalScriptsDir, { recursive: true });
+  const dest = path.join(globalScriptsDir, 'spec-check.mjs');
+  fs.writeFileSync(dest, source);
+  return dest;
 };
 
 // V2 mock: records every registration/result so tests can assert on behavior.
@@ -257,6 +284,134 @@ test('behavior: non-TTY CLI still refuses approval', (t) => {
   assert.equal(result.status, 1);
   assert.match(`${result.stderr}${result.stdout}`, /TTY|terminal/i);
   assert.equal(fs.existsSync(markerPath(root)), false, 'a non-TTY approval must not write a marker');
+});
+
+test('behavior: prefers the installed global CLI over the project copy', async (t) => {
+  clearGlobalCli();
+  t.after(clearGlobalCli);
+  const root = tempRepo(t);
+  installGlobalCli();
+  const sentinel = path.join(root, 'project-cli-used');
+  fs.writeFileSync(path.join(root, 'scripts', 'spec-check.mjs'),
+    `import fs from 'node:fs';\nfs.writeFileSync(${JSON.stringify(sentinel)}, 'used');\nexport * from ${JSON.stringify(pathToFileURL(cliSource).href)};\n`);
+  const ctx = await preparedCtx(root);
+
+  await invoke(ctx, PLAN);
+
+  assert.equal(fs.existsSync(sentinel), false, 'the project CLI must not be imported when a global CLI exists');
+  assert.ok(fs.existsSync(markerPath(root)), 'the global CLI must approve the plan');
+});
+
+test('behavior: falls back to the project CLI when no global CLI exists', async (t) => {
+  clearGlobalCli();
+  t.after(clearGlobalCli);
+  const root = tempRepo(t);
+  const ctx = await preparedCtx(root);
+
+  await invoke(ctx, PLAN);
+
+  assert.ok(fs.existsSync(markerPath(root)), 'the project CLI is the fallback');
+  const marker = JSON.parse(fs.readFileSync(markerPath(root), 'utf8'));
+  assert.equal(marker.approved_via, 'tui-command');
+});
+
+test('behavior: a matching sha256 argument records tui-picker', async (t) => {
+  clearGlobalCli();
+  t.after(clearGlobalCli);
+  const root = tempRepo(t);
+  const hash = crypto.createHash('sha256').update(fs.readFileSync(path.join(root, PLAN))).digest('hex');
+  const ctx = await preparedCtx(root);
+
+  await invoke(ctx, `${PLAN} sha256:${hash}`);
+
+  assert.ok(fs.existsSync(markerPath(root)), 'a matching hash approves');
+  const marker = JSON.parse(fs.readFileSync(markerPath(root), 'utf8'));
+  assert.equal(marker.approved_via, 'tui-picker');
+  assert.equal(marker.plan_sha256, hash);
+  assert.ok(syntheticText(ctx).includes(hash.slice(0, 12)), 'the confirmation states the plan hash');
+});
+
+test('behavior: a wrong sha256 argument is refused with no marker', async (t) => {
+  clearGlobalCli();
+  t.after(clearGlobalCli);
+  const root = tempRepo(t);
+  const ctx = await preparedCtx(root);
+
+  await invoke(ctx, `${PLAN} sha256:${'0'.repeat(64)}`);
+
+  assert.equal(fs.existsSync(markerPath(root)), false, 'a hash mismatch must not write a marker');
+  assert.match(syntheticText(ctx), /sha256|hash/i, 'the refusal must name the hash mismatch');
+});
+
+test('behavior: a mismatched marker written by the CLI is deleted and refused', async (t) => {
+  clearGlobalCli();
+  t.after(clearGlobalCli);
+  const root = tempRepo(t);
+  const sentinel = path.join(root, 'write-gate-called');
+  installGlobalModule(`import fs from 'node:fs';
+import path from 'node:path';
+import * as real from ${JSON.stringify(pathToFileURL(cliSource).href)};
+export const normalizeRel = real.normalizeRel;
+export const buildGate = real.buildGate;
+export const readGate = real.readGate;
+export const validateGate = real.validateGate;
+export const writeGate = (root, gate) => {
+  const p = path.join(root, '.sdlc', 'spec-gate.json');
+  fs.mkdirSync(path.dirname(p), { recursive: true });
+  fs.writeFileSync(p, JSON.stringify({ ...gate, plan_sha256: '${'0'.repeat(64)}' }));
+  fs.writeFileSync(${JSON.stringify(sentinel)}, 'called');
+  return p;
+};
+`);
+  const ctx = await preparedCtx(root);
+
+  await invoke(ctx, PLAN);
+
+  assert.ok(fs.existsSync(sentinel), 'the fake CLI must have been used');
+  assert.equal(fs.existsSync(markerPath(root)), false, 'a marker that fails re-validation must be deleted');
+  assert.match(syntheticText(ctx), /refused|drift|mismatch|validate/i);
+});
+
+test('behavior: a spec that escapes the project root is refused before writeGate', async (t) => {
+  clearGlobalCli();
+  t.after(clearGlobalCli);
+  const root = tempRepo(t);
+  fs.rmSync(path.join(root, 'scripts', 'spec-check.mjs'));
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'approve-command-outside-'));
+  t.after(() => fs.rmSync(outside, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(outside, 'spec.md'), '# Outside spec\n');
+  fs.rmSync(path.join(root, 'docs', 'specs'), { recursive: true, force: true });
+  fs.symlinkSync(outside, path.join(root, 'docs', 'specs'), 'dir');
+  const sentinel = path.join(root, 'write-gate-called');
+  fs.writeFileSync(path.join(root, 'scripts', 'spec-check.mjs'), `import fs from 'node:fs';
+import * as real from ${JSON.stringify(pathToFileURL(cliSource).href)};
+export * from ${JSON.stringify(pathToFileURL(cliSource).href)};
+export const writeGate = (root, gate) => {
+  fs.writeFileSync(${JSON.stringify(sentinel)}, 'called');
+  return real.writeGate(root, gate);
+};
+`);
+  const ctx = await preparedCtx(root);
+
+  await invoke(ctx, PLAN);
+
+  assert.equal(fs.existsSync(sentinel), false, 'writeGate must not run for an escaping spec');
+  assert.equal(fs.existsSync(markerPath(root)), false);
+  assert.match(syntheticText(ctx), /refused|outside|escape/i);
+});
+
+test('behavior: approval requires ctx.location.directory', async (t) => {
+  clearGlobalCli();
+  t.after(clearGlobalCli);
+  const root = tempRepo(t);
+  const ctx = mockCtx({ directory: root });
+  delete ctx.location;
+  await plugin.default.setup(ctx);
+
+  await invoke(ctx, PLAN);
+
+  assert.equal(fs.existsSync(markerPath(root)), false);
+  assert.match(syntheticText(ctx), /directory|location|refused/i);
 });
 
 test('docs: /approve is documented with the TTY fallback', () => {

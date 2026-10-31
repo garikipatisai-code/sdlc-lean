@@ -8,8 +8,36 @@ All notable changes to this project are documented here. Format follows
 
 ### Changed
 - Four-wave evidence-backed hardening: TTY-bound approval, evidence-bound close, least-privilege agents, and eval trust (Wave 1); TDD/fail-before-fix, evidence-based review, merge gate, and worktree baseline (Wave 2); 40-skill contracts, 9-command coverage, `url-fetched`/`command-exit`, 35 probes, and calibration (Wave 3); five pending domain rules resolved, `/release`, and domain/claim corrections (Wave 4).
+- Strict guards (breaking): the `#nosafety` in-band bypass is removed from the
+  destructive, secret, and Colab guards. Those actions now always throw, the
+  error messages no longer advertise the token, and the agent cannot
+  self-authorize; humans can still run them outside the agent.
+- Location-first project root: V2 resolves the project from
+  `ctx.location.directory` before `directory` and never from `cwd`; mutating
+  file tools fail closed when the root is unknown, and compaction returns `[]`.
+- Approval integrity: `/approve` prefers the installed global CLI, accepts an
+  optional `sha256:<hex>`, realpath-checks the plan and spec, and re-reads plus
+  validates the marker after writing (`approved_via: tui-picker` with a hash,
+  else `tui-command`). The plan file is never written.
 
 ### Added
+- Persisted V2 prompt hook: `ctx.session.hook('prompt')` appends the bootstrap
+  to the first user prompt once per session, skips child sessions, and falls
+  back through the `context` hook on a runtime throw. V1's hook shape is
+  unchanged.
+- V2 TUI part `sdlc.approve` / `sdlc.status`: the picker is preview-only — it
+  lists immediate plans, shows `files`/`allow` and the plan SHA-256, and prints
+  the exact `/approve <absolute-path> sha256:<hex>` command; it never calls
+  `session.command`. `sdlc.status` shows the active gate and the advisory
+  host-evidence count, and activation emits one toast from the TUI part.
+- Hash-only host evidence: `execute.after` appends advisory
+  `.sdlc/host-evidence.jsonl` rows with hashes, `argv0`, and exit status but
+  never the raw command or output; `scripts/host-evidence.mjs status` prints
+  `host evidence: n/m matched (advisory)`, and `--require-host` opts into a
+  nonzero exit.
+- Installer parity: `npm run install:global` copies the TUI directory and
+  `scripts/host-evidence.mjs`, tracks them in the manifest, and prunes stale
+  files without touching user files.
 - V2 TUI approval command `/approve <plan>`: a human-invoked OpenCode command
   writes the normal `.sdlc/spec-gate.json` marker with the host OS user and
   `approved_via: tui-command`; the TTY-bound `spec-check approve` CLI remains

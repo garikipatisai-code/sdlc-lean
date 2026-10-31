@@ -36,9 +36,9 @@ standard work enforces the lean ladder, architectural work runs the full
 **Project-local** — this repo is the source of truth:
 
 ```sh
-cp -r .opencode /path/to/your-project/
+cp -r .opencode /path/to/your-project/        # includes plugins/sdlc-lean-tui/
 mkdir -p /path/to/your-project/scripts
-cp scripts/spec-check.mjs /path/to/your-project/scripts/
+cp scripts/spec-check.mjs scripts/host-evidence.mjs /path/to/your-project/scripts/
 ```
 
 The project-local plugin resolves `scripts/spec-check.mjs` relative to the
@@ -50,7 +50,8 @@ project; without it the gate stays inactive (fail-open).
 npm run install:global
 ```
 
-Copies skills/agents/commands/plugin, `scripts/spec-check.mjs`, and `scripts/research/` into `~/.config/opencode/` and prunes
+Copies skills/agents/commands/plugin, the TUI part, `scripts/spec-check.mjs`,
+`scripts/host-evidence.mjs`, and `scripts/research/` into `~/.config/opencode/` and prunes
 files a previous install placed that no longer exist in the repo — your own
 skills and config are never touched. Manual equivalent:
 
@@ -58,10 +59,11 @@ skills and config are never touched. Manual equivalent:
 cp -r .opencode/skills/*   ~/.config/opencode/skills/
 cp -r .opencode/agents/*   ~/.config/opencode/agents/
 cp -r .opencode/commands/* ~/.config/opencode/commands/
-mkdir -p ~/.config/opencode/plugins
+mkdir -p ~/.config/opencode/plugins/sdlc-lean-tui
 cp .opencode/plugins/sdlc-lean.js ~/.config/opencode/plugins/
+cp .opencode/plugins/sdlc-lean-tui/* ~/.config/opencode/plugins/sdlc-lean-tui/
 mkdir -p ~/.config/opencode/scripts
-cp scripts/spec-check.mjs  ~/.config/opencode/scripts/
+cp scripts/spec-check.mjs scripts/host-evidence.mjs ~/.config/opencode/scripts/
 cp -r scripts/research     ~/.config/opencode/scripts/
 ```
 
@@ -89,7 +91,8 @@ savings — complementary, not bundled.
 | Skills (40) | router · brainstorming · writing-plans · worktrees · sdd / executing-plans · TDD · debugging · verification · review in/out · finish-branch · parallel-agents · writing-skills · diagnosing · lean-review · security · performance · schemas · release-notes · exploring-codebase · managing-tasks · communicating-concisely · simplified-technical-english · acquiring-capabilities · deep-research · research-protocol · incident-postmortem · dependency-upgrade · threat-model · adr · autonomous-loop · option-selection · frontend-design · web-game-development · ui-review · intent-preview · autonomy-dial · colab-lifecycle · reverse-engineering |
 | Agents (8) | orchestrator · implementer · planner · code-reviewer · test-writer · explorer · security-reviewer · researcher |
 | Research helpers | `scripts/research/` (stdlib-only `protocol.mjs` + `cluster.mjs` + `phase.mjs`): protocol freeze + sha256, 4-field score-cache binding, outcome taxonomy (null counts as done), amendment gate, O_EXCL device locks, deterministic clustering, CLI — plus the phase ledger (authorized continuation, absolute UTC deadlines, observation allowance, cumulative limits, recovery authorization, delegation scope, durable handoff, fail-closed state) — ships globally; `resolveProtocolModule` / `resolvePhaseModule` use the same env → local → global → bundled ladder |
-| Spec gate | `scripts/spec-check.mjs` + plugin hook: an approved plan writes `.sdlc/spec-gate.json` binding spec/plan/CLI SHA-256 and a file scope; out-of-scope `edit`/`write`/`patch`/`apply_patch` calls are blocked until `close` + re-approval. `/approve <plan>` (V2 TUI) is primary; `spec-check approve` is the TTY fallback. `close` requires `docs/plans/<slug>-evidence.json` with one exit-0 row per plan task. Fail-open when no marker; bash writes are a documented residual risk, not a sandbox. The plugin itself must come from a trusted install |
+| Spec gate | `scripts/spec-check.mjs` + plugin hook: an approved plan writes `.sdlc/spec-gate.json` binding spec/plan/CLI SHA-256 and a file scope; out-of-scope `edit`/`write`/`patch`/`apply_patch` calls are blocked until `close` + re-approval. The V2 TUI palette command `sdlc.approve` is preview-only: it lists immediate plans, shows `files`/`allow` and the plan SHA-256, then prints the exact typed `/approve <absolute-path> sha256:<hex>` command for a human to run; the typed `/approve` is primary and `spec-check approve` is the TTY fallback. `close` requires `docs/plans/<slug>-evidence.json` with one exit-0 row per plan task. Fail-open when no marker; bash writes are a documented residual risk, not a sandbox. The plugin itself must come from a trusted install |
+| Host evidence | Hash-only, advisory: the V2 plugin appends `at`/`sessionID`/`tool`/`argv0`/`command_sha256`/`plan_sha256`/`status`/`exit`/`output_sha256`/`output_bytes`/`workdir` to `.sdlc/host-evidence.jsonl` — never the raw command or output. `node scripts/host-evidence.mjs status` prints `host evidence: n/m matched (advisory)`; `--require-host` opts into a nonzero exit |
 | Pipelines (8) | `/feature` · `/bugfix` · `/security-audit` · `/refactor` · `/reverse-engineer` · `/game` · `/preview` · `/release` — invoked automatically by the router |
 | Autonomy | `orchestrator` primary agent + `autonomous-loop` + `option-selection` — goal-driven loops (route → research → pick best option → execute → verify → self-correct) until acceptance criteria or an honest budget stop; checkpoints are informational, deadlines are live-clock UTC, recovery needs explicit narrow approval, and phase state + handoff are durable |
 | Status | `/sdlc-lean` — activation proof + installed skills/agents/commands |
@@ -187,15 +190,17 @@ Trust-boundary validation, data-loss handling, security, accessibility, and
 one runnable check for non-trivial logic are **never** cut by the lean ladder.
 The plugin also blocks known-destructive shell commands and refuses to open
 `.env` / private keys — through the read/edit/patch tools or common shell
-readers — at every level.
+readers — at every level. There is no in-band `#nosafety` bypass: the token is
+removed, so the agent cannot self-authorize destructive or secret access.
 
 ## Verify
 
 ```sh
-npm run verify                     # static skill lint + plugin/budget/safety tests
-node scripts/validate-skills.mjs   # lint only
-node --test                        # tests only
-npm run eval                       # live eval harness — DRY by default
+npm run verify                          # static skill lint + plugin/budget/safety tests
+node scripts/validate-skills.mjs        # lint only
+node --test                             # tests only
+node scripts/host-evidence.mjs status   # advisory host-evidence match check
+npm run eval                            # live eval harness — DRY by default
 ```
 
 The live harness (`eval/run.mjs`) runs probes through a real OpenCode session

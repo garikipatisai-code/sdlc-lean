@@ -14,12 +14,8 @@ process.env.XDG_STATE_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'sdlc-lean-st
 const pluginURL = pathToFileURL(path.resolve(import.meta.dirname, '../../.opencode/plugins/sdlc-lean.js')).href;
 const plugin = await import(pluginURL);
 
-test('compactionContext injects debt ledger + newest plan progress from repo root', () => {
-  const parts = plugin.compactionContext();
-  assert.ok(Array.isArray(parts));
-  assert.ok(parts.length >= 1, 'expected at least the debt ledger');
-  assert.ok(parts.some((p) => p.includes('Debt ledger')), 'debt ledger content must be injected');
-  assert.ok(parts.some((p) => p.includes('-progress.md')), 'newest progress file must be injected');
+test('compactionContext() without a root returns an empty list (no cwd fallback)', () => {
+  assert.deepEqual(plugin.compactionContext(), []);
 });
 
 test('compactionContext with a given root reads that root', () => {
@@ -70,12 +66,13 @@ test('V1 compaction hook uses the host-provided project directory', async () => 
   fs.rmSync(tmp, { recursive: true, force: true });
 });
 
-test('V1 plugin exposes the compaction hook and it mutates output.context', async () => {
+test('V1 plugin with no directory still uses the repo-root default', async () => {
   const hooks = await plugin.SdlcLeanPlugin({});
   assert.equal(typeof hooks['experimental.session.compacting'], 'function');
   const output = {};
   await hooks['experimental.session.compacting']({}, output);
   assert.ok(Array.isArray(output.context) && output.context.length >= 1);
+  assert.ok(output.context.some((part) => part.includes('# Debt ledger')), 'V1 legacy default must survive');
 });
 
 test('V1 compaction hook fails open when output is hostile', async () => {
@@ -84,12 +81,18 @@ test('V1 compaction hook fails open when output is hostile', async () => {
   await hooks['experimental.session.compacting']({}, frozen); // must not throw
 });
 
-test('V2 setup registers the compaction session hook (v2.0.22 name) and appends system parts', async () => {
+test('V2 setup registers the compaction session hook (v2.0.22 name) and appends location-backed system parts', async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sdlc-lean-v2-compact-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(root, 'docs'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'docs', 'debt-ledger.md'), '# Location ledger\n');
   const captured = {};
   const ctx = {
+    location: { directory: root },
     skill: { transform: async (cb) => cb({ add: () => {} }) },
     session: {
       hook: async (name, cb) => { captured[name] = cb; },
+      context: async () => ({ data: { messages: [] } }),
       get: async () => ({ id: 'sess-v2' }),
     },
     tool: { hook: async (name, cb) => { captured['tool:' + name] = cb; } },
@@ -100,10 +103,28 @@ test('V2 setup registers the compaction session hook (v2.0.22 name) and appends 
   const event = { system: [] };
   await captured['compaction'](event);
   assert.ok(event.system.length >= 1, 'compaction context must land in event.system');
+  assert.ok(event.system.some((p) => p.text.includes('# Location ledger')), 'must read location.directory');
   assert.ok(event.system.every((p) => p.type === 'text' && typeof p.text === 'string'));
   // Defensive alternate shape + fail-open on a hostile event.
   const alt = { context: [] };
   await captured['compaction'](alt);
   assert.ok(alt.context.length >= 1, 'event.context fallback must work');
   await captured['compaction'](undefined); // must not throw
+});
+
+test('V2 compaction hook returns [] when the project root is unknown', async () => {
+  const captured = {};
+  const ctx = {
+    skill: { transform: async (cb) => cb({ add: () => {} }) },
+    session: {
+      hook: async (name, cb) => { captured[name] = cb; },
+      context: async () => ({ data: { messages: [] } }),
+      get: async () => ({ id: 'sess-v2' }),
+    },
+    tool: { hook: async (name, cb) => { captured['tool:' + name] = cb; } },
+  };
+  await plugin.default.setup(ctx);
+  const event = { system: [] };
+  await captured['compaction'](event);
+  assert.deepEqual(event.system, [], 'no cwd fallback for an unknown V2 root');
 });

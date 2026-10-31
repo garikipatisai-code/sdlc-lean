@@ -17,7 +17,9 @@ flowchart LR
 **Project-local** — applies to one repo, reviewable in its diff:
 
 ```sh
-cp -r .opencode /path/to/your-project/
+cp -r .opencode /path/to/your-project/     # includes plugins/sdlc-lean-tui/
+mkdir -p /path/to/your-project/scripts
+cp scripts/spec-check.mjs scripts/host-evidence.mjs /path/to/your-project/scripts/
 ```
 
 **Global** — applies to every project, one command:
@@ -26,7 +28,7 @@ cp -r .opencode /path/to/your-project/
 npm run install:global
 ```
 
-The script copies skills/agents/commands/plugin, `scripts/spec-check.mjs`, and `scripts/research/`
+The script copies skills/agents/commands/plugin, the TUI part (`.opencode/plugins/sdlc-lean-tui/`), `scripts/spec-check.mjs`, `scripts/host-evidence.mjs`, and `scripts/research/`
 into `~/.config/opencode/`
 (XDG_CONFIG_HOME honored) and prunes files a previous install placed that no
 longer exist in the repo. Your own skills and config are never touched. Manual
@@ -36,10 +38,11 @@ equivalent:
 cp -r .opencode/skills/*   ~/.config/opencode/skills/
 cp -r .opencode/agents/*   ~/.config/opencode/agents/
 cp -r .opencode/commands/* ~/.config/opencode/commands/
-mkdir -p ~/.config/opencode/plugins
+mkdir -p ~/.config/opencode/plugins/sdlc-lean-tui
 cp .opencode/plugins/sdlc-lean.js ~/.config/opencode/plugins/
+cp .opencode/plugins/sdlc-lean-tui/* ~/.config/opencode/plugins/sdlc-lean-tui/
 mkdir -p ~/.config/opencode/scripts
-cp scripts/spec-check.mjs  ~/.config/opencode/scripts/
+cp scripts/spec-check.mjs scripts/host-evidence.mjs ~/.config/opencode/scripts/
 cp -r scripts/research     ~/.config/opencode/scripts/
 ```
 
@@ -87,7 +90,7 @@ How you know it is triggered (four independent signals):
 
 | Signal | Where |
 |---|---|
-| One-time toast **"sdlc-lean active — N skills"** | TUI, first message of a session |
+| One-time toast **"sdlc-lean active — N skills"** | TUI part (`.opencode/plugins/sdlc-lean-tui/`), first session |
 | `Using <skill> to …` announce line | Agent's reply |
 | Skill tool call (`→ Skill "brainstorming"`) | TUI activity under the reply |
 | Activation status file | `/sdlc-lean` command, or `~/.local/state/sdlc-lean/status.json` |
@@ -105,8 +108,9 @@ Quick probes:
 | `Which library should we use — A or B?` | `option-selection`: research → matrix → pick → record |
 | `/sdlc-lean` | Prints activation timestamp, install path, and counts |
 
-In headless `opencode run` there is no TUI, so the toast is skipped — the
-status file and the announce line still prove activation.
+The V2 activation toast comes from the TUI part, not the server plugin. In
+headless `opencode run` there is no TUI, so the toast is skipped — the status
+file and the announce line still prove activation.
 
 ## 3. Everyday use
 
@@ -148,28 +152,36 @@ Every pipeline also has an explicit slash command when you want determinism:
 - **Lean ladder** — every change stops at the earliest rung: need it? → reuse
   in-repo → stdlib → native → installed dep → one line → minimum code.
 - **Safety guards** — destructive shell commands are blocked and `.env`/private
-  keys are refused, always. Trust-boundary validation, data-loss handling,
-  security, and accessibility are never cut.
+  keys are refused, always. The in-band `#nosafety` token is removed: there is
+  no bypass, and the agent cannot self-authorize. Trust-boundary validation,
+  data-loss handling, security, and accessibility are never cut.
 - **Output contract** — replies respect a ~30-second budget and prefer mermaid
   diagrams and tables over prose walls. Long prose also applies
   `simplified-technical-english` (STE-informed, not certified).
 - **Debt ledger** — deferred shortcuts are logged in `docs/debt-ledger.md`
   (format in the `lean-review` skill) instead of expanding an unrelated diff.
-- **Spec gate** — after a human approves a plan, `/approve <plan>` (V2 TUI) or the
-  `spec-check approve` TTY fallback writes `.sdlc/spec-gate.json`. Edits outside the plan's `files`/`allow` scope are
-  blocked for `edit`/`write`/`patch`/`apply_patch`, and the plan/spec are
-  immutable until `close` + re-approval. Bash redirection is outside the gate:
-  it is a drift guard, not a sandbox.
+- **Spec gate** — the V2 TUI palette command `sdlc.approve` is preview-only: it
+  shows the plan's `files`/`allow` patterns and SHA-256, then prints the exact
+  typed `/approve <absolute-path> sha256:<hex>` command. The human runs that
+  command (or the `spec-check approve` TTY fallback); the optional
+  `sha256:<hex>` binds approval to the plan bytes as `.sdlc/spec-gate.json` is
+  written. Edits outside the plan's `files`/`allow` scope are blocked for
+  `edit`/`write`/`patch`/`apply_patch`, and the plan/spec are immutable until
+  `close` + re-approval. Bash redirection is outside the gate: it is a drift
+  guard, not a sandbox.
 
 ### Spec gate commands
 
 ```sh
-/approve docs/plans/<slug>.md                              # V2 TUI (human-only)
+# V2 TUI palette: sdlc.approve (preview-only) and sdlc.status
+/approve docs/plans/<slug>.md                              # V2 typed command (human-only)
+/approve docs/plans/<slug>.md sha256:<hex>                 # hash-bound typed approval
 node scripts/spec-check.mjs approve docs/plans/<slug>.md   # TTY fallback (human terminal)
 node scripts/spec-check.mjs status                         # active plan + hashes
 node scripts/spec-check.mjs verify                         # fail on drift
 node scripts/spec-check.mjs check <path>                   # is this path in scope?
 node scripts/spec-check.mjs close                          # after evidence is recorded
+node scripts/host-evidence.mjs status                       # advisory host evidence match check
 ```
 
 ## 5. Skills & agents reference
@@ -239,9 +251,11 @@ is inspect-only. Trusted sources and install paths:
 
 ## 8. Update / uninstall
 
-Re-copy `.opencode` and `scripts/spec-check.mjs` from a fresh clone to update.
+Re-copy `.opencode` (including `plugins/sdlc-lean-tui/`), `scripts/spec-check.mjs`,
+and `scripts/host-evidence.mjs` from a fresh clone to update.
 To uninstall, delete the copied `skills/`, `agents/`, `commands/`,
-`scripts/spec-check.mjs`, `scripts/research/` entries and the plugin file;
+`.opencode/plugins/sdlc-lean-tui/`, `scripts/spec-check.mjs`,
+`scripts/host-evidence.mjs`, `scripts/research/` entries and the plugin file;
 remove the plugin entry from `opencode.json` if you added one.
 
 ## 9. Troubleshooting
@@ -252,6 +266,7 @@ remove the plugin entry from `opencode.json` if you added one.
 | `/feature` missing | Commands must be in `.opencode/commands/` or `~/.config/opencode/commands/` |
 | Plugin not loading | Check the file is `.opencode/plugins/sdlc-lean.js`; V2 needs the repo root to contain `index.js` only if installed as a package |
 | "failed to load plugin sdlc-lean" | Duplicate ID: same file in both `~/.config/opencode/plugins/` and `.opencode/plugins/` — remove the global copy when working inside this repo |
+| `sdlc.approve` missing from the palette | Confirm `.opencode/plugins/sdlc-lean-tui/` (or `~/.config/opencode/plugins/sdlc-lean-tui/`) contains `index.js`, `tui.js`, and `register.js`, then restart OpenCode. The part fails open, so the typed `/approve` still works |
 | Wrong pipeline chosen | Be explicit (`/bugfix …`) — free-text routing is model-dependent |
 
 ## 10. Develop / verify

@@ -88,9 +88,6 @@ test('benign Colab commands pass (fail-open)', () => {
   ]) {
     plugin.checkSafety('bash', { command: cmd });
   }
-  // the documented opt-out also disables the new guards
-  plugin.checkSafety('bash', { command: 'rm -rf /content #nosafety' });
-  plugin.checkSafety('bash', { command: 'pkill -f colab-mcp #nosafety' });
 });
 
 test('benign commands pass (fail-open)', async () => {
@@ -100,5 +97,23 @@ test('benign commands pass (fail-open)', async () => {
   await run('bash', { command: 'git status && npm test' });
   await run('read', { filePath: 'src/index.ts' });
   await run('read', { filePath: 'envelope.py' }); // ".env" substring, not a .env file
-  await run('bash', { command: 'rm -rf / #nosafety' }); // explicit opt-out
+});
+
+test('#nosafety no longer bypasses destructive, secret, or Colab guards', () => {
+  const cases = [
+    ['bash', { command: 'rm -rf / #nosafety' }, /destructive/i],
+    ['bash', { command: 'cat .env #nosafety' }, /sensitive/i],
+    ['bash', { command: 'pkill -f colab-mcp #nosafety' }, /bridge/i],
+    ['bash', { command: 'rm -rf /content #nosafety' }, /artifact|unexported/i],
+  ];
+  for (const [tool, args, pattern] of cases) {
+    assert.throws(() => plugin.checkSafety(tool, args), pattern, args.command);
+    try {
+      plugin.checkSafety(tool, args);
+    } catch (err) {
+      assert.ok(!String(err.message).includes('#nosafety'), `message must not advertise the token: ${err.message}`);
+    }
+  }
+  // The token is inert in an otherwise benign command.
+  plugin.checkSafety('bash', { command: 'git status #nosafety' });
 });

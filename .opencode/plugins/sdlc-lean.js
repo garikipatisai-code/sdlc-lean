@@ -31,6 +31,10 @@ import { fileURLToPath, pathToFileURL } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+// Repo root (plugin lives at <repo>/.opencode/plugins/sdlc-lean.js). Used only
+// as the V1 compaction legacy default — never as the V2 project root.
+const REPO_ROOT = path.resolve(__dirname, '..', '..');
+
 // Skills live next to the plugin: <repo>/.opencode/skills
 const skillsDir = path.resolve(__dirname, '..', 'skills');
 
@@ -113,6 +117,20 @@ const _cacheChild = (id, isChild) => {
     }
   }
   _childCache.set(id, isChild);
+};
+
+// AC1 fallback: a prompt mutation that throws at runtime marks the session so
+// the next `context` hook can deliver the bootstrap once. This is NOT the
+// once-per-session injection decision (that is the persisted session.context
+// lookup); the flag is consumed by the context hook.
+const PROMPT_FALLBACK_MAX = 512;
+const _promptFallback = new Set();
+const _markPromptFallback = (sessionID) => {
+  if (!sessionID) return;
+  if (_promptFallback.size >= PROMPT_FALLBACK_MAX) {
+    for (const key of _promptFallback) { _promptFallback.delete(key); break; }
+  }
+  _promptFallback.add(sessionID);
 };
 
 export const isChildSession = async (fetchSession, sessionID) => {
@@ -228,12 +246,23 @@ export const getStatus = () => {
   }
 };
 
+// --- Project root resolution -------------------------------------------------
+// V2 exposes the project location; ctx.directory is the V1/best-effort field.
+// Never fall back to process.cwd(): a global install would gate the wrong repo.
+export const projectRoot = (ctx) => {
+  const located = ctx?.location?.directory;
+  if (typeof located === 'string' && located) return located;
+  const direct = ctx?.directory;
+  if (typeof direct === 'string' && direct) return direct;
+  return undefined;
+};
+
 // --- Compaction memory (experimental.session.compacting) ---------------------
 // Autonomous loops must survive context compaction. Inject the durable state
 // files — the debt ledger and the newest plan progress ledger — into the
 // compaction summary prompt so the continuation model carries them forward.
 // Fail-open: missing files, unreadable docs, or a hostile host never break
-// compaction. `root` is overridable for tests.
+// compaction. `root` is required: no implicit cwd/repo-root fallback.
 const MAX_INJECT = 1500; // chars per file — keeps compaction prompts lean
 
 // Never follow symlinks: a repo may plant docs/debt-ledger.md -> ~/.ssh/id_rsa
@@ -248,7 +277,8 @@ const safeReadDoc = (p) => {
   }
 };
 
-export const compactionContext = (root = path.resolve(__dirname, '..', '..')) => {
+export const compactionContext = (root) => {
+  if (!root) return [];
   const parts = [];
   try {
     const debtPath = path.join(root, 'docs', 'debt-ledger.md');
@@ -342,9 +372,12 @@ const specTargets = (tool, args = {}) => {
 };
 
 export const checkSpecGate = (tool, args = {}, root) => {
-  if (!root) return; // host did not provide a project root: fail open
   const targets = specTargets(tool, args);
-  if (!targets.length) return;
+  if (!targets.length) return; // non-mutating tools and targetless calls are no-ops
+  if (!root) {
+    // Fail closed: an unknown root must never silently skip a mutating target.
+    throw new Error(`[sdlc-lean] spec gate root unknown: refusing ${tool} (no location or directory)`);
+  }
 
   const marker = path.join(root, '.sdlc', 'spec-gate.json');
   try {
@@ -392,34 +425,57 @@ export const checkSpecGate = (tool, args = {}, root) => {
 };
 
 // --- V2 `/approve` command (human-only) -------------------------------------
-// The human types `/approve <repo-relative-plan.md>` in the TUI. The command
+// The human types `/approve <plan> [sha256:<hex>]` in the TUI. The command
 // reuses the CLI contract module and never touches the plan file. No tool and
 // no agent-callable path exists: only this user-invoked command approves.
-const resolveApprovalCli = (root) => {
+//
+// The installed global CLI is preferred; the project copy is a fallback used
+// only when no global copy exists. A fresh module URL is used per invocation so
+// a re-installed CLI (or a test fake) is not served from the ESM cache.
+export const resolveApprovalCli = (root) => {
   const configHome = process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config');
-  const candidates = [
-    path.join(root, 'scripts', 'spec-check.mjs'),
-    path.join(configHome, 'opencode', 'scripts', 'spec-check.mjs'),
-  ];
-  for (const candidate of candidates) {
+  const globalCli = path.join(configHome, 'opencode', 'scripts', 'spec-check.mjs');
+  try {
+    if (fs.statSync(globalCli).isFile()) return globalCli;
+  } catch (err) {
+    // no global install; try the project copy
+  }
+  if (typeof root === 'string' && root) {
+    const projectCli = path.join(root, 'scripts', 'spec-check.mjs');
     try {
-      if (fs.statSync(candidate).isFile()) return candidate;
+      if (fs.statSync(projectCli).isFile()) return projectCli;
     } catch (err) {
-      // try the next candidate
+      // no project copy either
     }
   }
   return null;
 };
 
-const parseApprovalArg = (text) => {
-  const usage = 'usage: /approve <repo-relative-plan.md>';
+const APPROVAL_USAGE = 'usage: /approve <repo-relative-or-absolute-plan.md> [sha256:<hex>]';
+
+export const parseApprovalArg = (text) => {
   const trimmed = typeof text === 'string' ? text.trim() : '';
-  if (!trimmed) throw new Error(usage);
+  if (!trimmed) throw new Error(APPROVAL_USAGE);
   const tokens = trimmed.split(/\s+/);
-  if (tokens.length !== 1) throw new Error(`${usage} (exactly one plan path)`);
-  if (tokens[0].startsWith('-')) throw new Error(`${usage} (flags are not accepted)`);
-  return tokens[0];
+  const [arg, hashToken] = tokens;
+  if (arg.startsWith('-')) throw new Error(`${APPROVAL_USAGE} (flags are not accepted)`);
+  if (tokens.length > 2) throw new Error(`${APPROVAL_USAGE} (exactly one plan path)`);
+  let hash;
+  if (hashToken !== undefined) {
+    if (hashToken.startsWith('-')) throw new Error(`${APPROVAL_USAGE} (flags are not accepted)`);
+    const match = /^sha256:([0-9a-fA-F]{64})$/.exec(hashToken);
+    if (!match) {
+      throw new Error(`${APPROVAL_USAGE} (exactly one plan path plus an optional sha256:<hex>)`);
+    }
+    hash = match[1].toLowerCase();
+  }
+  return { arg, hash };
 };
+
+let _approvalImportSeq = 0;
+const importApprovalCli = (cli) => import(
+  `${pathToFileURL(cli).href}?sdlc-lean-approve=${Date.now()}-${_approvalImportSeq++}`,
+);
 
 const approvePlan = async (ctx, { sessionID, prompt } = {}) => {
   const notify = async (text) => {
@@ -430,21 +486,69 @@ const approvePlan = async (ctx, { sessionID, prompt } = {}) => {
     }
   };
   try {
+    // Approval is anchored to the V2 location only: never ctx.directory/cwd.
     const root = ctx.location?.directory;
-    if (typeof root !== 'string' || !root) throw new Error('no project directory for this session');
-    const arg = parseApprovalArg(prompt?.text);
+    if (typeof root !== 'string' || !root) {
+      throw new Error('no project directory for this session (ctx.location.directory is required)');
+    }
+    const { arg, hash } = parseApprovalArg(prompt?.text);
     const cli = resolveApprovalCli(root);
-    if (!cli) throw new Error('scripts/spec-check.mjs not found (project or global config)');
-    const mod = await import(pathToFileURL(cli).href);
+    if (!cli) throw new Error('scripts/spec-check.mjs not found (global config or project)');
+    const mod = await importApprovalCli(cli);
+
+    // 1. Build first, then 2. contain plan/spec with realpath, 3. hash compare.
     const rel = mod.normalizeRel(root, arg);
     const gate = mod.buildGate(root, rel);
+
+    const realRoot = fs.realpathSync(root);
+    for (const [label, relPath] of [['plan', gate.plan], ['spec', gate.spec]]) {
+      const real = fs.realpathSync(path.resolve(realRoot, relPath));
+      const inside = path.relative(realRoot, real);
+      if (!inside || inside === '..' || inside.startsWith(`..${path.sep}`) || path.isAbsolute(inside)) {
+        throw new Error(`refused: ${label} escapes the project root`);
+      }
+    }
+
+    if (hash && hash !== gate.plan_sha256) {
+      throw new Error(`sha256 mismatch: expected ${gate.plan_sha256}, got ${hash}`);
+    }
+
+    const markerAbs = path.join(root, '.sdlc', 'spec-gate.json');
+    let preexistingMarker = true;
+    try {
+      fs.lstatSync(markerAbs);
+    } catch (err) {
+      if (err.code !== 'ENOENT') throw err;
+      preexistingMarker = false;
+    }
+
+    // 4. Write the host-user marker (plan file is never written).
     const marker = {
       ...gate,
       approved_by: os.userInfo().username,
       approved_at: new Date().toISOString(),
-      approved_via: 'tui-command',
+      approved_via: hash ? 'tui-picker' : 'tui-command',
     };
     await mod.writeGate(root, marker);
+
+    // 5. Re-read, validate, and compare; delete only a marker this call wrote.
+    try {
+      const written = mod.readGate(root);
+      const valid = mod.validateGate(root, written);
+      for (const key of ['plan', 'spec', 'plan_sha256', 'spec_sha256']) {
+        if (valid[key] !== gate[key]) throw new Error(`spec gate drift after write: ${key}`);
+      }
+      if (JSON.stringify(valid.files) !== JSON.stringify(gate.files)
+        || JSON.stringify(valid.allow || []) !== JSON.stringify(gate.allow || [])) {
+        throw new Error('spec gate drift after write: files/allow');
+      }
+    } catch (err) {
+      if (!preexistingMarker) {
+        try { fs.unlinkSync(markerAbs); } catch (cleanupErr) { /* best effort */ }
+      }
+      throw err;
+    }
+
     await notify(`[sdlc-lean] spec gate active: ${marker.plan} -> ${marker.spec} (${marker.files.length} files, plan sha256 ${marker.plan_sha256.slice(0, 12)})`);
   } catch (err) {
     await notify(`[sdlc-lean] /approve refused: ${err?.message || err}`);
@@ -484,7 +588,7 @@ const COLAB_GUARDS = [
   },
   {
     re: new RegExp(`${COLAB_CMD}rm\\s+(?:-[^;\\s]*r[^;\\s]*\\s+)['"]?\\/content(?:\\/|\\s|$|;|['"])`),
-    msg: 'Refusing to delete /content. On a Colab VM /content is deleted with the runtime, so unexported artifacts are lost with it. Export artifacts to an approved destination and verify hashes/acks before deleting; use #nosafety only if the loss is intended.',
+    msg: 'Refusing to delete /content. On a Colab VM /content is deleted with the runtime, so unexported artifacts are lost with it. Export artifacts to an approved destination and verify hashes/acks before deleting.',
   },
 ];
 
@@ -504,22 +608,185 @@ export const checkSafety = (tool, args = {}) => {
   }
   if (tool === 'bash' || tool === 'shell') {
     const cmd = String(args.command || '');
-    if (/#nosafety/.test(cmd)) return; // explicit human/audited opt-out
     for (const re of DESTRUCTIVE_PATTERNS) {
       if (re.test(cmd)) {
         throw new Error(
-          `[sdlc-lean] Refusing destructive command. Narrow the target path or confirm intent explicitly with #nosafety.`,
+          '[sdlc-lean] Refusing destructive command. Narrow the target path or ask the human operator to run it outside the agent.',
         );
       }
     }
     if (SECRET_READ_RE.test(cmd)) {
       throw new Error(
-        `[sdlc-lean] Refusing to read a sensitive file into context. Inspect metadata (e.g. \`ls -l\`, key fingerprints) instead; use #nosafety only if you accept exposure.`,
+        '[sdlc-lean] Refusing to read a sensitive file into context. Inspect metadata (e.g. `ls -l`, key fingerprints) instead; secrets never enter the model context.',
       );
     }
     for (const { re, msg } of COLAB_GUARDS) {
       if (re.test(cmd)) throw new Error(`[sdlc-lean] ${msg}`);
     }
+  }
+};
+
+// --- Advisory host evidence (V2 execute.after) -------------------------------
+// Hash-only JSONL cross-check for plan Verify commands. Never store the raw
+// command or output. Advisory only: every failure is swallowed, so evidence can
+// never block a tool. Append-only, 0700/.0600, symlink-safe, capped.
+export const HOST_EVIDENCE_MAX_ROWS = 500;
+export const HOST_EVIDENCE_MAX_BYTES = 2 * 1024 * 1024;
+
+export const hostEvidencePath = (root) => path.join(root, '.sdlc', 'host-evidence.jsonl');
+
+export const normalizeCommand = (value) => String(value ?? '')
+  .replace(/^\s*[!$]\s+/, '')
+  .trim()
+  .replace(/\s+/g, ' ');
+
+const sha256Hex = (value) => crypto.createHash('sha256').update(value).digest('hex');
+
+// In-process row counter seeded once per log path (cold path read); the hot
+// path only stats the file, never re-reads it.
+const _hostEvidenceCounts = new Map();
+
+const countRows = (text) => text.split('\n').filter((line) => line.trim() !== '').length;
+
+const seedHostEvidenceCount = (log) => {
+  let st;
+  try {
+    st = fs.lstatSync(log);
+  } catch (err) {
+    if (err.code === 'ENOENT') return 0;
+    throw err;
+  }
+  if (st.isSymbolicLink() || !st.isFile()) return HOST_EVIDENCE_MAX_ROWS;
+  if (st.size >= HOST_EVIDENCE_MAX_BYTES) return HOST_EVIDENCE_MAX_ROWS;
+  try {
+    return countRows(fs.readFileSync(log, 'utf8'));
+  } catch (err) {
+    return HOST_EVIDENCE_MAX_ROWS;
+  }
+};
+
+export const appendHostEvidence = (root, row) => {
+  if (process.env.SDLC_LEAN_NO_HOST_EVIDENCE === '1') return false;
+  if (typeof root !== 'string' || !root) return false;
+  const log = hostEvidencePath(root);
+  const dir = path.dirname(log);
+  try {
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const dirStat = fs.lstatSync(dir);
+    if (dirStat.isSymbolicLink() || !dirStat.isDirectory()) return false;
+    try { fs.chmodSync(dir, 0o700); } catch (modeErr) { /* best effort */ }
+
+    let state = _hostEvidenceCounts.get(log);
+    if (!state) {
+      state = { count: seedHostEvidenceCount(log) };
+      _hostEvidenceCounts.set(log, state);
+    } else {
+      let st = null;
+      try {
+        st = fs.lstatSync(log);
+      } catch (err) {
+        if (err.code !== 'ENOENT') return false;
+      }
+      if (st && (st.isSymbolicLink() || !st.isFile())) return false;
+      if (st && st.size >= HOST_EVIDENCE_MAX_BYTES) return false;
+    }
+    if (state.count >= HOST_EVIDENCE_MAX_ROWS) return false;
+
+    let logStat = null;
+    try {
+      logStat = fs.lstatSync(log);
+    } catch (err) {
+      if (err.code !== 'ENOENT') return false;
+    }
+    if (logStat && (logStat.isSymbolicLink() || !logStat.isFile())) return false;
+
+    const fd = fs.openSync(
+      log,
+      fs.constants.O_APPEND | fs.constants.O_CREAT | fs.constants.O_WRONLY | fs.constants.O_NOFOLLOW,
+      0o600,
+    );
+    try {
+      const openStat = fs.fstatSync(fd);
+      if (!openStat.isFile()) return false;
+      fs.fchmodSync(fd, 0o600);
+      fs.writeSync(fd, `${JSON.stringify(row)}\n`);
+      state.count += 1;
+      return true;
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch (err) {
+    console.error('[sdlc-lean] host evidence write failed:', err);
+    return false;
+  }
+};
+
+let _specCheckModule;
+const loadSpecCheckModule = async () => {
+  if (_specCheckModule) return _specCheckModule;
+  const cli = resolveSpecCheck();
+  if (!cli) return null;
+  try {
+    _specCheckModule = await import(pathToFileURL(cli).href);
+    return _specCheckModule;
+  } catch (err) {
+    return null;
+  }
+};
+
+export const recordHostEvidence = async (event, root) => {
+  try {
+    if (!event || typeof event !== 'object') return false;
+    if (typeof root !== 'string' || !root) return false;
+    if (process.env.SDLC_LEAN_NO_HOST_EVIDENCE === '1') return false;
+    const tool = event.tool;
+    if (tool !== 'bash' && tool !== 'shell') return false;
+    const input = event.input && typeof event.input === 'object' ? event.input : {};
+    if (typeof input.command !== 'string' || input.command.trim() === '') return false;
+    const meta = event.metadata && typeof event.metadata === 'object'
+      ? event.metadata
+      : (event.result?.metadata && typeof event.result.metadata === 'object' ? event.result.metadata : {});
+    if (event.background === true || meta.background === true) return false;
+    if (meta.status === 'running' || meta.timeout === true) return false;
+
+    // Require an active, valid marker: no gate means no evidence.
+    const mod = await loadSpecCheckModule();
+    if (!mod) return false;
+    let gate;
+    try { gate = mod.readGate(root); } catch (err) { return false; }
+    if (!gate) return false;
+    let valid;
+    try { valid = mod.validateGate(root, gate); } catch (err) { return false; }
+
+    const command = normalizeCommand(input.command);
+    if (!command) return false;
+    const output = typeof event.output === 'string'
+      ? event.output
+      : (typeof event.result?.output === 'string' ? event.result.output : null);
+    const rawExit = meta.exit ?? event.exit ?? event.result?.metadata?.exit;
+    const exit = typeof rawExit === 'number' ? rawExit : null;
+    const rawWorkdir = event.workdir ?? input.workdir;
+    const workdir = typeof rawWorkdir === 'string' ? rawWorkdir : null;
+    const status = typeof event.status === 'string' && event.status
+      ? event.status
+      : (typeof meta.status === 'string' && meta.status ? meta.status : 'completed');
+
+    return appendHostEvidence(root, {
+      at: new Date().toISOString(),
+      sessionID: typeof event.sessionID === 'string' ? event.sessionID : null,
+      tool,
+      argv0: command.split(' ')[0],
+      command_sha256: sha256Hex(command),
+      plan_sha256: valid.plan_sha256,
+      status,
+      exit,
+      output_sha256: output === null ? null : sha256Hex(output),
+      output_bytes: output === null ? 0 : Buffer.byteLength(output),
+      workdir,
+    });
+  } catch (err) {
+    console.error('[sdlc-lean] host evidence failed:', err);
+    return false;
   }
 };
 
@@ -556,10 +823,10 @@ export const SdlcLeanPlugin = async ({ client, directory } = {}) => {
 
     // Loop memory: carry durable state across compaction summaries.
     // Prefer the host-provided project directory (works for global installs);
-    // fall back to the repo-root default when it is absent.
+    // fall back to the repo-root default when it is absent (V1 legacy default).
     'experimental.session.compacting': async (_input, output) => {
       try {
-        const parts = compactionContext(directory);
+        const parts = compactionContext(directory || REPO_ROOT);
         if (!parts.length) return;
         if (!Array.isArray(output.context)) output.context = [];
         output.context.push(...parts);
@@ -589,31 +856,81 @@ async function setup(ctx) {
   } catch (err) {
     console.error('[sdlc-lean] skill registration failed:', err);
   }
+  const root = projectRoot(ctx);
+
+  // AC1: persisted bootstrap. Injection is decided by the persisted
+  // session.context lookup (no process-local once-per-session set and no text
+  // marker). A runtime throw only flags the session for the context fallback.
+  try {
+    await ctx.session.hook('prompt', async (event) => {
+      const sessionID = event?.sessionID;
+      const editable = event?.prompt;
+      if (!sessionID || !editable || !editable.text || typeof editable.text !== 'string') return;
+      try {
+        if (typeof ctx.session.context !== 'function') return;
+        let lookup;
+        try {
+          lookup = await ctx.session.context({ sessionID });
+        } catch (err) {
+          // A rejected/thrown lookup is a skip, not the runtime fallback.
+          console.error('[sdlc-lean] prompt context lookup failed, skipping:', err);
+          return;
+        }
+        const messages = lookup?.data?.messages ?? lookup?.messages;
+        if (!Array.isArray(messages)) return;
+        if (messages.some((m) => m?.role === 'user' || m?.info?.role === 'user')) return;
+        if (typeof ctx.session.get === 'function'
+          && (await isChildSession((id) => ctx.session.get({ sessionID: id }), sessionID))) return;
+        const bootstrap = getBootstrapContent();
+        if (!bootstrap) return;
+        editable.text = `${editable.text}\n\n${bootstrap}`;
+        writeStatus(sessionID);
+      } catch (err) {
+        console.error('[sdlc-lean] prompt hook failed, flagging context fallback:', err);
+        _markPromptFallback(sessionID);
+      }
+    });
+  } catch (err) {
+    console.error('[sdlc-lean] prompt hook registration failed:', err);
+  }
+
+  // AC3: validated active-gate summary only. The bootstrap is pushed once, and
+  // only for a session flagged by the prompt fallback.
   try {
     await ctx.session.hook('context', async (event) => {
       try {
-        const bootstrap = getBootstrapContent();
-        if (!bootstrap) return;
-        // Preferred: inject into the first user message (persisted once, no
-        // per-turn system bloat). V2 exposes event.messages; V1 never reaches here.
-        if (event.messages && event.messages.length) {
-          const firstUser = event.messages.find((m) => m.role === 'user');
-          if (firstUser && (!firstUser.content || !firstUser.content.length)) return;
-          if (firstUser?.content.some((p) => p.type === 'text' && p.text && p.text.includes('EXTREMELY_IMPORTANT'))) return;
-          if (typeof ctx.session.get === 'function' && (await isChildSession((id) => ctx.session.get({ sessionID: id }), event.sessionID))) return;
-          if (firstUser) firstUser.content.unshift({ type: 'text', text: bootstrap });
-          else event.messages.push({ role: 'user', content: [{ type: 'text', text: bootstrap }] });
-          await announceActivation(ctx.client || ctx, event.sessionID);
-          return;
-        }
-        // Fallback: V2 system array (ephemeral per call; guard against repeat).
-        if (Array.isArray(event.system)) {
-          const present = event.system.some((p) => p && p.type === 'text' && p.text && p.text.includes('EXTREMELY_IMPORTANT'));
-          if (!present) {
+        const sessionID = event?.sessionID;
+        if (sessionID && _promptFallback.has(sessionID) && Array.isArray(event.system)) {
+          _promptFallback.delete(sessionID);
+          const bootstrap = getBootstrapContent();
+          if (bootstrap) {
             event.system.push({ type: 'text', text: bootstrap });
-            await announceActivation(ctx.client || ctx, event.sessionID);
+            return;
           }
         }
+        if (!root || !Array.isArray(event?.system)) return;
+        const cli = resolveSpecCheck();
+        if (!cli) return;
+        const mod = await import(pathToFileURL(cli).href);
+        let gate;
+        try {
+          gate = mod.readGate(root);
+        } catch (err) {
+          event.system.push({ type: 'text', text: 'gate invalid' });
+          return;
+        }
+        if (!gate) return; // no marker: no injection
+        let valid;
+        try {
+          valid = mod.validateGate(root, gate);
+        } catch (err) {
+          event.system.push({ type: 'text', text: 'gate invalid' });
+          return;
+        }
+        event.system.push({
+          type: 'text',
+          text: `[sdlc-lean] active spec gate: plan ${valid.plan}; spec ${valid.spec}; ${valid.files.length} files.`,
+        });
       } catch (err) {
         console.error('[sdlc-lean] context hook failed:', err);
       }
@@ -626,12 +943,11 @@ async function setup(ctx) {
   // (verified in the runtime bundle; "experimental.session.compacting" is the
   // V1 Hooks-object name and never fires here). Built-ins append text parts to
   // event.system, so we do the same; event.context is accepted defensively.
-  // ctx.directory is best-effort (V2 exposes it on some hosts); absent -> repo-root default.
-  const projectRoot = typeof ctx.directory === 'string' && ctx.directory ? ctx.directory : undefined;
+  // The root is location-first; an unknown root yields [] (no cwd fallback).
   try {
     await ctx.session.hook('compaction', async (event) => {
       try {
-        const parts = compactionContext(projectRoot);
+        const parts = compactionContext(root);
         if (!parts.length) return;
         if (event && Array.isArray(event.system)) {
           for (const text of parts) event.system.push({ type: 'text', text });
@@ -646,14 +962,17 @@ async function setup(ctx) {
     console.error('[sdlc-lean] compaction hook registration failed:', err);
   }
   // V2 safety net: V1 hooks are not bridged to V2, so register the same guards
-  // through the V2 tool hook. Throwing blocks the tool call. Keep this callback
-  // synchronous: the existing host contract and tests expect a sync throw.
+  // through the V2 tool hook. Throwing blocks the tool call. Keep the before
+  // callback synchronous: the existing host contract and tests expect a sync
+  // throw. Host evidence is async, hash-only, and never blocks.
   try {
     if (ctx.tool && typeof ctx.tool.hook === 'function') {
-      const gateRoot = typeof ctx.directory === 'string' && ctx.directory ? ctx.directory : process.cwd();
       await ctx.tool.hook('execute.before', (event) => {
         checkSafety(event.tool, event.input || {});
-        checkSpecGate(event.tool, event.input || {}, gateRoot);
+        checkSpecGate(event.tool, event.input || {}, root);
+      });
+      await ctx.tool.hook('execute.after', async (event) => {
+        await recordHostEvidence(event, root);
       });
     }
   } catch (err) {

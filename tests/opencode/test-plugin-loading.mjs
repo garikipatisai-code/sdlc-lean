@@ -286,23 +286,44 @@ test('activation: toast suppressed by SDLC_LEAN_NO_TOAST', async () => {
   assert.equal(toasts, 0);
 });
 
-test('V2 setup registers skills, context injection, and the safety tool hook', async () => {
+test('V2 setup registers skills, the persisted prompt hook, and the safety tool hook', async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sdlc-lean-v2-loading-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const stored = { messages: [] };
   const captured = {};
   const ctx = {
+    location: { directory: root },
     skill: { transform: async (cb) => cb({ add: () => {} }) },
     session: {
       hook: async (name, cb) => { captured[name] = cb; },
+      context: async () => ({ data: { messages: stored.messages } }),
       get: async () => ({ id: 'sess-v2' }),
     },
     tool: { hook: async (name, cb) => { captured['tool:' + name] = cb; } },
+    permission: { hook: async () => { throw new Error('permission hook must not register'); } },
   };
   await plugin.default.setup(ctx);
+  assert.equal(typeof captured.prompt, 'function', 'V2 must register the persisted prompt hook');
   assert.equal(typeof captured['tool:execute.before'], 'function', 'V2 tool hook must register');
 
-  // V2 context injection into first user message
-  const event = { sessionID: 'sess-v2', messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }] };
-  await captured.context(event);
-  assert.ok(event.messages[0].content[0].text.includes('EXTREMELY_IMPORTANT'), 'bootstrap injected (V2)');
+  // V2 persisted bootstrap: append to the first prompt, no-op after a user turn.
+  const first = { sessionID: 'sess-v2', prompt: { text: 'hi' } };
+  await captured.prompt(first);
+  assert.ok(first.prompt.text.startsWith('hi\n\n'), 'bootstrap must be appended to the prompt');
+  assert.ok(first.prompt.text.includes('EXTREMELY_IMPORTANT'), 'bootstrap injected (V2)');
+  stored.messages = [{ info: { role: 'user' }, parts: [] }];
+  const second = { sessionID: 'sess-v2', prompt: { text: 'again' } };
+  await captured.prompt(second);
+  assert.equal(second.prompt.text, 'again', 'a session with a user message is unchanged');
+
+  // The context hook carries only the active-gate summary, never the bootstrap.
+  const system = { sessionID: 'sess-v2', system: [] };
+  await captured.context(system);
+  assert.equal(
+    system.system.some((part) => part.text.includes('EXTREMELY_IMPORTANT')),
+    false,
+    'the context hook must not inject the bootstrap by default',
+  );
 
   // V2 safety guard blocks destructive input and passes benign input
   assert.throws(() => captured['tool:execute.before']({ tool: 'bash', input: { command: 'rm -rf /' } }), /destructive/);

@@ -116,13 +116,18 @@ test('malformed marker fails closed for edits', (t) => {
   assert.throws(() => plugin.checkSpecGate('edit', { filePath: 'src/app.js' }, root), /marker|json|spec gate/i);
 });
 
-test('non-mutating tools and no root are untouched', (t) => {
+test('non-mutating tools pass; mutating tools without a root fail closed', (t) => {
   const root = makeRepo();
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   activate(root);
   assert.doesNotThrow(() => plugin.checkSpecGate('read', { filePath: 'src/other.js' }, root));
   assert.doesNotThrow(() => plugin.checkSpecGate('bash', { command: 'git status' }, root));
-  assert.doesNotThrow(() => plugin.checkSpecGate('edit', { filePath: 'src/other.js' }, undefined));
+  assert.doesNotThrow(() => plugin.checkSpecGate('read', { filePath: 'src/other.js' }, undefined));
+  assert.doesNotThrow(() => plugin.checkSpecGate('bash', { command: 'git status' }, undefined));
+  // Fail closed: an unknown root must never skip a mutating target.
+  assert.throws(() => plugin.checkSpecGate('edit', { filePath: 'src/other.js' }, undefined), /root unknown/i);
+  assert.throws(() => plugin.checkSpecGate('write', { path: 'README.md' }, undefined), /root unknown/i);
+  assert.throws(() => plugin.checkSpecGate('patch', { patchText: '*** Begin Patch\n*** Update File: src/app.js\n+x\n*** End Patch' }, undefined), /root unknown/i);
 });
 
 test('outside-root targets are blocked', (t) => {
@@ -189,5 +194,75 @@ test('V2 hook enforces with ctx.directory', async (t) => {
   );
   assert.doesNotThrow(
     () => captured['tool:execute.before']({ tool: 'edit', input: { filePath: 'src/app.js' } }),
+  );
+});
+
+const v2RootCtx = ({ location, directory } = {}) => {
+  const captured = {};
+  const ctx = {
+    skill: { transform: async (cb) => cb({ add: () => {} }) },
+    session: {
+      hook: async (name, cb) => { captured[name] = cb; },
+      context: async () => ({ data: { messages: [] } }),
+      get: async () => ({ id: 'sess-v2-root' }),
+    },
+    tool: { hook: async (name, cb) => { captured[`tool:${name}`] = cb; } },
+  };
+  if (location !== undefined) ctx.location = { directory: location };
+  if (directory !== undefined) ctx.directory = directory;
+  return { ctx, captured };
+};
+
+test('V2 hook enforces with location.directory only', async (t) => {
+  const root = makeRepo();
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  activate(root);
+  const { ctx, captured } = v2RootCtx({ location: root });
+  await plugin.default.setup(ctx);
+
+  assert.doesNotThrow(
+    () => captured['tool:execute.before']({ tool: 'edit', input: { filePath: 'src/app.js' } }),
+  );
+  assert.throws(
+    () => captured['tool:execute.before']({ tool: 'edit', input: { filePath: 'src/other.js' } }),
+    /spec gate|outside/i,
+  );
+});
+
+test('V2 hook prefers location.directory when both roots are present', async (t) => {
+  const located = makeRepo();
+  const directory = makeRepo();
+  t.after(() => fs.rmSync(located, { recursive: true, force: true }));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  activate(located);
+  const { ctx, captured } = v2RootCtx({ location: located, directory });
+  await plugin.default.setup(ctx);
+
+  assert.doesNotThrow(
+    () => captured['tool:execute.before']({ tool: 'edit', input: { filePath: 'src/app.js' } }),
+  );
+  assert.throws(
+    () => captured['tool:execute.before']({ tool: 'edit', input: { filePath: 'src/other.js' } }),
+    /spec gate|outside/i,
+  );
+});
+
+test('V2 hook fails closed for mutating tools when no root is available', async () => {
+  const { ctx, captured } = v2RootCtx();
+  await plugin.default.setup(ctx);
+
+  assert.throws(
+    () => captured['tool:execute.before']({ tool: 'edit', input: { filePath: 'src/other.js' } }),
+    /root unknown/i,
+  );
+  assert.throws(
+    () => captured['tool:execute.before']({ tool: 'write', input: { path: 'README.md' } }),
+    /root unknown/i,
+  );
+  assert.doesNotThrow(
+    () => captured['tool:execute.before']({ tool: 'read', input: { filePath: 'src/other.js' } }),
+  );
+  assert.doesNotThrow(
+    () => captured['tool:execute.before']({ tool: 'bash', input: { command: 'git status' } }),
   );
 });

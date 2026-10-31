@@ -32,7 +32,9 @@ const SOURCES = [
   { from: '.opencode/agents', to: 'agents', kind: 'dir', key: 'agents' },
   { from: '.opencode/commands', to: 'commands', kind: 'dir', key: 'commands' },
   { from: '.opencode/plugins/sdlc-lean.js', to: 'plugins/sdlc-lean.js', kind: 'file', key: 'plugin' },
+  { from: '.opencode/plugins/sdlc-lean-tui', to: 'plugins/sdlc-lean-tui', kind: 'dir', key: 'tui' },
   { from: 'scripts/spec-check.mjs', to: 'scripts/spec-check.mjs', kind: 'file', key: 'specCheck' },
+  { from: 'scripts/host-evidence.mjs', to: 'scripts/host-evidence.mjs', kind: 'file', key: 'hostEvidence' },
   { from: 'scripts/research', to: 'scripts/research', kind: 'dir', key: 'research' },
 ];
 
@@ -84,7 +86,7 @@ const pruneEmptyDirs = (dir, target) => {
 export const installGlobal = ({ repo = repoRoot, target = defaultTarget() } = {}) => {
   const previous = readManifest(target);
   const installed = [];
-  const summary = { skills: 0, agents: 0, commands: 0, plugin: 0, specCheck: 0, research: 0, pruned: 0 };
+  const summary = { skills: 0, agents: 0, commands: 0, plugin: 0, tui: 0, specCheck: 0, hostEvidence: 0, research: 0, pruned: 0 };
 
   for (const src of SOURCES) {
     const from = path.join(repo, src.from);
@@ -140,7 +142,7 @@ if (isMain) {
   try {
     const s = installGlobal({ target });
     console.log(`sdlc-lean -> ${target}`);
-    console.log(`  skills ${s.skills} · agents ${s.agents} · commands ${s.commands} · plugin ${s.plugin ? 'yes' : 'no'} · spec-check ${s.specCheck ? 'yes' : 'no'} · research ${s.research} · pruned ${s.pruned}`);
+    console.log(`  skills ${s.skills} · agents ${s.agents} · commands ${s.commands} · plugin ${s.plugin ? 'yes' : 'no'} · tui ${s.tui} · spec-check ${s.specCheck ? 'yes' : 'no'} · host-evidence ${s.hostEvidence ? 'yes' : 'no'} · research ${s.research} · pruned ${s.pruned}`);
     console.log('restart OpenCode to pick up changes');
   } catch (err) {
     console.error(`[sdlc-lean] install failed: ${err.message}`);

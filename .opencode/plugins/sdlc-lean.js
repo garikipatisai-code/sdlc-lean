@@ -360,6 +360,16 @@ const resolveSpecCheck = () => {
   return null;
 };
 
+// Node executable for gate CLI spawns: under plain node process.execPath is
+// node, but under the opencode host it is the opencode binary (rejects
+// --root). Use the current executable only when it is node; otherwise rely on
+// 'node' in PATH. Exported for regression tests.
+export const resolveNodeExecutable = (execPath = process.execPath) => {
+  const base = path.basename(execPath || '').toLowerCase();
+  if (base === 'node' || base === 'node.exe') return execPath;
+  return 'node';
+};
+
 const specTargets = (tool, args = {}) => {
   if (!SPEC_MUTATING_TOOLS.has(tool)) return [];
   const targets = [];
@@ -371,7 +381,7 @@ const specTargets = (tool, args = {}) => {
   return [...new Set(targets)];
 };
 
-export const checkSpecGate = (tool, args = {}, root) => {
+export const checkSpecGate = (tool, args = {}, root, opts = {}) => {
   const targets = specTargets(tool, args);
   if (!targets.length) return; // non-mutating tools and targetless calls are no-ops
   if (!root) {
@@ -387,8 +397,11 @@ export const checkSpecGate = (tool, args = {}, root) => {
     // Unreadable marker: let the CLI report it (fail closed for edits).
   }
 
-  const cli = resolveSpecCheck();
-  if (!cli) return; // contract module not installed: fail open (documented)
+  const cli = opts?.specCheckPath !== undefined ? opts.specCheckPath : resolveSpecCheck();
+  // Marker is present but the contract module is missing: fail closed so
+  // edits cannot silently skip the gate. Only the no-marker path above
+  // fails open.
+  if (!cli) throw new Error('[sdlc-lean] spec gate unavailable: spec-check CLI not found');
 
   // The CLI is in the plan scope in some repos; a marker written by a modified
   // CLI must not be trusted. Malformed JSON is left to the CLI to report.
@@ -409,7 +422,8 @@ export const checkSpecGate = (tool, args = {}, root) => {
   }
 
   const absTargets = targets.map((target) => (path.isAbsolute(target) ? target : path.resolve(root, target)));
-  const result = spawnSync(process.execPath, [cli, 'check', ...absTargets, '--root', root], {
+  const spawnFn = opts?.spawnSync || spawnSync;
+  const result = spawnFn(resolveNodeExecutable(), [cli, 'check', ...absTargets, '--root', root], {
     encoding: 'utf8',
     timeout: 5000,
     windowsHide: true,

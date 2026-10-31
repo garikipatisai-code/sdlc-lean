@@ -28,6 +28,10 @@ Read the smallest matching reference before acting. Do not load the whole corpus
 | Juice, levels, cameras, UI, input, physics, saves, shaders, audio, procedural, assets | matching `references/vendor/<discipline>/`; `create-game-assets` helper scripts are not vendored — skip their script steps |
 | One-hour prototype / vertical slice | `references/vendor/prototype-fast/` |
 | itch.io build upload | `references/vendor/itch-publish/` |
+| Photoreal rendering, PBR/IBL lighting, post (photoreal/lighting) | `references/babylon-photoreal-rendering.md` |
+| Large-scene streaming, chunks, HLOD (streaming/chunk/HLOD) | `references/babylon-world-streaming.md` |
+| Vehicles, traffic, crowds (vehicle/traffic/crowd) | `references/babylon-traffic-crowds.md` |
+| Photoreal budgets, KTX2, portal caps (budget/KTX2/portal) | `references/babylon-photoreal-budgets.md` |
 
 Vendored material is Apache-2.0, pinned, and documented in
 `references/VENDORED.md`. Some cross-skill links point to upstream skills not

@@ -180,6 +180,87 @@ export const progressFor = (plan) => (plan.endsWith('.md')
 /** Derive the evidence file for a plan: foo.md -> foo-evidence.json. */
 export const evidenceFor = (plan) => plan.replace(/\.md$/, '') + '-evidence.json';
 
+/**
+ * Sanitize an approval name: trim, collapse CR/LF runs to a space, cap at 64
+ * chars, then reject empty or any remaining CR/LF/colon/hash (invalid-field).
+ * The pre-collapse check rejects multiline/YAML-comment injection (`\n`, `:`,
+ * `#`); the post-check is belt-and-braces on the value written to the file.
+ */
+const sanitizeApprovedBy = (value) => {
+  const candidate = (typeof value === 'string' && value.trim())
+    || process.env.USER || process.env.USERNAME || 'human';
+  const trimmed = String(candidate).trim();
+  if (trimmed === '' || /[\r\n:#]/.test(trimmed)) {
+    fail('invalid-field', 'approved_by must be a non-empty string without newlines, colons, or hashes');
+  }
+  const by = trimmed.replace(/[\r\n]+/g, ' ').slice(0, 64).trim();
+  if (by === '' || /[\r\n:#]/.test(by)) {
+    fail('invalid-field', 'approved_by must be a non-empty string without newlines, colons, or hashes');
+  }
+  return by;
+};
+
+/** Pure fill: return the plan text with approval frontmatter applied (no I/O). */
+const applyApprovalFill = (text, by, at) => {
+  const m = text.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
+  if (!m) fail('missing-frontmatter', 'plan must start with YAML frontmatter');
+  const updated = [];
+  const seen = new Set();
+  for (const line of m[1].split(/\r?\n/)) {
+    const kv = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
+    if (kv && (kv[1] === 'status' || kv[1] === 'approved_by' || kv[1] === 'approved_at')) {
+      if (seen.has(kv[1])) continue;
+      seen.add(kv[1]);
+      updated.push(kv[1] === 'status' ? 'status: approved'
+        : kv[1] === 'approved_by' ? `approved_by: ${by}`
+        : `approved_at: ${at}`);
+      continue;
+    }
+    updated.push(line);
+  }
+  if (!seen.has('status')) updated.push('status: approved');
+  if (!seen.has('approved_by')) updated.push(`approved_by: ${by}`);
+  if (!seen.has('approved_at')) updated.push(`approved_at: ${at}`);
+  return `---\n${updated.join('\n')}\n---\n${text.slice(m[0].length)}`;
+};
+
+// Divergence note: V2 /approve (plugin:490 approvePlan) still refuses draft
+// plans (buildGate before write, no autofill); CLI `approve` autofill here is
+// an intentional divergence pending V2 align. Do not change the plugin path.
+/**
+ * Auto-fill the plan's approval frontmatter after interactive human approval.
+ * Validates (autofilling status/approved_by/approved_at after TTY check):
+ * sanitizes approved_by, previews the filled text via parsePlanText (plus a
+ * spec regular-file check when root is known) BEFORE mutating, then writes.
+ * Every other key and the body are kept.
+ */
+export const fillApprovalFrontmatter = (planFile, approvedBy, root) => {
+  const abs = path.resolve(planFile);
+  if (root !== undefined && root !== null) {
+    assertContainedReal(root, abs, planFile);
+  }
+  let st;
+  try {
+    st = fs.lstatSync(abs);
+  } catch (err) {
+    if (err.code === 'ENOENT') fail('missing-plan', `plan not found: ${planFile}`);
+    fail('invalid-plan', `plan is not readable: ${planFile}`);
+  }
+  if (st.isSymbolicLink()) fail('symlink', `plan must not be a symlink: ${planFile}`);
+  if (!st.isFile()) fail('invalid-plan', `plan is not a regular file: ${planFile}`);
+  const text = fs.readFileSync(abs, 'utf8');
+  const by = sanitizeApprovedBy(approvedBy);
+  const at = new Date().toISOString();
+  const next = applyApprovalFill(text, by, at);
+  // Validate from memory before mutating so an invalid plan never lands dirty-approved.
+  const preview = parsePlanText(next);
+  if (root !== undefined && root !== null) {
+    assertRegularFile(root, preview.spec, 'spec');
+  }
+  fs.writeFileSync(abs, next);
+  return { approved_by: by, approved_at: at };
+};
+
 // Split a Markdown table row on unescaped pipes: `\|` is a literal `|`.
 const splitRow = (line) => {
   const cells = [];
@@ -504,8 +585,7 @@ export const checkPath = (root, target) => {
 const USAGE = `Usage: node scripts/spec-check.mjs <command> [options]
 
 Commands:
-  approve <plan.md>   Validate an approved plan and write .sdlc/spec-gate.json
-                      (interactive terminal required: no piped approval)
+  approve <plan.md>   Validate (autofilling status/approved_by/approved_at after TTY check) and write .sdlc/spec-gate.json
   status              Show the active gate (or "none")
   verify [--require-active]   Re-hash plan/spec/CLI; exit 1 on drift, 2 if no gate when required
   close               Validate <plan>-evidence.json and remove the active gate
@@ -552,10 +632,28 @@ export const main = (argv = process.argv.slice(2), io = {}) => {
     if (command === 'approve') {
       humanApproval({ stdinTTY, stdoutTTY });
       if (!positional) fail('invalid-args', 'approve needs a plan path');
-      const gate = buildGate(root, positional);
-      writeGate(root, gate);
-      console.log(`active spec gate: ${gate.plan} -> ${gate.spec} (${gate.files.length} files, sha256 ${gate.plan_sha256.slice(0, 12)})`);
-      return 0;
+      const planRel = assertSafeRel(normalizeRel(root, positional), 'plan');
+      if (!planRel.endsWith('.md')) fail('invalid-plan', 'plan must be a Markdown file');
+      const planAbs = path.resolve(root, planRel);
+      let original = null;
+      try { original = fs.readFileSync(planAbs, 'utf8'); } catch { /* fillApprovalFrontmatter reports */ }
+      try {
+        // Validate from memory before mutating: a failed approve must not
+        // leave the plan dirty-approved.
+        if (original !== null) {
+          const previewText = applyApprovalFill(original, sanitizeApprovedBy(undefined), new Date().toISOString());
+          const preview = parsePlanText(previewText);
+          assertRegularFile(root, preview.spec, 'spec');
+        }
+        fillApprovalFrontmatter(planAbs, undefined, root);
+        const gate = buildGate(root, positional);
+        writeGate(root, gate);
+        console.log(`active spec gate: ${gate.plan} -> ${gate.spec} (${gate.files.length} files, sha256 ${gate.plan_sha256.slice(0, 12)})`);
+        return 0;
+      } catch (err) {
+        if (original !== null) { try { fs.writeFileSync(planAbs, original); } catch { /* best effort restore */ } }
+        throw err;
+      }
     }
     if (command === 'status') {
       const gate = readGate(root);

@@ -384,6 +384,13 @@ const specTargets = (tool, args = {}) => {
 export const checkSpecGate = (tool, args = {}, root, opts = {}) => {
   const targets = specTargets(tool, args);
   if (!targets.length) return; // non-mutating tools and targetless calls are no-ops
+  // SoP (SOP-1): refuse self-review where roles are observable. Fail open
+  // when no bindings are passed (see convention above); mutating path only
+  // so reads never break.
+  if (opts && typeof opts === 'object') {
+    const bound = normalizeRunRoles(opts);
+    if (bound) checkSeparationOfPowers(bound);
+  }
   if (!root) {
     // Fail closed: an unknown root must never silently skip a mutating target.
     throw new Error(`[sdlc-lean] spec gate root unknown: refusing ${tool} (no location or directory)`);
@@ -437,6 +444,324 @@ export const checkSpecGate = (tool, args = {}, root, opts = {}) => {
     || 'outside the approved plan scope';
   throw new Error(`[sdlc-lean] spec gate blocked: ${detail}`);
 };
+
+// --- Separation of powers (SOP-1, auto-tier pilot) ---------------------------
+// Run-role tracking: every Auto run declares author/implementer/critic/closer
+// as DISTINCT session IDs in the run header. The implementer must never be
+// its own critic, and the closer must never have performed implementation
+// (self-review). The closer is MECHANICAL only: it checks that evidence +
+// hashes + critic verdicts are PRESENT, never judging correctness.
+//
+// Convention fallback (session IDs unobservable): V1/V2 tool hooks often
+// carry no reliable role->session map (event.sessionID alone does not say
+// which role acted). SoP is therefore enforced WHERE OBSERVABLE — when the
+// caller passes explicit bindings via opts.runRoles / opts.roles /
+// opts.runHeader (or directly to checkSeparationOfPowers / validateRunHeader
+// / checkCloser). When no bindings are present the check fails OPEN (returns
+// without throwing) so activation and unscoped repos never break. Callers
+// with observable sessions MUST pass
+// `{ author, implementer, critic, closer }` with distinct non-empty IDs.
+export const SOP_ROLES = ['author', 'implementer', 'critic', 'closer'];
+
+export const normalizeRunRoles = (input) => {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return null;
+  let src = input;
+  for (const key of ['runRoles', 'roles', 'runHeader', 'header']) {
+    const v = src?.[key];
+    if (v && typeof v === 'object' && !Array.isArray(v)) { src = v; break; }
+  }
+  if (src && typeof src.roles === 'object' && src.roles !== null && !Array.isArray(src.roles)) {
+    src = { ...src, ...src.roles };
+  }
+  const out = {};
+  for (const role of SOP_ROLES) {
+    const v = src[role];
+    if (typeof v === 'string' && v.trim() !== '') out[role] = v.trim();
+  }
+  return Object.keys(out).length ? out : null;
+};
+
+export const checkSeparationOfPowers = (input) => {
+  const roles = normalizeRunRoles(input);
+  if (!roles) return null; // unobservable: fail open, never break activation
+  const entries = Object.entries(roles);
+  if (entries.length < 2) return roles;
+  for (let i = 0; i < entries.length; i++) {
+    for (let j = i + 1; j < entries.length; j++) {
+      if (entries[i][1] === entries[j][1]) {
+        const [roleA, sid] = entries[i];
+        const [roleB] = entries[j];
+        throw new Error(`[sdlc-lean] sop-violation: ${roleA} and ${roleB} share session "${sid}" (self-review refused; run roles author/implementer/critic/closer must be distinct sessions)`);
+      }
+    }
+  }
+  return roles;
+};
+
+// Aliases for caller convenience (same SoP core, distinct names).
+export const assertSeparationOfPowers = checkSeparationOfPowers;
+export const checkRunRoles = checkSeparationOfPowers;
+export const validateRunRoles = checkSeparationOfPowers;
+
+// Run header: tracks tier/check/scope/budget/reversal plus distinct roles.
+// Only the roles are enforced here (fail open when absent); other header
+// fields are carried for audit, never judged.
+export const validateRunHeader = (header) => {
+  if (!header || typeof header !== 'object' || Array.isArray(header)) return null;
+  const roles = normalizeRunRoles(header);
+  if (!roles) return null; // unobservable: fail open (see convention above)
+  checkSeparationOfPowers(roles);
+  return roles;
+};
+
+export const parseRunHeader = validateRunHeader;
+
+// Closer: MECHANICAL presence-check only (evidence + hashes + critic verdicts
+// present, no judgment). Presence means non-empty; correctness-judgment
+// (code quality, diff review) is explicitly out of scope. SoP applies where
+// roles are observable: closer == implementer/critic/author refuses with
+// sop-violation naming the duplicated role.
+const closerPresent = (v) => {
+  if (typeof v === 'string') return v.trim() !== '';
+  if (Array.isArray(v)) return v.length > 0;
+  if (v && typeof v === 'object') return Object.keys(v).length > 0;
+  return v !== null && v !== undefined && v !== false && v !== 0;
+};
+
+// --- Reward-hacking guards: grader immutability + expected outcomes (RH-1) ---
+// Mirrors the CLI contract (scripts/spec-check.mjs). Grader paths are
+// `tests/**`, `scripts/validate-skills.mjs`, `eval/**` (see isGraderPath).
+// Tool-time blocking is NOT added here — machine-close owns the refusal —
+// so existing gate behavior stays byte-identical. These pure helpers let
+// callers and regression tests share the rule without touching hooks.
+export const GRADER_GLOBS = ['tests/**', 'scripts/validate-skills.mjs', 'eval/**'];
+
+export const isGraderPath = (value) => {
+  if (typeof value !== 'string') return false;
+  const p = value.trim().replace(/^\.\//, '').replace(/\\/g, '/');
+  if (p === 'scripts/validate-skills.mjs') return true;
+  return p === 'tests' || p.startsWith('tests/')
+    || p === 'eval' || p.startsWith('eval/');
+};
+
+export const normalizeOutcome = (value) => String(value ?? '').trim().replace(/\s+/g, ' ');
+
+export const expectedOfRow = (row) => {
+  if (!row || typeof row !== 'object' || Array.isArray(row)) return null;
+  for (const key of ['expected', 'expectedOutcome', 'expected_outcome', 'outcome']) {
+    const v = row[key];
+    if (typeof v === 'string' && v.trim() !== '') return normalizeOutcome(v);
+  }
+  return null;
+};
+
+export const isNewBehaviorRow = (row) => {
+  if (!row || typeof row !== 'object' || Array.isArray(row)) return false;
+  if (row.newBehavior === true || row.new_behavior === true) return true;
+  return expectedOfRow(row) !== null;
+};
+
+/**
+ * Enforce the pre-declared-outcome rule (pure, mechanical presence-check:
+ * no judgment, only membership). Returns the count of new-behavior rows.
+ * Throws `missing-expected-outcomes` / `expected-outcome-mismatch` when a
+ * new-behavior row lacks a declaration or falls outside the list. Rows
+ * without markers pass, so callers without new behavior are unaffected.
+ */
+export const checkExpectedOutcomes = (rows, expectedOutcomes) => {
+  const list = Array.isArray(rows) ? rows : [];
+  const fresh = list.filter(isNewBehaviorRow);
+  if (fresh.length === 0) return 0;
+  const declared = Array.isArray(expectedOutcomes)
+    ? expectedOutcomes.filter((s) => typeof s === 'string' && s.trim() !== '').map(normalizeOutcome)
+    : null;
+  if (!declared || declared.length === 0) {
+    throw new Error(`[sdlc-lean] closer refused: missing expected outcomes (${fresh.length} new-behavior row(s) but no pre-declared expected outcomes; declare each new behavior before implementation)`);
+  }
+  const set = new Set(declared);
+  for (const row of fresh) {
+    const want = expectedOfRow(row);
+    if (want === null) {
+      throw new Error('[sdlc-lean] closer refused: expected-outcome mismatch (a new-behavior row declares no expected outcome; each new-behavior row must match a pre-declared expected outcome)');
+    }
+    if (!set.has(want)) {
+      throw new Error(`[sdlc-lean] closer refused: expected-outcome mismatch ("${want}" matches no pre-declared expected outcome)`);
+    }
+  }
+  return fresh.length;
+};
+
+// --- Envelope immutability (pilot constraint, mirrors CLI) -------------------
+// The envelope is the standing pre-approval: when `checkCloser` is given an
+// envelope file it must be git-clean AND unchanged since `approved_at`
+// (`git log --since` empty + status clean), else `envelope-changed` refuses.
+// Envelope updates require re-approval — consistent with plan-immutability.
+// Fail-open when git context is unobservable (no root/approved_at and no
+// discoverable gate); fail-closed (`envelope-unknown`/`envelope-changed`)
+// when observable. Residual (conceded): clock/commit-date spoofing needs
+// file-writer privilege.
+export const checkEnvelopeClean = (root, envelopeRel, approvedAt, opts = {}) => {
+  const runner = opts?.spawnSync || opts?.runner || spawnSync;
+  const rel = String(envelopeRel || '').trim().replace(/^\.\//, '');
+  if (!rel) throw new Error('[sdlc-lean] closer refused: envelope-changed (missing envelope path)');
+  if (typeof approvedAt !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(approvedAt) || Number.isNaN(Date.parse(approvedAt))) {
+    throw new Error('[sdlc-lean] closer refused: envelope-unknown (cannot inspect envelope history without a valid approved_at)');
+  }
+  let statusOut;
+  try {
+    const st = runner('git', ['-C', root, 'status', '--porcelain', '--', rel], { encoding: 'utf8' });
+    if (st.error || st.status !== 0) {
+      throw new Error(`[sdlc-lean] closer refused: envelope-unknown (cannot inspect the envelope working tree for "${rel}")`);
+    }
+    statusOut = (st.stdout || '').trim();
+  } catch (err) {
+    if (String(err?.message || '').includes('closer refused')) throw err;
+    throw new Error(`[sdlc-lean] closer refused: envelope-unknown (${err?.message || err})`);
+  }
+  if (statusOut !== '') {
+    throw new Error(`[sdlc-lean] closer refused: envelope-changed (envelope file "${rel}" has uncommitted changes; envelope updates require re-approval)`);
+  }
+  let logOut;
+  try {
+    const lg = runner('git', ['-C', root, 'log', `--since=${approvedAt}`, '--pretty=format:%H', '--', rel], { encoding: 'utf8' });
+    if (lg.error || lg.status !== 0) {
+      throw new Error(`[sdlc-lean] closer refused: envelope-unknown (cannot inspect envelope history for "${rel}")`);
+    }
+    logOut = (lg.stdout || '').trim();
+  } catch (err) {
+    if (String(err?.message || '').includes('closer refused')) throw err;
+    throw new Error(`[sdlc-lean] closer refused: envelope-unknown (${err?.message || err})`);
+  }
+  if (logOut !== '') {
+    throw new Error(`[sdlc-lean] closer refused: envelope-changed (envelope file "${rel}" changed since approval; envelope updates require re-approval)`);
+  }
+  return true;
+};
+
+const closerEnvelopePath = (input) => {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return '';
+  for (const k of ['envelope', 'envelopeFile', 'envelopePath', 'envelope_file']) {
+    const v = input[k];
+    if (typeof v === 'string' && v.trim() !== '') return v.trim();
+  }
+  return '';
+};
+
+const closerApprovedAt = (input, opts) => {
+  const cands = [
+    opts?.approved_at, opts?.approvedAt,
+    input?.approved_at, input?.approvedAt,
+    input?.gate?.approved_at, input?.valid?.approved_at,
+  ];
+  for (const c of cands) {
+    if (typeof c === 'string' && c.trim() !== '') return c.trim();
+  }
+  return '';
+};
+
+const closerRootFor = (input, opts, envelopePath) => {
+  if (typeof opts === 'string' && opts) return opts;
+  for (const c of [opts?.root, opts?.dir, opts?.cwd, input?.root, input?.dir, input?.cwd, input?.gateRoot, input?.projectRoot]) {
+    if (typeof c === 'string' && c) return c;
+  }
+  // Infer from an absolute envelope path: repo top-level + gate marker.
+  try {
+    if (typeof envelopePath === 'string' && path.isAbsolute(envelopePath)) {
+      const dir = path.dirname(envelopePath);
+      const top = spawnSync('git', ['-C', dir, 'rev-parse', '--show-toplevel'], { encoding: 'utf8' });
+      const t = (top.stdout || '').trim();
+      if (!top.error && top.status === 0 && t) return t;
+    }
+  } catch { /* unobservable: fail open below */ }
+  return '';
+};
+
+const closerOutcomesFromFile = (root, envelopePath) => {
+  try {
+    const abs = path.isAbsolute(envelopePath) ? envelopePath : path.resolve(root, envelopePath);
+    const st = fs.lstatSync(abs);
+    if (st.isSymbolicLink() || !st.isFile()) return null;
+    const text = fs.readFileSync(abs, 'utf8');
+    const lines = String(text).replace(/<!--[\s\S]*?-->/g, '').split(/\r?\n/);
+    let inExpect = false;
+    const out = [];
+    for (const line of lines) {
+      const h = line.match(/^##\s+(.+?)\s*$/);
+      if (h) { inExpect = /expect/i.test(h[1]); continue; }
+      if (!inExpect) continue;
+      const m = line.match(/^\s*[-*]\s+(.+?)\s*$/);
+      if (!m) continue;
+      const entry = m[1].trim().replace(/^[`'"]+|[`'"]+$/g, '').trim().replace(/\s+/g, ' ');
+      if (!entry || entry.startsWith('#')) continue;
+      out.push(entry);
+    }
+    return out;
+  } catch { return null; }
+};
+
+export const checkCloser = (input, opts) => {
+  const roles = normalizeRunRoles(input);
+  if (roles) checkSeparationOfPowers(roles);
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    throw new Error('[sdlc-lean] closer refused: missing evidence (mechanical presence-check: evidence + hashes + critic verdicts required, no judgment)');
+  }
+  const evidence = input.evidence ?? input.evidenceAbs ?? input.evidenceFile ?? input.evidencePath;
+  const hashes = input.plan_sha256 ?? input.spec_sha256 ?? input.sha256 ?? input.hashes ?? input.planHash ?? input.specHash;
+  const verdicts = input.verdicts ?? input.critics ?? input.criticVerdicts ?? input.critic_verdicts;
+  if (!closerPresent(evidence)) {
+    throw new Error('[sdlc-lean] closer refused: missing evidence (mechanical presence-check: evidence + hashes + critic verdicts required, no judgment)');
+  }
+  if (!closerPresent(hashes)) {
+    throw new Error('[sdlc-lean] closer refused: missing hashes (mechanical presence-check: evidence + hashes + critic verdicts required, no judgment)');
+  }
+  if (!closerPresent(verdicts)) {
+    throw new Error('[sdlc-lean] closer refused: missing critic verdicts (mechanical presence-check: evidence + hashes + critic verdicts required, no judgment)');
+  }
+  // Reward-hacking guard (RH-1): only when evidence rows are observable as
+  // an array. A string evidence value is a file path the CLI owns, so it
+  // stays out of scope here. With no new-behavior rows this passes, keeping
+  // every existing caller green.
+  const closerRows = Array.isArray(input.evidence) ? input.evidence
+    : Array.isArray(input.rows) ? input.rows
+    : Array.isArray(input.tasks) ? input.tasks : null;
+  const envelopePath = closerEnvelopePath(input);
+  let outcomes = input.expectedOutcomes ?? input.expected_outcomes ?? input.outcomes ?? null;
+  if (envelopePath !== '') {
+    let root = closerRootFor(input, opts, envelopePath);
+    let approvedAt = closerApprovedAt(input, opts);
+    if (root && !approvedAt) {
+      try {
+        const marker = JSON.parse(fs.readFileSync(path.join(root, '.sdlc', 'spec-gate.json'), 'utf8'));
+        if (typeof marker?.approved_at === 'string' && marker.approved_at) approvedAt = marker.approved_at;
+      } catch { /* unobservable: fail open below */ }
+    }
+    if (!Array.isArray(outcomes)) {
+      const fromFile = root ? closerOutcomesFromFile(root, envelopePath) : null;
+      if (Array.isArray(fromFile) && fromFile.length) outcomes = fromFile;
+    }
+    if (root && approvedAt) {
+      let rel = envelopePath;
+      try {
+        if (path.isAbsolute(envelopePath)) {
+          const r = path.relative(root, envelopePath);
+          if (r && !r.startsWith('..') && !path.isAbsolute(r)) rel = r.split(path.sep).join('/');
+        } else {
+          rel = envelopePath.replace(/^\.\//, '').split(path.sep).join('/');
+        }
+      } catch { /* keep raw */ }
+      checkEnvelopeClean(root, rel, approvedAt, opts);
+    }
+    // Unobservable git context: fail open (outcomes still enforced below).
+  }
+  if (closerRows) {
+    checkExpectedOutcomes(closerRows, outcomes);
+  }
+  return true;
+};
+
+export const verifyCloser = checkCloser;
+export const validateCloser = checkCloser;
+export const checkCloserPresence = checkCloser;
 
 // --- V2 `/approve` command (human-only) -------------------------------------
 // The human types `/approve <plan> [sha256:<hex>]` in the TUI. The command

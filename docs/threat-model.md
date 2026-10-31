@@ -33,6 +33,38 @@ Scope: palette/keybind picker lists plans, shows files/allow plus plan SHA-256 a
 | TUI → wrong project | The popup resolves the wrong root or session and approves another checkout | high | Root from the TUI location only, never `cwd`; current session route only, refuse otherwise; absolute plan path; hash compare before write | plugin |
 | Marker → user | A tampered marker or changed plan file is displayed as valid | high | Verify `plan_sha256`/`spec_sha256` against file bytes before display; mismatch returns invalid and the status shows `gate invalid` only | plugin |
 
+## 2026-10-31 auto-tier pilot
+
+Scope: ENVELOPE-AUTHORIZED MACHINE-CLOSED loop — the agent writes its own reference plan AND closes its own gate on machine authority (zero human keystrokes inside the envelope). Standing envelope (authorized once, version-controlled) is the only human act; irreversible-external acts stay ALWAYS-human. Design: `docs/design/0001-auto-tier-pilot.md`. This round is docs-only; zero code changed.
+
+- Assets: uncommitted work (loss/corruption), `main` (bad merge landing), gate integrity (forged or weakened approval), audit trail (missing or false rows hiding a scope break).
+- Entry points: agent tool calls acting under the standing envelope (file edits, test/check runs, ledger writes); reference-plan MDs the agent authors itself.
+- Trust boundaries: envelope edge (declared paths vs. everything else); machine-close (criteria check before close); merge (branch → shared remote/PR); release/publish/spend/prod-writes; grader (assertions and pass bars).
+
+Attacker paths (input → sink → impact):
+
+1. Agent self-authorization — writing its own plan AND closing its own gate = approving its own work (top threat: spoofing-by-trust / elevation).
+2. Prompt-injection via tool results → out-of-envelope file write sink → unapproved code lands inside an "envelope-authorized" run (tampering / elevation) — out-of-envelope writes blocked by gate hooks.
+3. Agent self-widening scope mid-run ("just one more file") → gate-hook/file-scope sink → authorization boundary crossed without envelope cover (elevation / tampering).
+4. Forged audit row or weakened check covering a scope break → `docs/audit-ledger.md` / check sink → repudiation: the record claims a clean machine-close while hiding the break (repudiation / tampering); reward-hacking variant: new behavior with no pre-declared expected outcome graded by an agent-edited check.
+5. Rubber-stamped plan approval → false-trust sink → REJECTED path (not taken): the human approves a plan they cannot judge; this design removes that gate entirely — plans are reference output, never authorization inputs.
+
+| boundary | threat | risk | mitigation | residual owner |
+|---|---|---|---|---|
+| Agent → own gate (TOP THREAT) | Agent authors its reference plan AND closes its own gate = approving its own work (spoofing-by-trust / elevation) | high | Separation of powers — plan-author, implementer, critic, and closer are FRESH independent subagents (existing subagent-driven-development rule), never the implementer reviewing itself; closer is a MECHANICAL check only (evidence + hashes + critic verdicts present, no judgment); grader-immutability (agent never edits its own grading tests); envelope hooks enforce scope technically; reward-hacking guards (checks pre-existing or reviewer-owned; new behavior needs a pre-declared expected outcome) | human operator (sampling; correlated-model-failure risk below) |
+|---|---|---|---|---|
+| Human → plan approval | Human approves a plan they cannot judge (experimental domain) → rubber stamp → false trust (top threat in the OLD shape) | high | Path REMOVED by design: no human hash approvals, no per-plan accept waits, no approval prompts the human can't judge; plans/specs are reference output, never authorization inputs; human authorizes the risk envelope only | human operator (envelope choice) |
+|---|---|---|---|---|
+| Envelope edge | Injected or self-added instruction widens the run beyond declared paths (spoofing/elevation) | high | Envelope enforced TECHNICALLY by gate hooks, not promises: anything outside the envelope (and any active plan `files`/`allow`) is refused as a deviation; escalate (stop + report with evidence, no retry) | human operator |
+| Envelope edge | Tool-result content smuggles an out-of-envelope write or destructive command (tampering) | high | Out-of-envelope writes blocked by hooks; destructive patterns still throw (guards not negotiable); escalate on destructive/irreversible act or unclear scope/reversibility; validate at the boundary, once | human operator |
+| Audit trail | Agent writes a false pass row or omits the break (repudiation) | high | Audit row + reversal commit per run: exactly one row per run naming the reverting commit; reviewer reconciles row against `git log` before trusting it; ledger kept human-readable for outer-loop sampling | human operator |
+| Fix loop | Same check fails twice with same output yet the loop retries silently, burning budget or drifting (denial of service on operator attention / tampering-by-drift) | high | Escalate on 2×same-failure: stop + report, no retry; iteration budget caps the run; strategy change only, never the same fix again | human operator |
+| Grader | Check says pass while grader/assertion says fail (or agent weakens an assertion to go green) — conflicting signals (tampering) | high | Grader-immutability (load-bearing): grader conflict escalates — stop + report, no retry; grader assertion changes are ALWAYS-human; never loosen a bar to go green | human operator |
+| Merge / release / external | Envelope-authorized run merges to a shared remote, opens a shared PR, publishes, spends, or writes to prod/external (elevation across the irreversible-external boundary) | high | Irreversible-external acts are ALWAYS-human (explicit list: shared-remote merge/PR, publish/release, spend, prod/external network writes, grader changes, red close); a run attempting them stops and reports; no envelope covers them | human operator |
+| Run output → operator | Over-long or secret-bearing run output leaks tokens into the ledger or logs (information disclosure) | low | Secrets never enter the model context or logs; ledger rows carry only date/tier/check/result/reversal, never raw output | human operator |
+
+Residual risks (accepted by human operator): a correctly-scoped but wrong-headed run can still land bad-but-revertible work (bounded by budget + named check + reversal commit); the audit ledger is a detection control, not tamper-proof; prompt-injection via tool results is mitigated at the scope/destructive boundaries, not eliminated; CORRELATED MODEL FAILURE across supposedly-independent agents (same family sharing a blind spot) can defeat separation of powers — owned by the human operator via outer-loop sampling; unknown-unknown domain risk is accepted explicitly by the envelope choice. Envelope sizing on unknown risk remains human-owned: too wide risks blast radius, too narrow stalls runs.
+
 ## Rules
 
 - No finding without a traced path.

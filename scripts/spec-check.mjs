@@ -11,6 +11,7 @@
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'url';
 
 export const GATE_VERSION = 1;
@@ -364,6 +365,173 @@ export const isAllowed = (gate, rel) => {
   return patterns.some((pattern) => matchPattern(pattern, rel));
 };
 
+// --- Envelope (auto-tier standing pre-approval) ------------------------------
+// Template: docs/auto-envelope.template.md. Sections: Paths, Reversibility,
+// No external effects, Budgets. Machine-readable bullets, human-readable risk.
+
+const stripEnvelopeComments = (text) => String(text).replace(/<!--[\s\S]*?-->/g, '');
+
+const splitEnvelopeSections = (text) => {
+  const clean = stripEnvelopeComments(String(text));
+  const lines = clean.split(/\r?\n/);
+  const sections = [];
+  let current = null;
+  for (const line of lines) {
+    const h = line.match(/^##\s+(.+?)\s*$/);
+    if (h) {
+      current = { heading: h[1].trim(), body: [] };
+      sections.push(current);
+      continue;
+    }
+    if (current) current.body.push(line);
+  }
+  return sections;
+};
+
+const envelopeSectionBody = (sections, key) => {
+  const found = sections.find((s) => s.heading.toLowerCase().includes(key));
+  return found ? found.body.join('\n') : null;
+};
+
+const envelopeContentLines = (body) => body.split(/\r?\n/)
+  .map((line) => line.trim())
+  .filter((line) => line !== '' && !line.startsWith('>'));
+
+const EXTERNAL_KEY_RE = '(publish|release|spend|money|cost|network|prod|provision|merge|\\bpr\\b|grader|red.?close)';
+
+/**
+ * Parse and validate an auto-tier envelope template (pure, no I/O).
+ * Rejects absolute paths, `..` escapes, glob escapes outside the root,
+ * an empty reversibility section, any affirmative external-effect
+ * declaration, and missing/invalid budgets. Returns the machine fields.
+ */
+export const parseEnvelopeText = (text) => {
+  if (typeof text !== 'string' || text.trim() === '') {
+    fail('invalid-envelope', 'envelope file is empty');
+  }
+  const clean = stripEnvelopeComments(text);
+  const sections = splitEnvelopeSections(text);
+
+  const pathsBody = envelopeSectionBody(sections, 'path');
+  if (pathsBody === null) fail('invalid-envelope', 'envelope is missing the "Paths" section');
+  const reversBody = envelopeSectionBody(sections, 'revers');
+  if (reversBody === null) fail('invalid-envelope', 'envelope is missing the "Reversibility" section');
+  const externalBody = envelopeSectionBody(sections, 'external');
+  if (externalBody === null) fail('invalid-envelope', 'envelope is missing the "No external effects" section');
+  const budgetsBody = envelopeSectionBody(sections, 'budget');
+  if (budgetsBody === null) fail('invalid-envelope', 'envelope is missing the "Budgets" section');
+
+  // Any affirmative external-effect declaration, anywhere in the file
+  // (comments already stripped), fails the envelope. Separators accept
+  // `:` or `=` (pilot constraint, Budgets-parser consistency:
+  // `publish=yes`, `publish = yes` refuse like `publish: yes`); a bare
+  // space form (`publish yes`) refuses via bareAffirmative; `allow`
+  // lines accept any of space/`:`/`=` before the key
+  // (`allow publish`, `allow:publish`, `allow=publish` all refuse).
+  const affirmative = new RegExp(`${EXTERNAL_KEY_RE}\\s*[:=]\\s*(yes|y|true|allow|allowed|permitted|enable[d]?)\\b`, 'i');
+  const bareAffirmative = new RegExp(`${EXTERNAL_KEY_RE}\\s+(yes|y|true|allow|allowed|permitted|enable[d]?)\\b`, 'i');
+  const allowLine = new RegExp(`^\\s*[-*]?\\s*allow\\s*[:=\\s]+${EXTERNAL_KEY_RE}`, 'i');
+  for (const line of clean.split(/\r?\n/)) {
+    const t = line.trim();
+    if (t === '' || t.startsWith('>') || t.startsWith('#')) continue;
+    if (affirmative.test(t)) fail('external-effect', `envelope declares an external effect: "${t}" (must stay "no")`);
+    if (bareAffirmative.test(t)) fail('external-effect', `envelope declares an external effect: "${t}" (must stay "no")`);
+    if (allowLine.test(t)) fail('external-effect', `envelope declares an external effect: "${t}" (must stay "no")`);
+  }
+
+  // Paths: one bare path per `- ` bullet; validated like plan scope patterns.
+  const paths = [];
+  for (const line of pathsBody.split(/\r?\n/)) {
+    const bullet = line.match(/^\s*[-*]\s+(.+?)\s*$/);
+    if (!bullet) continue;
+    let entry = bullet[1].trim().replace(/^[`'"]+|[`'"]+$/g, '').trim();
+    if (entry === '') continue;
+    // Allow a trailing human note after the path ("— reason", "# note", "(note)").
+    const token = entry.split(/\s+/)[0].replace(/[`'"]+$/g, '').replace(/[,;]+$/g, '');
+    paths.push(assertSafePattern(token, 'paths'));
+  }
+  if (paths.length === 0) fail('invalid-envelope', 'envelope "Paths" section lists no paths');
+
+  // Reversibility: must be present, non-empty, and name the reversal SHA.
+  const reversLines = envelopeContentLines(reversBody).filter((l) => !l.startsWith('#'));
+  if (reversLines.length === 0) {
+    fail('invalid-envelope', 'envelope "Reversibility" section is empty: declare the reversal commit SHA recorded per run');
+  }
+  const reversText = reversLines.join('\n');
+  if (!/reversal/i.test(reversText) || !/\bsha\b|commit/i.test(reversText)) {
+    fail('invalid-envelope', 'envelope "Reversibility" section must declare the reversal commit SHA recorded per run');
+  }
+
+  // No external effects: non-empty denials only (affirmatives rejected above).
+  const externalLines = envelopeContentLines(externalBody).filter((l) => !l.startsWith('#'));
+  if (externalLines.length === 0) {
+    fail('invalid-envelope', 'envelope "No external effects" section is empty: declare publish/spend/network-prod as "no"');
+  }
+  const externalText = externalLines.join('\n');
+  if (!/(\bno\b|never|\bnone\b|prohibited|forbidden|human-only|human only|not permitted|denied)/i.test(externalText)) {
+    fail('invalid-envelope', 'envelope "No external effects" section must deny external effects (publish/spend/network-prod: no)');
+  }
+
+  // Budgets: max iterations (positive int) + named check command.
+  const budgetsLines = envelopeContentLines(budgetsBody).filter((l) => !l.startsWith('#'));
+  if (budgetsLines.length === 0) {
+    fail('invalid-envelope', 'envelope "Budgets" section is empty: declare max-iterations and check');
+  }
+  const budgetsText = budgetsLines.join('\n');
+  const budgetMatch = budgetsText.match(/max.?iterations?\s*[:=]\s*(-?\d+(?:\.\d+)?)/i);
+  if (!budgetMatch) fail('invalid-envelope', 'envelope "Budgets" section must declare max-iterations (e.g. `max-iterations: 3`)');
+  const maxIterations = Number(budgetMatch[1]);
+  if (!Number.isInteger(maxIterations) || maxIterations < 1 || maxIterations > 100) {
+    fail('invalid-envelope', `envelope max-iterations is "${budgetMatch[1]}", expected an integer 1-100`);
+  }
+  const checkMatch = budgetsText.match(/check\s*[:=]\s*(\S[^\n]*)/i);
+  if (!checkMatch || !checkMatch[1].trim()) {
+    fail('invalid-envelope', 'envelope "Budgets" section must name the check command (e.g. `check: npm run verify`)');
+  }
+
+  // Expected outcomes (optional, RH-1 reward-hacking guard): one `- ` bullet
+  // per pre-declared outcome, passed through verbatim (trimmed,
+  // whitespace-collapsed). An absent section means []. Never fails: an
+  // empty section or unknown keys are accepted and ignored.
+  const expectBody = envelopeSectionBody(sections, 'expect');
+  const expectedOutcomes = [];
+  if (expectBody !== null) {
+    for (const line of expectBody.split(/\r?\n/)) {
+      const bullet = line.match(/^\s*[-*]\s+(.+?)\s*$/);
+      if (!bullet) continue;
+      const entry = bullet[1].trim().replace(/^[`'"]+|[`'"]+$/g, '').trim().replace(/\s+/g, ' ');
+      if (entry === '' || entry.startsWith('#')) continue;
+      expectedOutcomes.push(entry);
+    }
+  }
+
+  return {
+    paths,
+    reversibility: reversText.trim(),
+    noExternalEffects: externalText.trim(),
+    maxIterations,
+    check: checkMatch[1].trim(),
+    expectedOutcomes,
+  };
+};
+
+/** Read an envelope file under root, validate it, return `{ rel, ...parsed }`. */
+export const checkEnvelopeFile = (root = process.cwd(), file) => {
+  if (typeof file !== 'string' || file.trim() === '') {
+    fail('invalid-args', 'envelope check needs a file');
+  }
+  const rel = normalizeRel(root, file);
+  const abs = assertRegularFile(root, rel, 'envelope');
+  assertContainedReal(root, abs, file);
+  const parsed = parseEnvelopeText(fs.readFileSync(abs, 'utf8'));
+  // Non-glob entries must resolve inside the root (lexical escapes already
+  // rejected by assertSafePattern; this pins down `./` and case tricks).
+  for (const p of parsed.paths) {
+    if (!/[*?]/.test(p)) normalizeRel(root, p);
+  }
+  return { rel, ...parsed };
+};
+
 export const readGate = (root = process.cwd()) => {
   const p = gatePath(root);
   let st;
@@ -467,8 +635,10 @@ export const writeGate = (root, gate) => {
 /**
  * Close only with complete, hash-bound evidence. Every refusal throws before
  * the marker is unlinked, so a failed close leaves the gate active.
+ * Returns null when no gate is active, else `{ valid, evidence, evidenceAbs,
+ * sha256 }` without mutating. Both close paths share this validator.
  */
-export const closeGate = (root = process.cwd()) => {
+export const validateCloseEvidence = (root = process.cwd()) => {
   const gate = readGate(root);
   if (!gate) return null;
   const valid = validateGate(root, gate);
@@ -525,8 +695,437 @@ export const closeGate = (root = process.cwd()) => {
   }
 
   const sha256 = hashFile(evidenceAbs);
+  return { valid, evidence, evidenceAbs, sha256 };
+};
+
+export const closeGate = (root = process.cwd()) => {
+  const ready = validateCloseEvidence(root);
+  if (!ready) return null;
   fs.unlinkSync(gatePath(root));
-  return { evidence, sha256 };
+  return { evidence: ready.evidence, sha256: ready.sha256 };
+};
+
+// --- Machine-close (auto-tier) ------------------------------------------------
+// `close --machine` closes on machine authority alone: named check green +
+// independent critic pass + green evidence rows + reversal commit present +
+// one audit-ledger row. Every refusal throws before any mutation (ledger
+// append and marker unlink happen only when ALL criteria hold).
+
+export const AUDIT_LEDGER_REL = 'docs/audit-ledger.md';
+
+// --- Reward-hacking guards: grader immutability (RH-1) ------------------------
+// Exact rule (documented): machine-close refuses (`grader-changed`) when ANY
+// file under `tests/`, exactly `scripts/validate-skills.mjs`, or under
+// `eval/`:
+//   (a) differs between the reversal commit and the working tree (committed
+//       or dirty) or appears in `git status --porcelain` (covers untracked
+//       and renamed files) — both sources unioned and filtered by
+//       isGraderPath; PLUS
+//   (b) is touched by the reversal commit itself
+//       (`git show --name-only --pretty=format: <reversal>` filtered); PLUS
+//   (c) is touched by ANY commit newer than the gate `approved_at`
+//       (`git log --since=<approved_at> --name-only --pretty=format: --
+//       tests scripts/validate-skills.mjs eval` filtered).
+// (b)+(c) close the attacker-chosen-reversal bypass: grading edits committed
+// and then named as `--reversal` still refuse, because the grader touch is
+// anchored on approval time, not on the attacker-chosen SHA. Legit runs
+// (source-only commits after approval) pass: the log filter only matches
+// grader paths.
+// A git failure (not a repo, unreadable workdir) refuses closed
+// (`grader-unknown`) so a missing baseline can never silently pass.
+// Residual (conceded, pilot constraint): clock/commit-date spoofing needs
+// file-writer privilege — a writer who can forge commit dates already has
+// the file-write the guard concedes; envelope updates require re-approval,
+// consistent with plan-immutability.
+// Human `close` never calls this.
+export const GRADER_GLOBS = ['tests/**', 'scripts/validate-skills.mjs', 'eval/**'];
+
+export const isGraderPath = (value) => {
+  if (typeof value !== 'string') return false;
+  const p = value.trim().replace(/^\.\//, '').replace(/\\/g, '/');
+  if (p === 'scripts/validate-skills.mjs') return true;
+  return p === 'tests' || p.startsWith('tests/')
+    || p === 'eval' || p.startsWith('eval/');
+};
+
+const porcelainNames = (text) => {
+  const out = [];
+  for (const line of String(text).split('\n')) {
+    if (!line.trim()) continue;
+    const m = line.match(/^.{2}\s+(.*)$/);
+    const rest = (m ? m[1] : line).trim();
+    // Rename/copy entries name both sides (`old -> new`): check each side.
+    for (const side of rest.split(' -> ')) {
+      const name = side.trim().replace(/^["']+|["']+$/g, '').trim();
+      if (name) out.push(name);
+    }
+  }
+  return out;
+};
+
+/**
+ * List grader-path changes for a machine-close run (pure filter over two
+ * git sources). `runner` defaults to spawnSync and is injectable for tests.
+ * Throws `grader-unknown` when git cannot answer.
+ */
+export const listGraderChanges = (root, reversal, runner = spawnSync) => {
+  let statusOut;
+  try {
+    const st = runner('git', ['-C', root, 'status', '--porcelain'], { encoding: 'utf8' });
+    if (st.error || st.status !== 0) {
+      fail('grader-unknown', 'machine-close refused: cannot inspect the working tree for grader changes (git status failed; grader-immutability criterion needs a readable baseline)');
+    }
+    statusOut = st.stdout || '';
+  } catch (err) {
+    if (err instanceof SpecCheckError) throw err;
+    fail('grader-unknown', `machine-close refused: cannot inspect the working tree for grader changes (${err.message}; grader-immutability criterion needs a readable baseline)`);
+  }
+  let diffOut;
+  try {
+    const df = runner('git', ['-C', root, 'diff', '--name-only', reversal, '--'], { encoding: 'utf8' });
+    if (df.error || df.status !== 0) {
+      fail('grader-unknown', `machine-close refused: cannot diff the working tree against reversal "${reversal}" for grader changes (grader-immutability criterion needs a readable baseline)`);
+    }
+    diffOut = df.stdout || '';
+  } catch (err) {
+    if (err instanceof SpecCheckError) throw err;
+    fail('grader-unknown', `machine-close refused: cannot diff the working tree against reversal "${reversal}" for grader changes (${err.message}; grader-immutability criterion needs a readable baseline)`);
+  }
+  const names = [
+    ...porcelainNames(statusOut),
+    ...String(diffOut).split('\n').map((s) => s.trim()).filter(Boolean),
+  ];
+  return [...new Set(names.filter(isGraderPath))].sort();
+};
+
+/**
+ * List grader paths touched by the reversal commit itself
+ * (`git show --name-only`). Catches grader-edit-then-commit-as-reversal even
+ * when the working tree is clean. Throws `grader-unknown` on git failure.
+ */
+export const listReversalGraderFiles = (root, reversal, runner = spawnSync) => {
+  let out;
+  try {
+    const res = runner('git', ['-C', root, 'show', '--name-only', '--pretty=format:', reversal, '--'], { encoding: 'utf8' });
+    if (res.error || res.status !== 0) {
+      fail('grader-unknown', `machine-close refused: cannot inspect reversal "${reversal}" for grader changes (grader-immutability criterion needs a readable baseline)`);
+    }
+    out = res.stdout || '';
+  } catch (err) {
+    if (err instanceof SpecCheckError) throw err;
+    fail('grader-unknown', `machine-close refused: cannot inspect reversal "${reversal}" for grader changes (${err.message}; grader-immutability criterion needs a readable baseline)`);
+  }
+  const names = String(out).split('\n').map((s) => s.trim()).filter(Boolean);
+  return [...new Set(names.filter(isGraderPath))].sort();
+};
+
+/**
+ * List grader paths touched by ANY commit newer than `approvedAt`
+ * (`git log --since=<approvedAt> --name-only`). Anchors the guard on
+ * approval time so an attacker-chosen `--reversal` cannot hide a grader
+ * edit. Legit source-only commits pass (filter is grader-paths only).
+ * Throws `grader-unknown` on git failure or invalid `approvedAt`.
+ */
+export const listGraderCommitsSince = (root, approvedAt, runner = spawnSync) => {
+  assertUtc(approvedAt, 'approved_at');
+  let out;
+  try {
+    const res = runner('git', ['-C', root, 'log', `--since=${approvedAt}`, '--name-only', '--pretty=format:', '--', 'tests', 'scripts/validate-skills.mjs', 'eval'], { encoding: 'utf8' });
+    if (res.error || res.status !== 0) {
+      fail('grader-unknown', 'machine-close refused: cannot inspect commits since approval for grader changes (git log failed; grader-immutability criterion needs a readable baseline)');
+    }
+    out = res.stdout || '';
+  } catch (err) {
+    if (err instanceof SpecCheckError) throw err;
+    fail('grader-unknown', `machine-close refused: cannot inspect commits since approval for grader changes (${err.message}; grader-immutability criterion needs a readable baseline)`);
+  }
+  const names = String(out).split('\n').map((s) => s.trim()).filter(Boolean);
+  return [...new Set(names.filter(isGraderPath))].sort();
+};
+
+/**
+ * Exact 5th-column ledger match: `| at | tier | check | result | reversal |`.
+ * Split on unescaped pipes (`\\|` inside the check field is escaped), then
+ * compare cells[5] exactly. Substring `includes` is NOT used: a check
+ * command containing the SHA must not false-positive, and only an exact
+ * reversal-cell match counts as duplicate. Fail-closed: malformed lines
+ * never match (they cannot prove a duplicate).
+ */
+export const ledgerHasReversal = (ledgerText, reversal) => {
+  for (const line of String(ledgerText).split('\n')) {
+    const t = line.trim();
+    if (!t || !t.includes('|')) continue;
+    const tmp = t.replace(/\\\|/g, '\u0000');
+    const cells = tmp.split('|').map((s) => s.replace(/\u0000/g, '|').trim());
+    if (cells.length >= 7 && cells[5] === reversal) return true;
+  }
+  return false;
+};
+
+// --- Envelope immutability (pilot constraint) --------------------------------
+// The envelope is the standing pre-approval: it must be git-clean AND
+// unchanged since the gate `approved_at`
+// (`git log --since=<approved_at> -- <envelope>` empty + `git status
+// --porcelain -- <envelope>` clean), else `envelope-changed` refuses.
+// Envelope updates require re-approval — consistent with plan-immutability
+// (the plan/spec/marker are immutable while the gate is active).
+// Residual (conceded): clock/commit-date spoofing needs file-writer
+// privilege — a writer who can forge dates already holds the file-write
+// this pilot concedes; sampling + re-approval own the remainder.
+export const checkEnvelopeClean = (root, envelopeRel, approvedAt, runner = spawnSync) => {
+  assertUtc(approvedAt, 'approved_at');
+  const rel = String(envelopeRel || '').trim().replace(/^\.\//, '');
+  if (!rel) fail('invalid-args', 'envelope check needs a file');
+  let statusOut;
+  try {
+    const st = runner('git', ['-C', root, 'status', '--porcelain', '--', rel], { encoding: 'utf8' });
+    if (st.error || st.status !== 0) {
+      fail('envelope-unknown', `machine-close refused: cannot inspect the envelope working tree for changes (git status failed for "${rel}"; envelope-immutability criterion needs a readable baseline)`);
+    }
+    statusOut = (st.stdout || '').trim();
+  } catch (err) {
+    if (err instanceof SpecCheckError) throw err;
+    fail('envelope-unknown', `machine-close refused: cannot inspect the envelope working tree for changes (${err.message}; envelope-immutability criterion needs a readable baseline)`);
+  }
+  if (statusOut !== '') {
+    fail('envelope-changed', `machine-close refused: envelope file "${rel}" has uncommitted changes (envelope-immutability criterion: envelope updates require re-approval; restore it and re-approve)`);
+  }
+  let logOut;
+  try {
+    const lg = runner('git', ['-C', root, 'log', `--since=${approvedAt}`, '--pretty=format:%H', '--', rel], { encoding: 'utf8' });
+    if (lg.error || lg.status !== 0) {
+      fail('envelope-unknown', `machine-close refused: cannot inspect envelope history since approval (git log failed for "${rel}"; envelope-immutability criterion needs a readable baseline)`);
+    }
+    logOut = (lg.stdout || '').trim();
+  } catch (err) {
+    if (err instanceof SpecCheckError) throw err;
+    fail('envelope-unknown', `machine-close refused: cannot inspect envelope history since approval (${err.message}; envelope-immutability criterion needs a readable baseline)`);
+  }
+  if (logOut !== '') {
+    fail('envelope-changed', `machine-close refused: envelope file "${rel}" changed since approval (envelope-immutability criterion: envelope updates require re-approval; restore it and re-approve)`);
+  }
+  return true;
+};
+
+// --- Reward-hacking guards: pre-declared expected outcomes (RH-1) -------------
+// Evidence rows may mark new behavior with `newBehavior: true` (or
+// `new_behavior: true`) and/or declare `expected` / `expectedOutcome` /
+// `expected_outcome` / `outcome`. Machine-close refuses when a new-behavior
+// row lacks a declaration or its declaration is not in the envelope
+// `## Expected outcomes` list. Rows without markers pass (backward
+// compatible); human `close` never calls this.
+export const normalizeOutcome = (value) => String(value ?? '').trim().replace(/\s+/g, ' ');
+
+export const expectedOfRow = (row) => {
+  if (!row || typeof row !== 'object' || Array.isArray(row)) return null;
+  for (const key of ['expected', 'expectedOutcome', 'expected_outcome', 'outcome']) {
+    const v = row[key];
+    if (typeof v === 'string' && v.trim() !== '') return normalizeOutcome(v);
+  }
+  return null;
+};
+
+export const isNewBehaviorRow = (row) => {
+  if (!row || typeof row !== 'object' || Array.isArray(row)) return false;
+  if (row.newBehavior === true || row.new_behavior === true) return true;
+  return expectedOfRow(row) !== null;
+};
+
+/**
+ * Enforce the pre-declared-outcome rule (pure). Returns the count of
+ * new-behavior rows. Throws `missing-expected-outcomes` when new behavior
+ * exists but no outcome list was supplied, or `expected-outcome-mismatch`
+ * when a row declares an outcome outside the list.
+ */
+export const checkExpectedOutcomes = (rows, expectedOutcomes) => {
+  const list = Array.isArray(rows) ? rows : [];
+  const fresh = list.filter(isNewBehaviorRow);
+  if (fresh.length === 0) return 0;
+  const declared = Array.isArray(expectedOutcomes)
+    ? expectedOutcomes.filter((s) => typeof s === 'string' && s.trim() !== '').map(normalizeOutcome)
+    : null;
+  if (!declared || declared.length === 0) {
+    fail('missing-expected-outcomes', `machine-close refused: ${fresh.length} new-behavior evidence row(s) but no pre-declared expected outcomes (reward-hacking guard: declare each new behavior in the envelope "Expected outcomes" section before implementation)`);
+  }
+  const set = new Set(declared);
+  for (const row of fresh) {
+    const want = expectedOfRow(row);
+    if (want === null) {
+      fail('expected-outcome-mismatch', `machine-close refused: evidence task ${row.task} marks new behavior but declares no expected outcome (reward-hacking guard: each new-behavior row must match a pre-declared expected outcome)`);
+    }
+    if (!set.has(want)) {
+      fail('expected-outcome-mismatch', `machine-close refused: evidence task ${row.task} declares "${want}" which matches no pre-declared expected outcome (reward-hacking guard: declare it in the envelope before implementation)`);
+    }
+  }
+  return fresh.length;
+};
+
+/**
+ * Collect critic verdict strings from a parsed verdicts file (pure).
+ * Accepts a JSON array of verdicts (strings or `{ verdict }` objects) or an
+ * object with a `verdicts`/`critics` array. Requires at least one verdict.
+ */
+export const collectMachineVerdicts = (doc) => {
+  let items;
+  if (Array.isArray(doc)) {
+    items = doc;
+  } else if (doc && typeof doc === 'object') {
+    if (Array.isArray(doc.verdicts)) items = doc.verdicts;
+    else if (Array.isArray(doc.critics)) items = doc.critics;
+    else if (typeof doc.verdict === 'string') items = [doc.verdict];
+    else fail('invalid-critics', 'machine-close refused: critics file must be a JSON array of verdicts or an object with a "verdicts" array (independent-critic criterion: every verdict must be ACCEPT)');
+  } else {
+    fail('invalid-critics', 'machine-close refused: critics file must be a JSON array of verdicts or an object with a "verdicts" array (independent-critic criterion: every verdict must be ACCEPT)');
+  }
+  const verdicts = items.map((item) => {
+    if (typeof item === 'string') return item;
+    if (item && typeof item.verdict === 'string') return item.verdict;
+    fail('invalid-critics', 'machine-close refused: every critic entry must be a verdict string or {"verdict": "..."} (independent-critic criterion: every verdict must be ACCEPT)');
+  });
+  if (verdicts.length === 0) {
+    fail('missing-critics', 'machine-close refused: critics file lists no verdicts (independent-critic criterion: at least one ACCEPT required)');
+  }
+  return verdicts;
+};
+
+/**
+ * Machine-close the gate. `opts` needs `{ check, critics, reversal }`:
+ * named-check command (run here, must exit 0), path to the critic verdicts
+ * file (every verdict ACCEPT), and the reversal commit SHA (must resolve in
+ * `git log`). Reward-hacking guards: refuses (`grader-changed`) when any
+ * grader path (`tests/**`, `scripts/validate-skills.mjs`, `eval/**`)
+ * (a) differs between the reversal commit and the working tree, (b) is
+ * touched by the reversal commit itself (`git show`), or (c) is touched by
+ * ANY commit newer than the gate `approved_at` (`git log --since`);
+ * requires every new-behavior evidence row to match a pre-declared expected
+ * outcome from `opts.expectedOutcomes` (array) or `opts.envelope`
+ * (envelope file path); when `opts.envelope` is given the file must also be
+ * git-clean AND unchanged since `approved_at` (`envelope-changed`), since
+ * envelope updates require re-approval. Appends exactly one audit-ledger
+ * row (exact 5th-column duplicate check), then unlinks the marker.
+ */
+export const closeMachineGate = (root = process.cwd(), opts = {}) => {
+  const check = typeof opts.check === 'string' ? opts.check.trim() : '';
+  if (!check) {
+    fail('missing-check', 'machine-close refused: missing --check "<command>" (named-check criterion: state the exact command and require exit 0)');
+  }
+  const criticsFile = typeof opts.critics === 'string' ? opts.critics.trim() : '';
+  if (!criticsFile) {
+    fail('missing-critics', 'machine-close refused: missing --critics <verdicts-file> (independent-critic criterion: every verdict must be ACCEPT)');
+  }
+  const reversal = typeof opts.reversal === 'string' ? opts.reversal.trim() : '';
+  if (!reversal) {
+    fail('missing-reversal', 'machine-close refused: missing --reversal <sha> (reversibility criterion: commit must exist in git log)');
+  }
+
+  const criticsAbs = path.isAbsolute(criticsFile) ? criticsFile : path.resolve(root, criticsFile);
+  let criticsStat;
+  try {
+    criticsStat = fs.lstatSync(criticsAbs);
+  } catch (err) {
+    if (err.code === 'ENOENT') fail('missing-critics', `machine-close refused: critics file not found: ${criticsFile} (independent-critic criterion: every verdict must be ACCEPT)`);
+    fail('invalid-critics', `machine-close refused: critics file is not readable: ${criticsFile} (independent-critic criterion)`);
+  }
+  if (criticsStat.isSymbolicLink()) fail('symlink', `machine-close refused: critics file must not be a symlink: ${criticsFile}`);
+  if (!criticsStat.isFile()) fail('invalid-critics', `machine-close refused: critics file is not a regular file: ${criticsFile} (independent-critic criterion)`);
+  let criticsDoc;
+  try {
+    criticsDoc = JSON.parse(fs.readFileSync(criticsAbs, 'utf8'));
+  } catch (err) {
+    fail('invalid-critics', `machine-close refused: critics file is not valid JSON: ${err.message} (independent-critic criterion)`);
+  }
+  const verdicts = collectMachineVerdicts(criticsDoc);
+  const rejected = verdicts.find((v) => v.trim().toUpperCase() !== 'ACCEPT');
+  if (rejected !== undefined) {
+    fail('critic-reject', `machine-close refused: critic verdict is "${String(rejected).trim()}" (independent-critic criterion: every verdict must be ACCEPT)`);
+  }
+
+  if (!/^[0-9a-fA-F]{7,64}$/.test(reversal)) {
+    fail('invalid-reversal', `machine-close refused: reversal "${reversal}" is not a commit SHA (reversibility criterion: commit must exist in git log)`);
+  }
+  const gitRes = spawnSync('git', ['-C', root, 'cat-file', '-e', `${reversal}^{commit}`], { encoding: 'utf8' });
+  if (gitRes.error || gitRes.status !== 0) {
+    fail('unknown-reversal', `machine-close refused: reversal SHA "${reversal}" not found in git log (reversibility criterion: commit must exist)`);
+  }
+
+  const graderChanged = listGraderChanges(root, reversal);
+  if (graderChanged.length > 0) {
+    fail('grader-changed', `machine-close refused: grader file(s) changed in-run: ${graderChanged.join(', ')} (grader-immutability criterion: tests/**, scripts/validate-skills.mjs, eval/** are ALWAYS-human; restore them and re-run)`);
+  }
+
+  const reversalGrader = listReversalGraderFiles(root, reversal);
+  if (reversalGrader.length > 0) {
+    fail('grader-changed', `machine-close refused: reversal commit touches grader file(s): ${reversalGrader.join(', ')} (grader-immutability criterion: tests/**, scripts/validate-skills.mjs, eval/** are ALWAYS-human; choose a clean reversal and re-run)`);
+  }
+
+  // Approval-anchored: ANY grader commit newer than approved_at refuses,
+  // even when named as --reversal. Legit source-only commits pass.
+  const gateForTime = readGate(root);
+  const approvedAtForGrader = gateForTime?.approved_at;
+  if (typeof approvedAtForGrader === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(approvedAtForGrader) && !Number.isNaN(Date.parse(approvedAtForGrader))) {
+    const sinceChanged = listGraderCommitsSince(root, approvedAtForGrader);
+    if (sinceChanged.length > 0) {
+      fail('grader-changed', `machine-close refused: grader file(s) committed since approval: ${sinceChanged.join(', ')} (grader-immutability criterion: tests/**, scripts/validate-skills.mjs, eval/** are ALWAYS-human; restore them and re-approve)`);
+    }
+  }
+
+  const ledgerAbs = path.resolve(root, AUDIT_LEDGER_REL);
+  let ledgerStat;
+  try {
+    ledgerStat = fs.lstatSync(ledgerAbs);
+  } catch (err) {
+    if (err.code === 'ENOENT') fail('missing-ledger', `machine-close refused: audit ledger not found: ${AUDIT_LEDGER_REL} (audit criterion: exactly one row per run)`);
+    fail('invalid-ledger', `machine-close refused: audit ledger is not readable: ${AUDIT_LEDGER_REL} (audit criterion)`);
+  }
+  if (ledgerStat.isSymbolicLink()) fail('symlink', `machine-close refused: audit ledger must not be a symlink: ${AUDIT_LEDGER_REL}`);
+  if (!ledgerStat.isFile()) fail('invalid-ledger', `machine-close refused: audit ledger is not a regular file: ${AUDIT_LEDGER_REL} (audit criterion)`);
+  const ledgerText = fs.readFileSync(ledgerAbs, 'utf8');
+  if (ledgerHasReversal(ledgerText, reversal)) {
+    fail('duplicate-reversal', `machine-close refused: reversal SHA "${reversal}" already recorded in ${AUDIT_LEDGER_REL} (audit criterion: exactly one row per run)`);
+  }
+
+  const ready = validateCloseEvidence(root);
+  if (!ready) {
+    fail('inactive', 'machine-close refused: no active spec gate (evidence criterion: green rows bound to the active plan)');
+  }
+
+  let evidenceRows = [];
+  try {
+    const evidenceDoc = JSON.parse(fs.readFileSync(ready.evidenceAbs, 'utf8'));
+    if (Array.isArray(evidenceDoc.tasks)) evidenceRows = evidenceDoc.tasks;
+  } catch (err) {
+    fail('invalid-evidence', `${ready.evidence} tasks must be an array`);
+  }
+  let expectedOutcomes = null;
+  const envelopeOpt = typeof opts.envelope === 'string' ? opts.envelope.trim() : '';
+  if (Array.isArray(opts.expectedOutcomes)) {
+    expectedOutcomes = opts.expectedOutcomes;
+  } else if (Array.isArray(opts.expected_outcomes)) {
+    expectedOutcomes = opts.expected_outcomes;
+  }
+  if (envelopeOpt !== '') {
+    const env = checkEnvelopeFile(root, envelopeOpt);
+    if (expectedOutcomes === null) expectedOutcomes = env.expectedOutcomes;
+    checkEnvelopeClean(root, env.rel, ready.valid.approved_at);
+  }
+  checkExpectedOutcomes(evidenceRows, expectedOutcomes);
+
+  const checkRes = spawnSync(check, { cwd: root, shell: true, encoding: 'utf8' });
+  if (checkRes.error) {
+    fail('check-failed', `machine-close refused: named check "${check}" could not run: ${checkRes.error.message} (named-check criterion: must exit 0)`);
+  }
+  if (checkRes.status !== 0) {
+    fail('check-failed', `machine-close refused: named check "${check}" exited ${checkRes.status} (named-check criterion: must be green)`);
+  }
+
+  const at = new Date().toISOString();
+  const safeCheck = check.replace(/\r?\n/g, ' ').replace(/\|/g, '\\|').trim();
+  const row = `| ${at} | Auto | ${safeCheck} | pass | ${reversal} |`;
+  const prefix = ledgerText === '' || ledgerText.endsWith('\n') ? '' : '\n';
+  fs.appendFileSync(ledgerAbs, `${prefix}${row}\n`);
+
+  fs.unlinkSync(gatePath(root));
+  return { evidence: ready.evidence, sha256: ready.sha256, check, checkExit: 0, critics: verdicts.length, reversal, at };
 };
 
 // Reject lexical escapes (handled by normalizeRel) and symlink escapes. The
@@ -589,7 +1188,14 @@ Commands:
   status              Show the active gate (or "none")
   verify [--require-active]   Re-hash plan/spec/CLI; exit 1 on drift, 2 if no gate when required
   close               Validate <plan>-evidence.json and remove the active gate
+  close --machine --check "<command>" --critics <verdicts-file> --reversal <sha> [--envelope <file>]
+                      Machine-close: requires ALL of named check exit 0 +
+                      every critic verdict ACCEPT + green evidence rows +
+                      reversal SHA in git log + no grader-path changes +
+                      each new-behavior evidence row matches a pre-declared
+                      expected outcome + one audit-ledger row appended
   check <path...>     Exit 0 if every path is in scope, 1 if any is blocked
+  envelope check <file>  Validate an auto-tier envelope template (relative paths, reversal, no external effects, budgets)
 
 Evidence for close: docs/plans/<slug>-evidence.json must bind the plan hash and
 list one row per plan task with the exact Verify command, exit 0, and a UTC at.
@@ -597,6 +1203,9 @@ list one row per plan task with the exact Verify command, exit 0, and a UTC at.
 Options:
   --root <dir>        Repo root (default: cwd)
   --require-active    verify fails (exit 2) when no gate is active
+  --envelope <file>   machine-close: envelope file carrying the pre-declared
+                      "Expected outcomes" list (required when evidence has
+                      new-behavior rows)
   -h, --help          Show this help
 `;
 
@@ -611,6 +1220,32 @@ export const main = (argv = process.argv.slice(2), io = {}) => {
       args.root = argv[++i];
     } else if (argv[i] === '--require-active') {
       args.requireActive = true;
+    } else if (argv[i] === '--machine') {
+      args.machine = true;
+    } else if (argv[i] === '--check') {
+      if (!argv[i + 1]) {
+        console.error('[spec-check] invalid-args: --check needs a command');
+        return 1;
+      }
+      args.check = argv[++i];
+    } else if (argv[i] === '--critics') {
+      if (!argv[i + 1]) {
+        console.error('[spec-check] invalid-args: --critics needs a verdicts file');
+        return 1;
+      }
+      args.critics = argv[++i];
+    } else if (argv[i] === '--reversal') {
+      if (!argv[i + 1]) {
+        console.error('[spec-check] invalid-args: --reversal needs a commit SHA');
+        return 1;
+      }
+      args.reversal = argv[++i];
+    } else if (argv[i] === '--envelope') {
+      if (!argv[i + 1]) {
+        console.error('[spec-check] invalid-args: --envelope needs an envelope file');
+        return 1;
+      }
+      args.envelope = argv[++i];
     } else if (argv[i] === '-h' || argv[i] === '--help') {
       args.help = true;
     } else {
@@ -682,6 +1317,11 @@ export const main = (argv = process.argv.slice(2), io = {}) => {
       return 0;
     }
     if (command === 'close') {
+      if (args.machine) {
+        const closed = closeMachineGate(root, { check: args.check, critics: args.critics, reversal: args.reversal, envelope: args.envelope });
+        console.log(`closed spec gate (machine): evidence ${closed.evidence} sha256 ${closed.sha256} | check "${closed.check}" exit 0 | critics ${closed.critics} ACCEPT | reversal ${closed.reversal}`);
+        return 0;
+      }
       const closed = closeGate(root);
       if (!closed) {
         console.log('no active spec gate');
@@ -708,6 +1348,15 @@ export const main = (argv = process.argv.slice(2), io = {}) => {
         console.error(`[spec-check] blocked: ${result.rel} is outside the approved plan scope (${result.gate.plan}). Run spec-check close && approve to widen.`);
       }
       return blocked ? 1 : 0;
+    }
+    if (command === 'envelope') {
+      const [sub, target, ...rest] = args._.slice(1);
+      if (sub !== 'check') fail('invalid-args', `unknown envelope subcommand "${sub || ''}" (expected "check")`);
+      if (!target) fail('invalid-args', 'envelope check needs a file');
+      if (rest.length > 0) fail('invalid-args', 'envelope check takes exactly one file');
+      const result = checkEnvelopeFile(root, target);
+      console.log(`envelope OK: ${result.rel} (${result.paths.length} paths)`);
+      return 0;
     }
     fail('invalid-args', `unknown command "${command}"`);
   } catch (err) {

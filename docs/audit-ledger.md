@@ -1,6 +1,15 @@
 # Audit ledger
 
-One row per Auto run.
+One row per Auto run. Human outer loop only: sample this ledger weekly
+(e.g. every Monday), not per-run — per-run review would reintroduce the
+approval friction the envelope removes.
+
+Row checklist — every row must hold: UTC date (`YYYY-MM-DD`), tier
+(`Auto`), the named check that gated the run (default `npm run verify`),
+result (`pass`/`fail`), and the reverting commit SHA (`reversal`; no
+reversal path, no run).
+
+_No Auto runs logged yet — the first machine-closed run appends row 1 below._
 
 | date | tier | check | result | reversal |
 |---|---|---|---|---|

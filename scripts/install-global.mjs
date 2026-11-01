@@ -36,6 +36,9 @@ const SOURCES = [
   { from: 'scripts/spec-check.mjs', to: 'scripts/spec-check.mjs', kind: 'file', key: 'specCheck' },
   { from: 'scripts/host-evidence.mjs', to: 'scripts/host-evidence.mjs', kind: 'file', key: 'hostEvidence' },
   { from: 'scripts/research', to: 'scripts/research', kind: 'dir', key: 'research' },
+  { from: 'docs/auto-envelope.template.md', to: 'docs/auto-envelope.template.md', kind: 'file', key: 'envelope', additive: true },
+  { from: 'docs/AUTONOMY.md', to: 'docs/AUTONOMY.md', kind: 'file', key: 'autonomy', additive: true },
+  { from: 'docs/audit-ledger.md', to: 'docs/audit-ledger.md', kind: 'file', key: 'ledger', additive: true },
 ];
 
 // All files under a directory, relative to it.
@@ -86,13 +89,24 @@ const pruneEmptyDirs = (dir, target) => {
 export const installGlobal = ({ repo = repoRoot, target = defaultTarget() } = {}) => {
   const previous = readManifest(target);
   const installed = [];
-  const summary = { skills: 0, agents: 0, commands: 0, plugin: 0, tui: 0, specCheck: 0, hostEvidence: 0, research: 0, pruned: 0 };
+  const skipped = new Set();
+  const summary = { skills: 0, agents: 0, commands: 0, plugin: 0, tui: 0, specCheck: 0, hostEvidence: 0, research: 0, envelope: 0, autonomy: 0, ledger: 0, pruned: 0 };
 
   for (const src of SOURCES) {
     const from = path.join(repo, src.from);
     if (!fs.existsSync(from)) continue;
     if (src.kind === 'file') {
       const dest = path.join(target, src.to);
+      if (src.additive) {
+        try {
+          fs.lstatSync(dest);
+          console.log(`${src.to} already present, skipped`);
+          skipped.add(src.to);
+          continue;
+        } catch (err) {
+          // missing — install below
+        }
+      }
       fs.mkdirSync(path.dirname(dest), { recursive: true });
       fs.copyFileSync(from, dest);
       installed.push(src.to);
@@ -114,6 +128,7 @@ export const installGlobal = ({ repo = repoRoot, target = defaultTarget() } = {}
   const installedSet = new Set(installed);
   const targetAbs = path.resolve(target);
   for (const rel of previous) {
+    if (skipped.has(rel)) continue;
     if (installedSet.has(rel)) continue;
     const abs = path.resolve(target, rel);
     if (abs !== targetAbs && !abs.startsWith(targetAbs + path.sep)) continue;
@@ -142,7 +157,7 @@ if (isMain) {
   try {
     const s = installGlobal({ target });
     console.log(`sdlc-lean -> ${target}`);
-    console.log(`  skills ${s.skills} · agents ${s.agents} · commands ${s.commands} · plugin ${s.plugin ? 'yes' : 'no'} · tui ${s.tui} · spec-check ${s.specCheck ? 'yes' : 'no'} · host-evidence ${s.hostEvidence ? 'yes' : 'no'} · research ${s.research} · pruned ${s.pruned}`);
+    console.log(`  skills ${s.skills} · agents ${s.agents} · commands ${s.commands} · plugin ${s.plugin ? 'yes' : 'no'} · tui ${s.tui} · spec-check ${s.specCheck ? 'yes' : 'no'} · host-evidence ${s.hostEvidence ? 'yes' : 'no'} · research ${s.research} · envelope ${s.envelope ? 'yes' : 'no'} · autonomy ${s.autonomy ? 'yes' : 'no'} · ledger ${s.ledger ? 'yes' : 'no'} · pruned ${s.pruned}`);
     console.log('restart OpenCode to pick up changes');
   } catch (err) {
     console.error(`[sdlc-lean] install failed: ${err.message}`);

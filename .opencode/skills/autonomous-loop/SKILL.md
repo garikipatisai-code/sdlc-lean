@@ -5,10 +5,10 @@ description: Use when asked to achieve a goal autonomously - "keep going until",
 
 # Autonomous Loop
 
-Drive a goal to done **without asking inside an approved phase**. Each iteration
-is a full SDLC pass. Stop only when acceptance criteria are met with fresh
-evidence, a budget rule fires, or the spec gate blocks an edit (scope
-deviation).
+Auto is the default **inside the envelope**: drive a goal to done **without
+asking inside an approved phase**. Each iteration is a full SDLC pass. Stop
+only when acceptance criteria are met with fresh evidence, a budget rule
+fires, or the spec gate blocks an edit (scope deviation).
 
 **Approval is not a checkpoint.** Design approval, plan approval, and scope
 approval are authorization boundaries: the loop may continue freely inside an
@@ -44,10 +44,13 @@ flowchart LR
 1. **Route** with `using-sdlc-lean` (feature/bugfix/refactor/research) and
    invoke the pipeline skill first.
 2. **Decide** every fork via `option-selection`: research, matrix, pick,
-   record. Never ask the human to choose.
+   record. Asking the human to judge, choose, compare, or validate merit
+   is a defect except ALWAYS-human acts (merge/PR, publish/release, spend,
+   prod/external writes, grader changes, red close); on any uncertainty fan
+   out researcher/explorer subagents for cited evidence, never a question.
 3. **Plan** with `writing-plans` for multi-step work; skip for one-liners.
-   Activate the gate with `spec-check approve` only after a human approves the
-   plan; the plan's `files` scope bounds every later edit.
+   Activate the gate via `approve --machine --envelope` when a valid unchanged
+   envelope covers the plan (default), else `spec-check approve` after human approval (fallback); the plan's `files` scope bounds every later edit either way.
 4. **Execute** with `test-driven-development`, or `systematic-debugging` for
    bugs. If the gate blocks an edit, stop and report a deviation — do not
    re-plan around it.
@@ -88,7 +91,7 @@ exists or promise cross-session execution without a mechanism that does it.
   around them.
 - Update the ledger every iteration; it is the memory that survives compaction.
 - Subagent work fans out per `dispatching-parallel-agents`; merge per its
-  contract.
+  contract. Escalation carries evidence/findings, never a bare question.
 
 ## Deadlines, recovery, durable handoff
 

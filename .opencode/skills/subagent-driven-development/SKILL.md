@@ -39,7 +39,7 @@ or a traced path. A second reading of the same text is not evidence.
 3. Reviewer verdict: ACCEPT or list concrete defects. A diff touching files
    outside the plan's `files` is a defect even if the code is correct.
 4. Defects → implementer fixes (same brief + defect list). After round 3
-   still failing: stop, escalate to the human with all evidence.
+   still failing: stop, escalate to the human with all evidence/findings, never a bare question.
 
 Never weaken, skip, delete, or rewrite a test/assertion, snapshot, fixture, or lint rule to pass; a changed assertion is a behavior change requiring approval.
 

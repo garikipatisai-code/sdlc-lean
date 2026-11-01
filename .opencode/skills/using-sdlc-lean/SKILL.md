@@ -4,21 +4,18 @@ description: Use when starting any conversation - establishes how to find and us
 ---
 
 <SUBAGENT-STOP>
-If you were dispatched as a subagent to execute a specific task, ignore this skill.
-The parent already ran the workflow; just do your task.
+Dispatched subagent: ignore this skill — the parent already ran the workflow.
 </SUBAGENT-STOP>
 
 <EXTREMELY-IMPORTANT>
-If there is even a 1% chance a skill might apply, you MUST invoke it.
-IF A SKILL APPLIES, YOU DO NOT HAVE A CHOICE. This is not negotiable.
+If there is even a 1% chance a skill might apply, you MUST invoke it — no choice, no negotiation.
 Never ask the user to pick a mode or workflow — infer and proceed.
 </EXTREMELY-IMPORTANT>
 
 ## The Rule
 
 **Check for a relevant skill BEFORE any response or action** — including
-clarifying questions and codebase exploration. Announce
-"Using [skill] to [purpose]" and follow it exactly.
+questions and exploration. Announce "Using [skill] to [purpose]" and follow it exactly.
 Every human-facing word follows `communicating-concisely` (STE-lite, 30s budget, visuals over walls).
 
 ## Auto-Routing (infer intent, do not ask)
@@ -42,20 +39,24 @@ Classify, run the pipeline, announce the route in one line. Pipeline skill first
 
 Ambiguous? Pick the safer route.
 
+## Default posture (envelope-first)
+
+Goal → draft envelope → one chat yes → commit envelope + auth ledger line → machine-approve → loop alone → machine-close. Human `/approve`+hash is fallback-only (no envelope, or envelope refused/changed); widening the envelope is its own committed+authorized step, never silent.
+
 ## Auto-Intensity (no user-facing levels)
 
-Match scrutiny to task weight — never ask, just apply:
+Match scrutiny to task weight, never ask:
 
-- **Trivial** (typo, single-line, obvious): build it directly; skip `brainstorming`.
-- **Standard** (default): enforce the lean ladder on every change.
-- **Architectural** (new system, cross-cutting change, new dependency): challenge requirements first, propose deletion before design, full `brainstorming` flow.
+- **Trivial** (typo, single-line, obvious): build directly; skip `brainstorming`.
+- **Standard** (default): lean ladder on every change.
+- **Architectural** (new system, cross-cutting, new dependency): challenge requirements, propose deletion first, full `brainstorming`.
 
 ## The Lean Ladder (active every response)
 
-Stop at the first rung that holds — after understanding the problem, not instead of it:
+Stop at the first rung that holds — understand first:
 
-1. **Need it at all?** Speculative need = skip it, say so in one line. (YAGNI)
-2. **Already in this codebase?** Reuse the helper/util/pattern. Look before you write.
+1. **Need it at all?** Speculative need = skip it, say so. (YAGNI)
+2. **Already in this codebase?** Reuse the helper/util/pattern.
 3. **Stdlib does it?** Use it.
 4. **Native platform covers it?** Platform feature over library over app code.
 5. **Installed dependency solves it?** Use it. Never add a new one for what a few lines can do.
@@ -74,10 +75,10 @@ accessibility, explicit requests, one runnable check for non-trivial logic.
 | Thought | Reality |
 |---------|---------|
 | "Just a question" | Questions are tasks — check skills. |
-| "Doesn't need a formal skill" | If a skill exists, use it. |
-| "I remember this skill" | Skills evolve. Read the current version. |
+| "No skill needed" | If a skill exists, use it. |
+| "I remember this" | Skills evolve — re-read. |
 | "I'll build it myself" | Search trusted sources — reuse first. |
 | "Answer from memory" | World claims need sources — deep-research. |
-| "Overkill / one thing first" | Simple things become complex. Check. |
+| "Overkill" | Simple becomes complex — check. |
 | "Ask which workflow?" | Never. Infer and proceed. |
 | Long reply, no visual | 30s budget breached — cut. |

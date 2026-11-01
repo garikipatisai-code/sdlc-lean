@@ -17,11 +17,11 @@ installed dep).
    yes/no per option — split vague criteria until it is.
 2. **Options**: reuse before rebuild (`acquiring-capabilities`). Always include
    `do nothing / delete` as option 1 (lean rung 1).
-3. **Research**, effort scaled to impact (`deep-research` + researcher
-   subagents): trivial → zero research, pick boring; standard → 1 researcher,
-   3–5 searches; architectural → 2–4 parallel researchers.
-4. **Matrix**: binary criteria × options; each cell yes/no with a citation [n]
-   to a page you fetched and read. No weighted scores, no 1–10 ratings.
+3. **Research**, effort scaled to impact (`deep-research` + researcher/explorer
+   fan-out on any uncertainty): trivial → zero research, pick boring; standard
+   → 1 researcher, 3–5 searches; architectural → 2–4 parallel researchers.
+4. **Matrix**: binary criteria × options; every cell yes/no with a fetched
+   citation [n] to a page you fetched and read. No weighted scores, no 1–10 ratings.
 5. **Pairwise swap**: exactly two options → run the matrix twice with the
    order swapped; keep the winner only if both orders agree, else say
    "insufficient data".

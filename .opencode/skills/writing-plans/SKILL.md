@@ -47,9 +47,8 @@ the gate is active. Before approval use `status: draft` with empty `approved_by`
 
 ## Activate the gate
 
-After human approval, the human runs `/approve docs/plans/<slug>.md` in the V2 TUI; the TTY fallback is `spec-check approve`
-(`node scripts/spec-check.mjs approve <plan>`, installed copy if no repo-local script), which writes `.sdlc/spec-gate.json` binding spec/plan hashes and scope.
-Never implement before it succeeds; `close` only after evidence; plan/spec changes need `close` + a new approval — never edit around the gate.
+Default: machine-approve opens the gate when a valid unchanged envelope covers the plan; human `/approve docs/plans/<slug>.md` in the V2 TUI (TTY fallback `spec-check approve`, installed copy if no repo-local script) is fallback-only — no envelope, or envelope refused/changed — and writes `.sdlc/spec-gate.json` binding spec/plan hashes and scope.
+Never implement before it succeeds; `close` only after evidence; plan/spec changes need `close` + a new approval — never edit around the gate. Widening the envelope is its own committed+authorized step first.
 
 ## Task table (mandatory)
 

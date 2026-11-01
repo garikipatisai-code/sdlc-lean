@@ -94,6 +94,31 @@ Attacker paths (input → sink → impact):
 
 Residual risks (accepted by human operator): envelope authorized on misunderstood risk (human misjudgment of blast radius) now compounds across gates without a per-gate human look — owner: human operator via envelope sizing discipline + sampling; CORRELATED MODEL FAILURE across supposedly-independent agents carried over from 0001 — owned by the human operator via outer-loop sampling; the activation audit row is a detection control, not tamper-proof.
 
+## 2026-11-01 autonomy-by-default
+
+Scope: default-on autonomy — installer ships the envelope template + AUTONOMY.md standing rule + audit-ledger init into every install (additive only, never overwrites), and the router assumes envelope-first (one chat yes at bootstrap, zero approvals after). Design: `docs/design/0003-autonomy-by-default.md`. No code this round. Mechanisms unchanged from 0001+0002; only the delivery point and the default flip.
+
+- Assets: first-envelope authority (bootstrap yes recorded in the ledger + envelope committed), per-repo envelope scope (declared paths vs. everything else), global-install integrity (shared CLI/plugins vs. repo-local state), audit trail (auth lines vs. activation/run rows).
+- Entry points: agent-drafted first envelope on a fresh repo; installer run against a repo with or without existing envelope/ledger; agent temptation to self-sync global-vs-local drift.
+- Trust boundaries: bootstrap (goal statement → committed envelope); repo edge (one envelope authorizes exactly one repo); global install (shared across repos — never agent-writable); envelope widening (own committed+auth step, never silent).
+
+Attacker paths (input → sink → impact):
+
+1. Over-broad first envelope — agent drafts too-wide scope, human chat-yeses without reading (rubber-stamp at bootstrap) → envelope-authorization sink → every later gate inherits the widened ceiling (elevation, compounding across gates and repos).
+2. Silent widening post-bootstrap — "just one more path" committed without a fresh auth line → envelope-file sink → machine-approve against widened scope (tampering).
+3. Global self-modification — agent auto-syncs global vs repo-local CLI drift to "fix" parity → shared-install sink → supply-chain self-modification across repos (elevation / tampering).
+4. Correlated-model-failure carried over from 0001+0002 — supposedly-independent draft/critic agents share a blind spot on first-envelope sizing (see 0001 residual).
+
+| boundary | threat | risk | mitigation | residual owner |
+|---|---|---|---|---|
+| Bootstrap → envelope | Fresh repo with over-broad first envelope: agent drafts too-wide scope, human chat-yeses without reading (rubber-stamp at bootstrap) | high | Template starts NARROW (plan+impl+evidence paths only); installer never pre-fills paths — scope is filled only by the bootstrap draft from the stated goal; widening requires its own committed+authorized step (widened envelope commit + fresh auth ledger line before any widened-scope approve); reviewer reconciles first envelope paths against the goal before trusting the repo | human operator |
+| Envelope → envelope | Silent widening post-bootstrap (tampering) | high | Widening is its own committed+auth step; `checkEnvelopeClean` anchored to the latest authorization record refuses `envelope-changed`, fail-closed `envelope-unknown`; same 0001+0002 immutability, now guarding N repos instead of one | human operator |
+| Repo-local → global install | Stale global vs repo-local CLI drift auto-fixing temptation: agent syncs the shared install itself (supply-chain self-modification) | high | Procedural: the agent must NOT auto-sync global — it reports the drift + the human runs the installer; installer payload stays additive-only (never overwrites repo envelope/ledger); global install is never an agent write target | human operator |
+| Agent → own first envelope | Correlated model failure on envelope sizing (drafter and critic share the blind spot) carried over | high | Same 0001+0002 separation-of-powers + outer-loop sampling; narrow-start bounds the blast radius of a shared misjudgment; owned by the human operator via sampling | human operator |
+| Agent → unattended runs | Agent confidently wrong at machine speed: SOTA-assumed but mis-sourced decisions amplified across unattended runs (no per-gate human look to catch the error) | high | Citation-required options (`option-selection` matrix with fetched sources, never memory/vibes picks); independent critics from different angles; eval probes for graded behavior; fix-budget stops + escalate-with-evidence (escalation carries findings, never a bare question); `verification-before-completion` before any done claim | human operator |
+
+Residual risks (accepted by human operator): bootstrap rubber-stamp (one unread yes authorizing a too-wide first envelope) is bounded by narrow-start + own-step widening but not eliminated — owner: human operator via reading the first envelope; per-repo envelope count multiplies the 0002 compounding risk (mis-sized authorization without per-gate looks) by repo count — owner: human operator via sampling; unknown-unknown domain error (confidently-wrong-at-speed residual after citations + critics + probes) — owner: human operator via sampling; the installer running against adversarial repo state (symlinked envelope/ledger paths) is unanalyzed — installer must reuse existing symlink/regular-file containment checks.
+
 ## Rules
 
 - No finding without a traced path.

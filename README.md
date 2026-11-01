@@ -17,7 +17,7 @@ flowchart TD
     R -->|shipped artifact, no source| RE[reverse-engineering: REA ladder, evidence, no mutation]
     R -->|empirical experiment| RS[research-protocol: frozen protocol, null counts as done]
     R -->|web game| G[game pipeline]
-    F --> TH[threat-model if a trust boundary] --> FB[brainstorming to HARD GATE design approval] --> FP[writing-plans] --> HA["human approves plan: /approve in TUI or TTY fallback"] --> FI[execute via TDD + fail-before-fix] --> FR[review: raw Verify output + dispositions] --> FV[verification-before-completion] --> FE[evidence JSON] --> FC[close gate: human close, or Auto machine-close under a standing envelope]
+    F --> TH[threat-model if a trust boundary] --> FB[brainstorming to HARD GATE design approval] --> FP[writing-plans] --> HA["approve plan: human /approve, or Auto machine-approve under envelope"] --> FI[execute via TDD + fail-before-fix] --> FR[review: raw Verify output + dispositions] --> FV[verification-before-completion] --> FE[evidence JSON] --> FC[close gate: human close, or Auto machine-close under a standing envelope]
     B --> BR[systematic-debugging: reproduce, root-cause, fix, fail-before-fix proof]
     RF --> RI[impact analysis then behavior-preserving steps]
     S --> SR[read-only traced-path findings]

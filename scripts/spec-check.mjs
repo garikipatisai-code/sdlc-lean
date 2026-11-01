@@ -418,7 +418,32 @@ export const parseEnvelopeText = (text) => {
   if (reversBody === null) fail('invalid-envelope', 'envelope is missing the "Reversibility" section');
   const externalBody = envelopeSectionBody(sections, 'external');
   if (externalBody === null) fail('invalid-envelope', 'envelope is missing the "No external effects" section');
-  const budgetsBody = envelopeSectionBody(sections, 'budget');
+  // Envelope hash (blob auth) and session requirements
+  let envelopeHash = null;
+  const hashBody = envelopeSectionBody(sections, 'hash');
+  if (hashBody !== null) {
+    for (const line of hashBody.split('\n')) {
+      const match = line.match(/^[-*]\s+([0-9a-f]{64})$/i);
+      if (match) { envelopeHash = match[1].toLowerCase(); break; }
+    }
+  }
+  let requiredSessions = [];
+  const sessionsBody = envelopeSectionBody(sections, 'sessions');
+  if (sessionsBody !== null) {
+    for (const line of sessionsBody.split('\n')) {
+      const trim = line.trim();
+      if (trim.startsWith('##')) {
+        const m = trim.match(/^##\s+Required\s+sessions:\s*(.+)$/i);
+        if (m) {
+          for (const sess of m[1].split(',')) {
+            const sessTrim = sess.trim();
+            if (sessTrim) requiredSessions.push(sessTrim);
+          }
+        }
+      }
+    }
+  }
+    const budgetsBody = envelopeSectionBody(sections, 'budget');
   if (budgetsBody === null) fail('invalid-envelope', 'envelope is missing the "Budgets" section');
 
   // Any affirmative external-effect declaration, anywhere in the file
@@ -512,6 +537,8 @@ export const parseEnvelopeText = (text) => {
     maxIterations,
     check: checkMatch[1].trim(),
     expectedOutcomes,
+    envelopeHash,
+    requiredSessions,
   };
 };
 
@@ -1154,6 +1181,21 @@ export const collectMachineVerdicts = (doc) => {
  * envelope updates require re-approval. Appends exactly one audit-ledger
  * row (exact 5th-column duplicate check), then unlinks the marker.
  */
+export const validateCriticsSessions = (verdicts, requiredSessions) => {
+  const sessionIds = verdicts
+    .map((v) => (v && typeof v === 'object' && v.session) ? String(v.session).trim() : '')
+    .filter((x) => x !== '');
+  const unique = new Set(sessionIds);
+  if (sessionIds.length > 0 && unique.size !== sessionIds.length) {
+    throw new Error('machine-close refused: duplicate session IDs in critics (no self-review)');
+  }
+  for (const req of (requiredSessions || [])) {
+    if (req.trim() !== '' && !sessionIds.includes(req.trim())) {
+      throw new Error(`machine-close refused: required session "${req.trim()}" not found in critics`);
+    }
+  }
+};
+
 export const closeMachineGate = (root = process.cwd(), opts = {}) => {
   const check = typeof opts.check === 'string' ? opts.check.trim() : '';
   if (!check) {
@@ -1185,6 +1227,9 @@ export const closeMachineGate = (root = process.cwd(), opts = {}) => {
     fail('invalid-critics', `machine-close refused: critics file is not valid JSON: ${err.message} (independent-critic criterion)`);
   }
   const verdicts = collectMachineVerdicts(criticsDoc);
+  // Enforce session independence
+  const sessionRequirements = (criticsDoc && typeof criticsDoc === "object") ? (criticsDoc.requiredSessions || []) : [];
+  validateCriticsSessions(verdicts, sessionRequirements);
   const rejected = verdicts.find((v) => v.trim().toUpperCase() !== 'ACCEPT');
   if (rejected !== undefined) {
     fail('critic-reject', `machine-close refused: critic verdict is "${String(rejected).trim()}" (independent-critic criterion: every verdict must be ACCEPT)`);

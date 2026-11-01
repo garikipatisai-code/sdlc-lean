@@ -454,10 +454,18 @@ test('CLI close requires evidence and reports the evidence hash', async (t) => {
   mod.writeGate(root, gate);
   const file = writeEvidence(root, baseEvidence(gate));
 
-  const closed = run(['close'], root);
-  assert.equal(closed.status, 0, closed.stderr);
-  assert.match(closed.stdout, /closed spec gate: evidence/i);
-  assert.match(closed.stdout, new RegExp(mod.hashFile(file)));
+  const logs = [];
+  const original = console.log;
+  console.log = (...args) => { logs.push(args.join(' ')); };
+  let code;
+  try {
+    code = mod.main(['--root', root, 'close'], { stdinTTY: true, stdoutTTY: true });
+  } finally {
+    console.log = original;
+  }
+  assert.equal(code, 0, logs.join('\n'));
+  assert.match(logs.join('\n'), /closed spec gate: evidence/i);
+  assert.match(logs.join('\n'), new RegExp(mod.hashFile(file)));
   assert.equal(fs.existsSync(markerPath(root)), false);
 });
 

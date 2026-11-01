@@ -13,3 +13,4 @@ _No Auto runs logged yet — the first machine-closed run appends row 1 below._
 
 | date | tier | check | result | reversal |
 |---|---|---|---|---|
+| 2026-11-01T20:08:24.000Z | Auto | envelope-auth | active | docs/envelope-gap-close-batch.md |

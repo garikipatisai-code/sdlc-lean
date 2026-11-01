@@ -41,10 +41,10 @@ authorize this envelope-authorized machine-approve mechanism.
 - grader-changes: no — except stale-assertion fixes under an open approval; never weaken a pass bar to go green
 - red-close: no — never close while the named check is red
 
-## Budgets (max-iterations 3, check: npm run verify)
+## Budgets (max-iterations 3, check: node --test tests/scripts/test-spec-check.mjs tests/scripts/test-auto-tier-machine-close.mjs tests/scripts/test-machine-approve.mjs tests/scripts/test-gap-atomicity-probes.mjs tests/scripts/test-gap-parity.mjs)
 
 - max-iterations: 3
-- check: npm run verify
+- check: node --test tests/scripts/test-spec-check.mjs tests/scripts/test-auto-tier-machine-close.mjs tests/scripts/test-machine-approve.mjs tests/scripts/test-gap-atomicity-probes.mjs tests/scripts/test-gap-parity.mjs
 - stop-on: same check fails twice with the same output; unclear scope or reversibility; any out-of-envelope file; any external effect requested
 
 ## Expected outcomes (pre-declared new behaviors for the gap-close batch)

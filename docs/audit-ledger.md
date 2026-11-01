@@ -16,3 +16,5 @@ _No Auto runs logged yet — the first machine-closed run appends row 1 below._
 | 2026-11-01T20:08:24.000Z | Auto | envelope-auth | active | docs/envelope-gap-close-batch.md |
 | 2026-11-01T23:38:16.139Z | Auto-activate | docs/plans/2026-11-01-gap-close-batch.md | active | docs/envelope-gap-close-batch.md |
 | 2026-11-01T23:40:34Z | Auto | envelope-auth | active | docs/envelope-gap-close-batch.md |
+| 2026-11-01T23:40:47.592Z | Auto-activate | docs/plans/2026-11-01-gap-close-batch.md | active | docs/envelope-gap-close-batch.md |
+| 2026-11-01T23:51:00.231Z | Auto | envelope-auth | active | docs/envelope-gap-close-batch.md |

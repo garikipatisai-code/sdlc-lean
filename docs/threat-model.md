@@ -124,3 +124,13 @@ Residual risks (accepted by human operator): bootstrap rubber-stamp (one unread 
 - No finding without a traced path.
 - Secrets never enter the model context or logs.
 - Residual risk is accepted by the named owner; this model does not claim an OS sandbox.
+
+
+
+
+
+### 2026-11-01 gap-close batch (skipDrift residual)
+
+- **Issue**: `close --machine` refuses `cli-drift` error despite `validateCloseEvidence` succeeding; the drift guard is a `verify`/`check`/`status` control (keep the gate active during a run) but `close` is the escape hatch for drift — closing then re-approving is the intended recovery.
+- **Status**: Fixed at the code level (`validateGate` accepts `skipDrift: true`; `validateCloseEvidence` passes it; `close`/`close --machine`/`status` skip drift checks; `approve`/`verify`/`check` keep full checks). Residual: an agent could close with stale evidence rows (e.g., wrong plan_sha256) if `closeGate` executes before `humanApproval` completes the TTY check — requires a `close` sequence redesign (validate drift/evidence before humanApproval) or a new `closeMachineGate` variant.
+- **Owner**: human operator (review the close sequence for evidence binding before humanApproval).

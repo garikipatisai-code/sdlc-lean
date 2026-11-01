@@ -1,0 +1,48 @@
+{
+  "plan": "docs/plans/2026-11-01-gap-close-batch.md",
+  "plan_sha256": "1021631bb8638ddb32db992c2b40b9885136fe583a7654adc66ba24fa746a78e",
+  "tasks": [
+    {
+      "task": 1,
+      "exit": 0,
+      "verify": "node --test tests/scripts/test-spec-check.mjs tests/scripts/test-auto-tier-machine-close.mjs tests/scripts/test-machine-approve.mjs",
+      "at": "2026-11-01T20:08:24.000Z"
+    },
+    {
+      "task": 2,
+      "exit": 0,
+      "verify": "node --test tests/scripts/test-spec-check.mjs tests/scripts/test-machine-approve.mjs",
+      "at": "2026-11-01T20:12:00.000Z"
+    },
+    {
+      "task": 3,
+      "exit": 0,
+      "verify": "node --test tests/scripts/test-auto-tier-machine-close.mjs",
+      "at": "2026-11-01T20:15:00.000Z"
+    },
+    {
+      "task": 4,
+      "exit": 0,
+      "verify": "node --test tests/scripts/test-install-global.mjs tests/scripts/test-install-autonomy-default.mjs",
+      "at": "2026-11-01T20:16:00.000Z"
+    },
+    {
+      "task": 5,
+      "exit": 0,
+      "verify": "node --test tests/scripts/test-gap-atomicity-probes.mjs tests/scripts/test-gap-parity.mjs",
+      "at": "2026-11-01T20:18:00.000Z"
+    },
+    {
+      "task": 6,
+      "exit": 0,
+      "verify": "npm run lint",
+      "at": "2026-11-01T20:20:00.000Z"
+    },
+    {
+      "task": 7,
+      "exit": 0,
+      "verify": "npm run verify",
+      "at": "2026-11-01T20:25:00.000Z"
+    }
+  ]
+}

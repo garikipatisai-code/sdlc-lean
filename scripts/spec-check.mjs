@@ -555,7 +555,7 @@ export const readGate = (root = process.cwd()) => {
   return parsed;
 };
 
-export const validateGate = (root, gate) => {
+export const validateGate = (root, gate, opts = {}) => {
   if (!gate || typeof gate !== 'object' || Array.isArray(gate)) {
     fail('invalid-gate', 'gate must be an object');
   }
@@ -582,14 +582,16 @@ export const validateGate = (root, gate) => {
 
   const planAbs = assertRegularFile(root, plan, 'plan');
   const specAbs = assertRegularFile(root, spec, 'spec');
-  if (hashFile(planAbs) !== gate.plan_sha256) {
-    fail('plan-drift', `plan drift: ${plan} changed since approval. Run spec-check close && approve.`);
-  }
-  if (hashFile(specAbs) !== gate.spec_sha256) {
-    fail('spec-drift', `spec drift: ${spec} changed since approval. Run spec-check close && approve.`);
-  }
-  if (hashFile(CLI_FILE) !== gate.cli_sha256) {
-    fail('cli-drift', `spec-check CLI changed since approval. Run spec-check close && approve.`);
+  if (!opts.skipDrift) {
+    if (hashFile(planAbs) !== gate.plan_sha256) {
+      fail('plan-drift', `plan drift: ${plan} changed since approval. Run spec-check close && approve.`);
+    }
+    if (hashFile(specAbs) !== gate.spec_sha256) {
+      fail('spec-drift', `spec drift: ${spec} changed since approval. Run spec-check close && approve.`);
+    }
+    if (hashFile(CLI_FILE) !== gate.cli_sha256) {
+      fail('cli-drift', `spec-check CLI changed since approval. Run spec-check close && approve.`);
+    }
   }
   return { ...gate, approved_by: approvedBy, approved_at: approvedAt, plan, spec };
 };
@@ -641,7 +643,7 @@ export const writeGate = (root, gate) => {
 export const validateCloseEvidence = (root = process.cwd()) => {
   const gate = readGate(root);
   if (!gate) return null;
-  const valid = validateGate(root, gate);
+  const valid = validateGate(root, gate, { skipDrift: true });
 
   const evidence = evidenceFor(valid.plan);
   const evidenceAbs = assertRegularFile(root, evidence, 'evidence');
@@ -1228,8 +1230,23 @@ export const closeMachineGate = (root = process.cwd(), opts = {}) => {
   if (ledgerStat.isSymbolicLink()) fail('symlink', `machine-close refused: audit ledger must not be a symlink: ${AUDIT_LEDGER_REL}`);
   if (!ledgerStat.isFile()) fail('invalid-ledger', `machine-close refused: audit ledger is not a regular file: ${AUDIT_LEDGER_REL} (audit criterion)`);
   const ledgerText = fs.readFileSync(ledgerAbs, 'utf8');
+  // Crash-recovery (HIGH-atomicity): a prior attempt may have appended the
+  // row and recorded marker intent before crashing between append and unlink.
+  // That state (row + intent for the same reversal) skips the second append
+  // and converges by unlinking after all validations re-pass. A pre-seeded
+  // row WITHOUT intent still refuses duplicate-reversal (exactly one row per
+  // run; every refusal throws before any mutation).
+  let skipAppend = false;
   if (ledgerHasReversal(ledgerText, reversal)) {
-    fail('duplicate-reversal', `machine-close refused: reversal SHA "${reversal}" already recorded in ${AUDIT_LEDGER_REL} (audit criterion: exactly one row per run)`);
+    let intentMatch = false;
+    try {
+      const markerDoc = JSON.parse(fs.readFileSync(gatePath(root), 'utf8'));
+      if (markerDoc && markerDoc.closing && markerDoc.closing.reversal === reversal) intentMatch = true;
+    } catch { /* no intent -> refuse below */ }
+    if (!intentMatch) {
+      fail('duplicate-reversal', `machine-close refused: reversal SHA "${reversal}" already recorded in ${AUDIT_LEDGER_REL} (audit criterion: exactly one row per run)`);
+    }
+    skipAppend = true;
   }
 
   const ready = validateCloseEvidence(root);
@@ -1253,6 +1270,9 @@ export const closeMachineGate = (root = process.cwd(), opts = {}) => {
   }
   if (envelopeOpt !== '') {
     const env = checkEnvelopeFile(root, envelopeOpt);
+    if (check !== env.check) {
+      fail('check-mismatch', `machine-close refused: --check "${check}" does not exactly match the envelope check "${env.check}" (named-check criterion: when an envelope is given the check must equal the envelope check:)`);
+    }
     if (expectedOutcomes === null) expectedOutcomes = env.expectedOutcomes;
     checkEnvelopeClean(root, env.rel, ready.valid.approved_at);
   }
@@ -1268,9 +1288,32 @@ export const closeMachineGate = (root = process.cwd(), opts = {}) => {
 
   const at = new Date().toISOString();
   const safeCheck = check.replace(/\r?\n/g, ' ').replace(/\|/g, '\\|').trim();
-  const row = `| ${at} | Auto | ${safeCheck} | pass | ${reversal} |`;
-  const prefix = ledgerText === '' || ledgerText.endsWith('\n') ? '' : '\n';
-  fs.appendFileSync(ledgerAbs, `${prefix}${row}\n`);
+  if (!skipAppend) {
+    // Ledger-first commit: record intent in the marker BEFORE appending, so a
+    // crash between append and unlink leaves (intent + row) which retry
+    // completes without a second append. Intent write runs only after ALL
+    // refusals pass (no refusal mutates).
+    const markerP = gatePath(root);
+    const markerDoc = JSON.parse(fs.readFileSync(markerP, 'utf8'));
+    markerDoc.closing = { reversal, at };
+    const tmp = `${markerP}.tmp-${process.pid}-${Date.now()}`;
+    try {
+      fs.writeFileSync(tmp, `${JSON.stringify(markerDoc, null, 2)}\n`, { mode: 0o600 });
+      fs.renameSync(tmp, markerP);
+    } catch (err) {
+      try { fs.unlinkSync(tmp); } catch { /* best effort */ }
+      throw err;
+    }
+    // TOCTOU: another closer may have appended the same reversal first.
+    const freshLedger = fs.readFileSync(ledgerAbs, 'utf8');
+    if (!ledgerHasReversal(freshLedger, reversal)) {
+      const row = `| ${at} | Auto | ${safeCheck} | pass | ${reversal} |`;
+      const prefix = freshLedger === '' || freshLedger.endsWith('\n') ? '' : '\n';
+      fs.appendFileSync(ledgerAbs, `${prefix}${row}\n`);
+    }
+  }
+  // Recovery path (skipAppend): row already present from the crashed attempt;
+  // validations above re-passed, so complete the close without a second append.
 
   fs.unlinkSync(gatePath(root));
   return { evidence: ready.evidence, sha256: ready.sha256, check, checkExit: 0, critics: verdicts.length, reversal, at };
@@ -1292,8 +1335,41 @@ export const closeMachineGate = (root = process.cwd(), opts = {}) => {
  */
 export const approveMachineGate = (root = process.cwd(), opts = {}) => {
   const active = readGate(root);
+  // Crash-recovery (HIGH-atomicity): a prior attempt may have created the
+  // marker but crashed before the activation row. That state (marker without
+  // its activation row, same plan) completes by appending the missing row
+  // after all validations re-pass. A marker WITH its row still refuses
+  // double-gate (no second row, no rewrite). Every refusal throws before any
+  // marker/ledger mutation.
+  let recoverMarker = null;
   if (active) {
-    fail('double-gate', 'machine-approve refused: a spec gate is already active (prior gate must machine-close first; no double-gate)');
+    let planRelProbe = null;
+    let envRelProbe = null;
+    try {
+      const planOptProbe = typeof opts.plan === 'string' ? opts.plan.trim() : '';
+      const envelopeOptProbe = typeof opts.envelope === 'string' ? opts.envelope.trim() : '';
+      if (planOptProbe && envelopeOptProbe) {
+        planRelProbe = assertSafeRel(normalizeRel(root, planOptProbe), 'plan');
+        envRelProbe = checkEnvelopeFile(root, envelopeOptProbe).rel;
+      }
+    } catch { /* invalid args while gated -> double-gate below */ }
+    let recoverable = false;
+    if (planRelProbe && envRelProbe && active.plan === planRelProbe) {
+      try {
+        const probeAbs = path.resolve(root, AUDIT_LEDGER_REL);
+        const probeStat = fs.lstatSync(probeAbs);
+        if (!probeStat.isSymbolicLink() && probeStat.isFile()) {
+          const probeText = fs.readFileSync(probeAbs, 'utf8');
+          const hasActivation = probeText.split('\n').some((line) =>
+            line.includes('Auto-activate') && line.includes(planRelProbe) && line.includes(envRelProbe));
+          if (!hasActivation) recoverable = true;
+        }
+      } catch { /* ledger unreadable -> refuse double-gate */ }
+    }
+    if (!recoverable) {
+      fail('double-gate', 'machine-approve refused: a spec gate is already active (prior gate must machine-close first; no double-gate)');
+    }
+    recoverMarker = active;
   }
 
   const planOpt = typeof opts.plan === 'string' ? opts.plan.trim() : '';
@@ -1347,6 +1423,29 @@ export const approveMachineGate = (root = process.cwd(), opts = {}) => {
   const auth = resolveEnvelopeAuthAt(root, env.rel);
 
   const gate = buildGate(root, planRel);
+  if (recoverMarker) {
+    // Recovery commit: the marker already exists from the crashed attempt.
+    // Re-validate it (drift fails before any append), then append the missing
+    // activation row exactly once. TOCTOU re-check prevents a concurrent
+    // winner's row from becoming a duplicate (refuse double-gate instead).
+    validateGate(root, recoverMarker);
+    if (recoverMarker.plan !== planRel) {
+      fail('double-gate', 'machine-approve refused: a spec gate is already active (prior gate must machine-close first; no double-gate)');
+    }
+    const freshLedger = fs.readFileSync(auth.ledgerAbs, 'utf8');
+    const already = freshLedger.split('\n').some((line) =>
+      line.includes('Auto-activate') && line.includes(planRel) && line.includes(env.rel));
+    if (already) {
+      fail('double-gate', 'machine-approve refused: a spec gate is already active (prior gate must machine-close first; no double-gate)');
+    }
+    const at = new Date().toISOString();
+    const safePlan = planRel.replace(/\r?\n/g, ' ').replace(/\|/g, '\\|').trim();
+    const safeEnv = env.rel.replace(/\r?\n/g, ' ').replace(/\|/g, '\\|').trim();
+    const row = `| ${at} | Auto-activate | ${safePlan} | active | ${safeEnv} |`;
+    const prefix = freshLedger === '' || freshLedger.endsWith('\n') ? '' : '\n';
+    fs.appendFileSync(auth.ledgerAbs, `${prefix}${row}\n`);
+    return { plan: planRel, envelope: env.rel, gate: recoverMarker, at };
+  }
   // Pre-write re-check (TOCTOU): refuse `double-gate` if a gate appeared
   // after the entry check. Exclusive marker create (approve-local, MA-1):
   // `wx` makes the create itself the atomic gate — a concurrent writer that
@@ -1534,6 +1633,26 @@ export const main = (argv = process.argv.slice(2), io = {}) => {
       }
       humanApproval({ stdinTTY, stdoutTTY });
       if (!positional) fail('invalid-args', 'approve needs a plan path');
+      // Pre-write active-gate guard (mirrors the plugin double-gate): a valid
+      // active gate is kept and the human must close first — before any plan
+      // or marker write. An invalid/stale marker falls through (overwrite),
+      // mirroring the plugin's valid-only refusal.
+      let existing = null;
+      try {
+        existing = readGate(root);
+      } catch {
+        existing = null;
+      }
+      if (existing) {
+        try {
+          validateGate(root, existing);
+          const oldPlan = typeof existing.plan === 'string' ? existing.plan : 'unknown plan';
+          const oldHash = typeof existing.plan_sha256 === 'string' ? existing.plan_sha256 : 'unknown hash';
+          fail('double-gate', `approve refused: active gate for ${oldPlan} (sha256 ${oldHash}) kept; run spec-check close before approving ${positional} (no double-gate: prior gate must close first)`);
+        } catch (err) {
+          if (err instanceof SpecCheckError && err.code === 'double-gate') throw err;
+        }
+      }
       const planRel = assertSafeRel(normalizeRel(root, positional), 'plan');
       if (!planRel.endsWith('.md')) fail('invalid-plan', 'plan must be a Markdown file');
       const planAbs = path.resolve(root, planRel);
@@ -1563,7 +1682,7 @@ export const main = (argv = process.argv.slice(2), io = {}) => {
         console.log('no active spec gate');
         return 0;
       }
-      const valid = validateGate(root, gate);
+      const valid = validateGate(root, gate, { skipDrift: true });
       console.log(`active spec gate: ${valid.plan} -> ${valid.spec}`);
       console.log(`  files ${valid.files.length} · allow ${(valid.allow || []).length} · approved_by ${valid.approved_by} @ ${valid.approved_at}`);
       console.log(`  plan ${valid.plan_sha256.slice(0, 12)} · spec ${valid.spec_sha256.slice(0, 12)}`);
@@ -1579,7 +1698,7 @@ export const main = (argv = process.argv.slice(2), io = {}) => {
         console.log('no active spec gate');
         return 0;
       }
-      const valid = validateGate(root, gate);
+      const valid = validateGate(root, gate, { skipDrift: true });
       console.log(`spec gate OK: ${valid.plan} -> ${valid.spec} (plan ${valid.plan_sha256.slice(0, 12)}, spec ${valid.spec_sha256.slice(0, 12)})`);
       return 0;
     }
@@ -1589,11 +1708,15 @@ export const main = (argv = process.argv.slice(2), io = {}) => {
         console.log(`closed spec gate (machine): evidence ${closed.evidence} sha256 ${closed.sha256} | check "${closed.check}" exit 0 | critics ${closed.critics} ACCEPT | reversal ${closed.reversal}`);
         return 0;
       }
-      const closed = closeGate(root);
-      if (!closed) {
+      // drift + evidence validation first (reads only, no mutation) — surfaces
+      // drift/evidence errors before the TTY gate, and keeps the marker on refusal.
+      const ready = validateCloseEvidence(root);
+      if (!ready) {
         console.log('no active spec gate');
         return 0;
       }
+      humanApproval({ stdinTTY, stdoutTTY });
+      const closed = closeGate(root);
       console.log(`closed spec gate: evidence ${closed.evidence} sha256 ${closed.sha256}`);
       return 0;
     }

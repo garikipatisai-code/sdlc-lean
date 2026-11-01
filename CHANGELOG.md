@@ -27,7 +27,8 @@ All notable changes to this project are documented here. Format follows
   claimed.
 
 ### Added
-- Auto-tier pilot (envelope-authorized machine-close): `docs/auto-envelope.template.md` standing pre-approval + `envelope check` validator; `close --machine` (named check + critics + evidence + reversal + audit row, with `approved_at`-anchored grader-immutability, envelope-immutability, and expected-outcome guards); SoP role separation that fails open when roles are unobservable; design in `docs/design/0001-auto-tier-pilot.md`, pilot threat section in `docs/threat-model.md`.
+- Gap-close hardening (T1-T4): crash-safe gate mutation (ledger-first + retry-safe recovery), non-TTY `close` refused, `--check` bound to envelope check, human-approve clobber guard, `skipDrift` escape hatch for close-only drift recovery; critic session-independence (`validateCriticsSessions` refuses duplicate/self-review sessions); envelope `hash` + `sessions` parsing; installer dest-symlink refusal (`assertDestNotSymlink` before every `copyFileSync`); new probe suites (`test-gap-atomicity-probes`, `test-gap-parity`).
+: `docs/auto-envelope.template.md` standing pre-approval + `envelope check` validator; `close --machine` (named check + critics + evidence + reversal + audit row, with `approved_at`-anchored grader-immutability, envelope-immutability, and expected-outcome guards); SoP role separation that fails open when roles are unobservable; design in `docs/design/0001-auto-tier-pilot.md`, pilot threat section in `docs/threat-model.md`.
 - Persisted V2 prompt hook: `ctx.session.hook('prompt')` appends the bootstrap
   to the first user prompt once per session, skips child sessions, and falls
   back through the `context` hook on a runtime throw. V1's hook shape is

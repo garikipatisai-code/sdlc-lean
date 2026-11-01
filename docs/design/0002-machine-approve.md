@@ -2,7 +2,8 @@
 
 ## Status
 
-proposed (awaiting human written-findings approval; zero code this round)
+accepted (accepted-by appusai in chat 2026-11-01 "fix-all-gaps"; accepted-at 2026-11-01)
+
 
 Supersedes (partially) [0001](0001-auto-tier-pilot.md): 0001's "approve stays human" point only — 0001 removed human hash-approval of reference plans inside a machine-closed run, but gate OPENING (approve) still required a human keystroke. This ADR closes that last gap with envelope-authorized machine-approve. Everything else in 0001 (envelope as the only human act, machine-close criteria, ALWAYS-human irreversible-external list, SoP, grader-immutability, reward-hacking guards) stands unchanged.
 

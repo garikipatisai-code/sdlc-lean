@@ -2,7 +2,7 @@
 spec: docs/design/0003-autonomy-by-default.md
 status: approved
 approved_by: appusai
-approved_at: 2026-11-01T20:09:14.373Z
+approved_at: 2026-11-01T23:51:00.000Z
 files:
   - scripts/spec-check.mjs
   - scripts/install-global.mjs

@@ -68,6 +68,32 @@ Attacker paths (input → sink → impact):
 
 Residual risks (accepted by human operator): a correctly-scoped but wrong-headed run can still land bad-but-revertible work (bounded by budget + named check + reversal commit); the audit ledger is a detection control, not tamper-proof; prompt-injection via tool results is mitigated at the scope/destructive boundaries, not eliminated; CORRELATED MODEL FAILURE across supposedly-independent agents (same family sharing a blind spot) can defeat separation of powers — owned by the human operator via outer-loop sampling; unknown-unknown domain risk is accepted explicitly by the envelope choice. Envelope sizing on unknown risk remains human-owned: too wide risks blast radius, too narrow stalls runs.
 
+## 2026-10-31 machine-approve
+
+Scope: envelope-authorized MACHINE-APPROVE — the agent OPENS its own gate via `approve --machine` (prior gate machine-closed or no gate; plan files covered by an unchanged envelope; plan agent-authored as REFERENCE). Design: `docs/design/0002-machine-approve.md`. No code this round.
+
+- Assets: gate integrity (forged or widened activation), envelope authority (authorization record vs. widened file), audit trail (activation rows vs. run rows).
+- Entry points: agent invocation of `approve --machine` acting under the standing envelope; agent-authored reference-plan MDs.
+- Trust boundaries: envelope edge (declared paths vs. everything else); gate opening (activation grants write scope — stronger than closing); envelope authorization (human chat-accept + committed file); grader (assertions and pass bars).
+
+Attacker paths (input → sink → impact):
+
+1. Agent self-authorization of gate OPENING — activating its own write scope = granting itself authority (top threat: spoofing-by-trust / elevation; stronger than self-closing because closing only records completion while opening grants scope).
+2. Widened plan smuggled through machine-approve → gate-activation sink → out-of-envelope writes land inside an "envelope-authorized" gate (tampering / elevation).
+3. Envelope edited after authorization, then machine-approved against the widened scope (tampering) — same shape as the machine-close envelope threat, now compounding across N gate openings per envelope.
+4. Double-gate activation (approve while a gate is active) → overlapping scopes → authorization ambiguity (elevation / repudiation).
+5. Forged activation row or activation/run row confusion → `docs/audit-ledger.md` sink → repudiation: the record hides which gate opening authorized which scope.
+
+| boundary | threat | risk | mitigation | residual owner |
+|---|---|---|---|---|
+| Agent → own gate OPENING (TOP THREAT) | Agent activates its own gate = granting itself write scope (spoofing-by-trust / elevation; stronger than self-closing) | high | Envelope ceiling enforced TECHNICALLY at approve time (plan `files`/`allow` ⊆ envelope paths or refuse — no silent widening); envelope immutability re-verified (reuse `checkEnvelopeClean`: envelope file git-clean AND unchanged-since, now anchored to the ENVELOPE authorization record — defined as human chat-accept recorded in the ledger + envelope file committed); no-double-gate (prior gate must machine-close first, else refuse); activation audit row distinct from run rows; same grader-immutability + independent-critic rules as machine-close | human operator (envelope sizing + sampling; correlated-model-failure risk below) |
+| Envelope edge | Machine-approved plan widens scope beyond declared paths (spoofing/elevation) | high | Technical ceiling: plan files ⊆ envelope paths or `approve --machine` refuses; out-of-envelope content escalates (stop + report, no retry) | human operator |
+| Envelope file | Envelope edited post-authorization, then machine-approved against widened scope (tampering) | high | `checkEnvelopeClean` anchored to the envelope authorization record; refuses `envelope-changed`, fail-closed `envelope-unknown`; envelope updates require re-authorization | human operator |
+| Gate → gate | Double-gate: approve while a gate is active, overlapping scopes (elevation / repudiation) | high | Refuse activation while any gate is active; gate history must show close precedes approve | human operator |
+| Audit trail | Forged activation row or activation/run row confusion (repudiation) | high | Activation rows distinct from run rows; reviewer reconciles rows against gate history + `git log` before trusting; ledger stays human-readable for outer-loop sampling | human operator |
+
+Residual risks (accepted by human operator): envelope authorized on misunderstood risk (human misjudgment of blast radius) now compounds across gates without a per-gate human look — owner: human operator via envelope sizing discipline + sampling; CORRELATED MODEL FAILURE across supposedly-independent agents carried over from 0001 — owned by the human operator via outer-loop sampling; the activation audit row is a detection control, not tamper-proof.
+
 ## Rules
 
 - No finding without a traced path.

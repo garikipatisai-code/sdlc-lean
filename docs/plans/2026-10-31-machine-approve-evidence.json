@@ -1,0 +1,42 @@
+{
+  "plan": "docs/plans/2026-10-31-machine-approve.md",
+  "plan_sha256": "9b324c5a502e66e9971c489dc3932e3c918a5c0950e6ca98977269113b19405b",
+  "tasks": [
+    {
+      "task": 1,
+      "verify": "node --test tests/scripts/test-spec-check.mjs",
+      "exit": 0,
+      "at": "2026-11-01T05:26:42Z"
+    },
+    {
+      "task": 2,
+      "verify": "node --test tests/scripts/test-auto-tier-machine-close.mjs",
+      "exit": 0,
+      "at": "2026-11-01T05:26:42Z"
+    },
+    {
+      "task": 3,
+      "verify": "node scripts/spec-check.mjs --help",
+      "exit": 0,
+      "at": "2026-11-01T05:26:42Z"
+    },
+    {
+      "task": 4,
+      "verify": "node --test tests/scripts/test-machine-approve.mjs",
+      "exit": 0,
+      "at": "2026-11-01T05:26:42Z"
+    },
+    {
+      "task": 5,
+      "verify": "npm run lint",
+      "exit": 0,
+      "at": "2026-11-01T05:26:42Z"
+    },
+    {
+      "task": 6,
+      "verify": "npm run verify",
+      "exit": 0,
+      "at": "2026-11-01T05:26:42Z"
+    }
+  ]
+}

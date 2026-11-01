@@ -907,6 +907,154 @@ export const checkEnvelopeClean = (root, envelopeRel, approvedAt, runner = spawn
   return true;
 };
 
+// --- Envelope authorization record (MA-3, machine-approve) -------------------
+// The envelope authorization record is (a) the envelope file tracked+committed
+// with a blob at HEAD AND (b) a ledger line (docs/audit-ledger.md) containing
+// the envelope rel with a UTC timestamp, present in the COMMITTED ledger blob
+// (`git show HEAD:<ledger>`). The working-tree ledger is untrusted (a writer
+// can forge a future-dated row), so only the committed blob authorizes. The
+// anchor is the AUTHORIZATION MOMENT: the committer date of the newest commit
+// whose ledger diff introduced the row (`git log -S <rel> -- <ledger>`),
+// never the row text timestamp. The envelope must be unchanged since that
+// commit (`git log <authCommit>..HEAD -- <env>` empty) AND git-clean now, so
+// post-auth envelope edits refuse even under a forged re-anchor row.
+// Every git failure fails closed (`envelope-unknown`).
+export const resolveEnvelopeAuthAt = (root, envelopeRel, runner = spawnSync) => {
+  const rel = String(envelopeRel || '').trim().replace(/^\.\//, '');
+  if (!rel) fail('envelope-unknown', 'machine-approve refused: envelope authorization needs a file (fail-closed: no authorization record, no activation)');
+  let tracked;
+  try {
+    tracked = runner('git', ['-C', root, 'ls-files', '--error-unmatch', '--', rel], { encoding: 'utf8' });
+  } catch (err) {
+    fail('envelope-unknown', `machine-approve refused: cannot verify envelope "${rel}" is tracked+committed (${err.message}; fail-closed: no authorization record, no activation)`);
+  }
+  if (tracked.error || tracked.status !== 0) {
+    fail('envelope-unknown', `machine-approve refused: envelope file "${rel}" is not tracked+committed (envelope-authorization criterion: human chat-accept recorded in the ledger + envelope file committed; fail-closed)`);
+  }
+  // Bind the envelope content: the blob must exist at HEAD.
+  let blob;
+  try {
+    blob = runner('git', ['-C', root, 'rev-parse', `HEAD:${rel}`], { encoding: 'utf8' });
+  } catch (err) {
+    fail('envelope-unknown', `machine-approve refused: cannot bind the committed envelope blob for "${rel}" (${err.message}; fail-closed: no authorization record, no activation)`);
+  }
+  if (blob.error || blob.status !== 0 || !/^[0-9a-f]{40}$/i.test(String(blob.stdout || '').trim())) {
+    fail('envelope-unknown', `machine-approve refused: envelope file "${rel}" has no committed blob at HEAD (envelope-authorization criterion: envelope file committed; fail-closed)`);
+  }
+  const envelopeBlob = String(blob.stdout).trim();
+  // Authorization row must be present in the COMMITTED ledger blob; a
+  // working-tree-only row (forgeable timestamp) never authorizes.
+  let committed;
+  try {
+    committed = runner('git', ['-C', root, 'show', `HEAD:${AUDIT_LEDGER_REL}`], { encoding: 'utf8' });
+  } catch (err) {
+    fail('envelope-unknown', `machine-approve refused: cannot read the committed envelope authorization record in ${AUDIT_LEDGER_REL} (${err.message}; fail-closed: no authorization record, no activation)`);
+  }
+  if (committed.error || committed.status !== 0) {
+    fail('envelope-unknown', `machine-approve refused: no committed envelope authorization record in ${AUDIT_LEDGER_REL} (envelope-authorization criterion: human chat-accept recorded in the ledger + envelope file committed; fail-closed: commit the ledger authorization row first)`);
+  }
+  const committedLedgerText = committed.stdout || '';
+  const tsRe = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z/g;
+  const rowIn = (text) => {
+    for (const line of String(text).split('\n')) {
+      if (!line.includes(rel)) continue;
+      const found = line.match(tsRe);
+      if (!found) continue;
+      for (const t of found) {
+        if (!Number.isNaN(Date.parse(t))) return true;
+      }
+    }
+    return false;
+  };
+  if (!rowIn(committedLedgerText)) {
+    fail('envelope-unknown', `machine-approve refused: no envelope authorization record for "${rel}" in the committed ${AUDIT_LEDGER_REL} (envelope-authorization criterion: human chat-accept recorded in the ledger + envelope file committed; fail-closed: working-tree rows do not authorize)`);
+  }
+  // Anchor = committer date of the newest commit that introduced the row
+  // (pickaxe over the ledger), never the forgeable row text timestamp.
+  let pick;
+  try {
+    pick = runner('git', ['-C', root, 'log', '--format=%H', '-S', rel, '--', AUDIT_LEDGER_REL], { encoding: 'utf8' });
+  } catch (err) {
+    fail('envelope-unknown', `machine-approve refused: cannot locate the envelope authorization commit for "${rel}" (${err.message}; fail-closed: no authorization record, no activation)`);
+  }
+  if (pick.error || pick.status !== 0) {
+    fail('envelope-unknown', `machine-approve refused: cannot locate the envelope authorization commit for "${rel}" (fail-closed: no authorization record, no activation)`);
+  }
+  const candidates = String(pick.stdout || '').split('\n').map((s) => s.trim()).filter(Boolean);
+  let authCommit = null;
+  for (const c of candidates) {
+    let blobText;
+    try {
+      const sh = runner('git', ['-C', root, 'show', `${c}:${AUDIT_LEDGER_REL}`], { encoding: 'utf8' });
+      if (sh.error || sh.status !== 0) continue;
+      blobText = sh.stdout || '';
+    } catch (err) {
+      continue;
+    }
+    if (rowIn(blobText)) { authCommit = c; break; }
+  }
+  if (!authCommit) {
+    fail('envelope-unknown', `machine-approve refused: cannot locate the envelope authorization commit for "${rel}" in ${AUDIT_LEDGER_REL} history (fail-closed: no authorization record, no activation)`);
+  }
+  let stamp;
+  try {
+    stamp = runner('git', ['-C', root, 'log', '-1', '--format=%cI', authCommit], { encoding: 'utf8' });
+  } catch (err) {
+    fail('envelope-unknown', `machine-approve refused: cannot read the envelope authorization time for "${rel}" (${err.message}; fail-closed: no authorization record, no activation)`);
+  }
+  if (stamp.error || stamp.status !== 0) {
+    fail('envelope-unknown', `machine-approve refused: cannot read the envelope authorization time for "${rel}" (fail-closed: no authorization record, no activation)`);
+  }
+  const anchorRaw = String(stamp.stdout || '').trim();
+  const anchorMs = Date.parse(anchorRaw);
+  if (!anchorRaw || Number.isNaN(anchorMs)) {
+    fail('envelope-unknown', `machine-approve refused: envelope authorization commit has an unreadable timestamp for "${rel}" (fail-closed: no authorization record, no activation)`);
+  }
+  const at = new Date(anchorMs).toISOString();
+  assertUtc(at, 'envelope authorization timestamp');
+  // Envelope must be unchanged since the authorization commit (range excludes
+  // the auth commit itself, so a same-commit envelope+ledger flow authorizes)
+  // AND git-clean now: post-auth edits refuse as `envelope-changed`.
+  let since;
+  try {
+    since = runner('git', ['-C', root, 'log', `${authCommit}..HEAD`, '--pretty=format:%H', '--', rel], { encoding: 'utf8' });
+  } catch (err) {
+    fail('envelope-unknown', `machine-approve refused: cannot inspect envelope history since authorization (${err.message}; fail-closed: no authorization record, no activation)`);
+  }
+  if (since.error || since.status !== 0) {
+    fail('envelope-unknown', `machine-approve refused: cannot inspect envelope history since authorization (fail-closed: no authorization record, no activation)`);
+  }
+  if (String(since.stdout || '').trim() !== '') {
+    fail('envelope-changed', `machine-approve refused: envelope file "${rel}" changed since its authorization (envelope-immutability criterion: envelope updates require re-approval; restore it and re-approve)`);
+  }
+  let wt;
+  try {
+    wt = runner('git', ['-C', root, 'status', '--porcelain', '--', rel], { encoding: 'utf8' });
+  } catch (err) {
+    fail('envelope-unknown', `machine-approve refused: cannot inspect the envelope working tree for changes (${err.message}; fail-closed: no authorization record, no activation)`);
+  }
+  if (wt.error || wt.status !== 0) {
+    fail('envelope-unknown', `machine-approve refused: cannot inspect the envelope working tree for changes (fail-closed: no authorization record, no activation)`);
+  }
+  if (String(wt.stdout || '').trim() !== '') {
+    fail('envelope-changed', `machine-approve refused: envelope file "${rel}" has uncommitted changes (envelope-immutability criterion: envelope updates require re-approval; restore it and re-approve)`);
+  }
+  // Working-tree ledger text is returned only for the activation-row prefix;
+  // authorization itself comes from the committed blob above.
+  const ledgerAbs = path.resolve(root, AUDIT_LEDGER_REL);
+  let ledgerText;
+  try {
+    const st = fs.lstatSync(ledgerAbs);
+    if (st.isSymbolicLink()) fail('envelope-unknown', `machine-approve refused: audit ledger must not be a symlink: ${AUDIT_LEDGER_REL} (fail-closed: no authorization record, no activation)`);
+    if (!st.isFile()) fail('envelope-unknown', `machine-approve refused: audit ledger is not a regular file: ${AUDIT_LEDGER_REL} (fail-closed)`);
+    ledgerText = fs.readFileSync(ledgerAbs, 'utf8');
+  } catch (err) {
+    if (err instanceof SpecCheckError) throw err;
+    fail('envelope-unknown', `machine-approve refused: cannot read the envelope authorization record in ${AUDIT_LEDGER_REL} (${err.message}; fail-closed: no authorization record, no activation)`);
+  }
+  return { at, ledgerAbs, ledgerText, authCommit, envelopeBlob };
+};
+
 // --- Reward-hacking guards: pre-declared expected outcomes (RH-1) -------------
 // Evidence rows may mark new behavior with `newBehavior: true` (or
 // `new_behavior: true`) and/or declare `expected` / `expectedOutcome` /
@@ -1128,6 +1276,115 @@ export const closeMachineGate = (root = process.cwd(), opts = {}) => {
   return { evidence: ready.evidence, sha256: ready.sha256, check, checkExit: 0, critics: verdicts.length, reversal, at };
 };
 
+// --- Machine-approve (auto-tier) ------------------------------------------------
+// `approve --machine` opens the next gate on machine authority alone: no
+// active gate (prior gate machine-closed first) + every plan `files`/`allow`
+// entry inside the envelope ceiling + plan text references the envelope +
+// gate write via buildGate/writeGate only after ALL checks pass. Every
+// refusal throws before any marker/ledger mutation.
+
+/**
+ * Machine-approve a reference plan inside a standing envelope.
+ * `opts` needs `{ plan, envelope }`: plan path and envelope file path.
+ * Refuses `double-gate` while any gate is active, `envelope-ceiling` when a
+ * plan scope entry escapes the envelope, and `reference-missing` when the
+ * plan text does not reference the envelope file.
+ */
+export const approveMachineGate = (root = process.cwd(), opts = {}) => {
+  const active = readGate(root);
+  if (active) {
+    fail('double-gate', 'machine-approve refused: a spec gate is already active (prior gate must machine-close first; no double-gate)');
+  }
+
+  const planOpt = typeof opts.plan === 'string' ? opts.plan.trim() : '';
+  if (!planOpt) {
+    fail('missing-plan', 'machine-approve refused: missing plan path (reference plan criterion: the agent-authored plan must reference the envelope)');
+  }
+  const envelopeOpt = typeof opts.envelope === 'string' ? opts.envelope.trim() : '';
+  if (!envelopeOpt) {
+    fail('missing-envelope', 'machine-approve refused: missing --envelope <file> (envelope-ceiling criterion: every plan files/allow entry must be inside the envelope paths)');
+  }
+
+  const planRel = assertSafeRel(normalizeRel(root, planOpt), 'plan');
+  if (!planRel.endsWith('.md')) fail('invalid-plan', 'plan must be a Markdown file');
+  const planAbs = assertRegularFile(root, planRel, 'plan');
+  assertContainedReal(root, planAbs, planOpt);
+  const planText = fs.readFileSync(planAbs, 'utf8');
+  const parsed = parsePlanText(planText);
+
+  const env = checkEnvelopeFile(root, envelopeOpt);
+
+  // Envelope ceiling: every plan files/allow entry must sit inside the
+  // envelope paths. Exact entries match via matchPattern against some
+  // envelope pattern; glob entries fail closed unless the IDENTICAL pattern
+  // is listed in the envelope (a glob must never silently widen).
+  const scopeEntries = [...(parsed.files || []), ...(parsed.allow || [])];
+  for (const entry of scopeEntries) {
+    if (/[*?]/.test(entry)) {
+      if (!env.paths.includes(entry)) {
+        fail('envelope-ceiling', `machine-approve refused: plan scope pattern "${entry}" is not listed in the envelope (envelope-ceiling criterion: glob plan patterns require an identical envelope pattern; out-of-envelope plan content escalates, no retry)`);
+      }
+      continue;
+    }
+    const inside = env.paths.some((pattern) => matchPattern(pattern, entry));
+    if (!inside) {
+      fail('envelope-ceiling', `machine-approve refused: plan scope "${entry}" is outside the envelope paths (envelope-ceiling criterion: plan files/allow must be inside the envelope; out-of-envelope plan content escalates, no retry)`);
+    }
+  }
+
+  // Reference check: the agent-authored plan must reference the envelope file.
+  if (!planText.includes(env.rel)) {
+    fail('reference-missing', `machine-approve refused: plan does not reference the envelope file "${env.rel}" (reference criterion: the plan must be authored from the envelope as a reference doc)`);
+  }
+
+  // Envelope-auth anchor (MA-3): the authorization record (tracked+committed
+  // envelope file with a blob at HEAD + ledger row present in the COMMITTED
+  // ledger blob) anchors immutability to the authorization commit's committer
+  // date — never to the forgeable row text timestamp. resolveEnvelopeAuthAt
+  // refuses `envelope-changed` when the envelope moved since that commit and
+  // fails closed (`envelope-unknown`) on any git failure. Missing or
+  // working-tree-only authorization fails closed.
+  const auth = resolveEnvelopeAuthAt(root, env.rel);
+
+  const gate = buildGate(root, planRel);
+  // Pre-write re-check (TOCTOU): refuse `double-gate` if a gate appeared
+  // after the entry check. Exclusive marker create (approve-local, MA-1):
+  // `wx` makes the create itself the atomic gate — a concurrent writer that
+  // passed the same re-check gets EEXIST and refuses `double-gate` instead
+  // of last-wins rename. writeGate semantics stay shared/unchanged for
+  // other callers; this exclusive write is approve-local and sits
+  // immediately before the ledger append so the check-to-create window is
+  // minimal.
+  const late = readGate(root);
+  if (late) {
+    fail('double-gate', 'machine-approve refused: a spec gate is already active (prior gate must machine-close first; no double-gate)');
+  }
+  validateGate(root, gate);
+  const markerPath = gatePath(root);
+  const markerDir = path.dirname(markerPath);
+  fs.mkdirSync(markerDir, { recursive: true, mode: 0o700 });
+  try { fs.chmodSync(markerDir, 0o700); } catch (err) { /* best effort: pre-existing dir may be owned elsewhere */ }
+  try {
+    fs.writeFileSync(markerPath, `${JSON.stringify(gate, null, 2)}\n`, { mode: 0o600, flag: 'wx' });
+  } catch (err) {
+    if (err && err.code === 'EEXIST') {
+      fail('double-gate', 'machine-approve refused: a spec gate is already active (prior gate must machine-close first; no double-gate)');
+    }
+    throw err;
+  }
+
+  // Activation audit row (MA-5) on success ONLY: tier/result/5th-col distinct
+  // from run rows; pipe-escaped like closeMachineGate. No row on any refusal
+  // (every refusal above throws before this append).
+  const at = new Date().toISOString();
+  const safePlan = planRel.replace(/\r?\n/g, ' ').replace(/\|/g, '\\|').trim();
+  const safeEnv = env.rel.replace(/\r?\n/g, ' ').replace(/\|/g, '\\|').trim();
+  const row = `| ${at} | Auto-activate | ${safePlan} | active | ${safeEnv} |`;
+  const prefix = auth.ledgerText === '' || auth.ledgerText.endsWith('\n') ? '' : '\n';
+  fs.appendFileSync(auth.ledgerAbs, `${prefix}${row}\n`);
+  return { plan: planRel, envelope: env.rel, gate, at };
+};
+
 // Reject lexical escapes (handled by normalizeRel) and symlink escapes. The
 // nearest existing ancestor is resolved: a new file under a symlinked directory
 // must not land outside the repo.
@@ -1185,6 +1442,10 @@ const USAGE = `Usage: node scripts/spec-check.mjs <command> [options]
 
 Commands:
   approve <plan.md>   Validate (autofilling status/approved_by/approved_at after TTY check) and write .sdlc/spec-gate.json
+  approve <plan.md> --machine --envelope <file>
+                      Machine-approve: requires no active gate +
+                      every plan files/allow entry inside the envelope paths +
+                      plan references the envelope + activation audit row appended
   status              Show the active gate (or "none")
   verify [--require-active]   Re-hash plan/spec/CLI; exit 1 on drift, 2 if no gate when required
   close               Validate <plan>-evidence.json and remove the active gate
@@ -1203,7 +1464,7 @@ list one row per plan task with the exact Verify command, exit 0, and a UTC at.
 Options:
   --root <dir>        Repo root (default: cwd)
   --require-active    verify fails (exit 2) when no gate is active
-  --envelope <file>   machine-close: envelope file carrying the pre-declared
+  --envelope <file>   machine-approve: required; machine-close: envelope file carrying the pre-declared
                       "Expected outcomes" list (required when evidence has
                       new-behavior rows)
   -h, --help          Show this help
@@ -1265,6 +1526,12 @@ export const main = (argv = process.argv.slice(2), io = {}) => {
 
   try {
     if (command === 'approve') {
+      if (args.machine) {
+        if (!positional) fail('invalid-args', 'approve needs a plan path');
+        const approved = approveMachineGate(root, { plan: positional, envelope: args.envelope });
+        console.log(`active spec gate (machine): ${approved.plan} -> ${approved.gate.spec} (${approved.gate.files.length} files, sha256 ${approved.gate.plan_sha256.slice(0, 12)})`);
+        return 0;
+      }
       humanApproval({ stdinTTY, stdoutTTY });
       if (!positional) fail('invalid-args', 'approve needs a plan path');
       const planRel = assertSafeRel(normalizeRel(root, positional), 'plan');

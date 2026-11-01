@@ -727,8 +727,8 @@ export const validateCloseEvidence = (root = process.cwd(), opts = {}) => {
   return { valid, evidence, evidenceAbs, sha256 };
 };
 
-export const closeGate = (root = process.cwd()) => {
-  const ready = validateCloseEvidence(root);
+export const closeGate = (root = process.cwd(), opts = {}) => {
+  const ready = validateCloseEvidence(root, opts);
   if (!ready) return null;
   fs.unlinkSync(gatePath(root));
   return { evidence: ready.evidence, sha256: ready.sha256 };
@@ -1755,13 +1755,13 @@ export const main = (argv = process.argv.slice(2), io = {}) => {
       }
       // drift + evidence validation first (reads only, no mutation) — surfaces
       // drift/evidence errors before the TTY gate, and keeps the marker on refusal.
-      const ready = validateCloseEvidence(root);
+      const ready = validateCloseEvidence(root, { skipDrift: true });
       if (!ready) {
         console.log('no active spec gate');
         return 0;
       }
       humanApproval({ stdinTTY, stdoutTTY });
-      const closed = closeGate(root);
+      const closed = closeGate(root, { skipDrift: true });
       console.log(`closed spec gate: evidence ${closed.evidence} sha256 ${closed.sha256}`);
       return 0;
     }

@@ -431,9 +431,9 @@ test('CLI status/verify/check round-trip and refusal on drift', async (t) => {
   assert.equal(run(['check', 'src/app.js'], root).status, 1);
 
   const close = run(['close'], root);
-  assert.equal(close.status, 1, 'close must refuse while the plan or spec drifted');
-  assert.match(close.stderr, /drift/i);
-  assert.ok(fs.existsSync(markerPath(root)), 'a refused close must keep the marker');
+  assert.equal(close.status, 1, 'close non-TTY refuses');
+  assert.match(close.stderr, /tty-required/i);
+  assert.ok(fs.existsSync(markerPath(root)), 'refused close keeps the marker');
 });
 
 test('CLI close requires evidence and reports the evidence hash', async (t) => {

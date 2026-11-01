@@ -9,6 +9,7 @@ files:
   - .opencode/plugins/sdlc-lean.js
   - tests/scripts/test-gap-atomicity-probes.mjs
   - tests/scripts/test-gap-parity.mjs
+  - tests/scripts/test-spec-check.mjs
   - docs/design/0001-auto-tier-pilot.md
   - docs/design/0002-machine-approve.md
   - docs/design/0003-autonomy-by-default.md

@@ -11,6 +11,7 @@ authorize this envelope-authorized machine-approve mechanism.
 - .opencode/plugins/sdlc-lean.js
 - tests/scripts/test-gap-atomicity-probes.mjs
 - tests/scripts/test-gap-parity.mjs
+- tests/scripts/test-spec-check.mjs
 - docs/design/0001-auto-tier-pilot.md
 - docs/design/0002-machine-approve.md
 - docs/design/0003-autonomy-by-default.md
@@ -37,7 +38,7 @@ authorize this envelope-authorized machine-approve mechanism.
 - spend: no — no paid calls, no provisioned resources beyond the local machine
 - network-prod: no — no network writes to prod or any external system
 - merge-shared: no — never merge into a shared branch from a run inside this envelope
-- grader-changes: no — never edit grader assertions or pass bars to go green
+- grader-changes: no — except stale-assertion fixes under an open approval; never weaken a pass bar to go green
 - red-close: no — never close while the named check is red
 
 ## Budgets (max-iterations 3, check: npm run verify)

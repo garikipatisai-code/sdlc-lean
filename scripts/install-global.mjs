@@ -27,6 +27,21 @@ export const defaultTarget = () => path.join(
   'opencode',
 );
 
+
+/** Refuse to write through a symlinked destination — fail closed so an
+ *  attacker cannot pre-place a symlink to redirect an install write. */
+const assertDestNotSymlink = (dest, label) => {
+  try {
+    const st = fs.lstatSync(dest);
+    if (st.isSymbolicLink()) {
+      console.error(`[install-global] refused: destination is a symlink: ${label} (${dest})`);
+      process.exit(1);
+    }
+  } catch (err) {
+    if (err.code !== 'ENOENT') throw err; // missing is fine — install below
+  }
+};
+
 const SOURCES = [
   { from: '.opencode/skills', to: 'skills', kind: 'dir', key: 'skills' },
   { from: '.opencode/agents', to: 'agents', kind: 'dir', key: 'agents' },
@@ -108,6 +123,7 @@ export const installGlobal = ({ repo = repoRoot, target = defaultTarget() } = {}
         }
       }
       fs.mkdirSync(path.dirname(dest), { recursive: true });
+      assertDestNotSymlink(dest, src.to);
       fs.copyFileSync(from, dest);
       installed.push(src.to);
       summary[src.key] = 1;
@@ -118,6 +134,7 @@ export const installGlobal = ({ repo = repoRoot, target = defaultTarget() } = {}
       const destRel = path.join(src.to, rel);
       const dest = path.join(target, destRel);
       fs.mkdirSync(path.dirname(dest), { recursive: true });
+      assertDestNotSymlink(dest, destRel);
       fs.copyFileSync(path.join(from, rel), dest);
       installed.push(destRel);
     }

@@ -667,10 +667,10 @@ export const writeGate = (root, gate) => {
  * Returns null when no gate is active, else `{ valid, evidence, evidenceAbs,
  * sha256 }` without mutating. Both close paths share this validator.
  */
-export const validateCloseEvidence = (root = process.cwd()) => {
+export const validateCloseEvidence = (root = process.cwd(), opts = {}) => {
   const gate = readGate(root);
   if (!gate) return null;
-  const valid = validateGate(root, gate, { skipDrift: true });
+  const valid = validateGate(root, gate, { skipDrift: Boolean(opts.skipDrift) });
 
   const evidence = evidenceFor(valid.plan);
   const evidenceAbs = assertRegularFile(root, evidence, 'evidence');
@@ -1294,7 +1294,7 @@ export const closeMachineGate = (root = process.cwd(), opts = {}) => {
     skipAppend = true;
   }
 
-  const ready = validateCloseEvidence(root);
+  const ready = validateCloseEvidence(root, { skipDrift: true });
   if (!ready) {
     fail('inactive', 'machine-close refused: no active spec gate (evidence criterion: green rows bound to the active plan)');
   }
@@ -1727,7 +1727,7 @@ export const main = (argv = process.argv.slice(2), io = {}) => {
         console.log('no active spec gate');
         return 0;
       }
-      const valid = validateGate(root, gate, { skipDrift: true });
+      const valid = validateGate(root, gate);
       console.log(`active spec gate: ${valid.plan} -> ${valid.spec}`);
       console.log(`  files ${valid.files.length} · allow ${(valid.allow || []).length} · approved_by ${valid.approved_by} @ ${valid.approved_at}`);
       console.log(`  plan ${valid.plan_sha256.slice(0, 12)} · spec ${valid.spec_sha256.slice(0, 12)}`);
@@ -1743,7 +1743,7 @@ export const main = (argv = process.argv.slice(2), io = {}) => {
         console.log('no active spec gate');
         return 0;
       }
-      const valid = validateGate(root, gate, { skipDrift: true });
+      const valid = validateGate(root, gate);
       console.log(`spec gate OK: ${valid.plan} -> ${valid.spec} (plan ${valid.plan_sha256.slice(0, 12)}, spec ${valid.spec_sha256.slice(0, 12)})`);
       return 0;
     }

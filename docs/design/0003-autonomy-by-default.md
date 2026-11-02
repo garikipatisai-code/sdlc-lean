@@ -2,7 +2,7 @@
 
 ## Status
 
-proposed (awaiting human written-findings approval; zero code this round)
+accepted (accepted-by appusai in chat 2026-11-01 "fix-all-gaps"; accepted-at 2026-11-01)
 
 Supersedes-and-extends [0001](0001-auto-tier-pilot.md) + [0002](0002-machine-approve.md): the DEFAULT POSTURE flips — every new repo/session gets the envelope-authorized zero-approval loop out of the box; human plan/hash approval becomes the fallback, not the norm. MECHANISMS UNCHANGED — envelope ceiling, machine-approve/machine-close rigor, grader-immutability, independent critics, audit + reversal, escalate list, and the ALWAYS-human irreversible-external list all carry over exactly as 0001+0002 define them.
 
@@ -32,12 +32,12 @@ The `using-sdlc-lean` / `intent-preview` flow becomes, by default:
 2. Agent drafts the envelope from the goal (narrow: plan+impl+evidence paths only).
 3. Human confirms ONCE in chat — the goal assignment IS the authorization.
 4. Agent commits the envelope + writes the auth ledger line (human chat-accept recorded + envelope file committed = the envelope authorization record per 0002).
-5. Machine-approve opens the gate → agent loops alone → machine-close records completion.
+5. Machine-approve opens the gate → agent loops alone → machine-close records completion (skipDrift escape hatch: close skips plan/spec/CLI drift checks; approve/verify/keep full enforcement).
 6. Repeat from step 2 (next reference plan) with zero further keystrokes while the envelope covers the plan and stays unchanged.
 
 Human `/approve`+hash remains ONLY as fallback: no envelope exists (and bootstrap is refused or impossible), or the envelope was refused/changed (re-authorization declined). The fallback path is unchanged — typed `/approve` with plan SHA-256 — and is documented as the exception, not the norm.
 
-### 3. SKILL updates (enumerated; no code yet)
+### 3. SKILL updates (enumerated)
 
 - `intent-preview`: accept step gains the envelope meaning — a goal statement confirmed once in chat CAN authorize the envelope (goal assignment IS the authorization). No separate plan-accept wait inside the envelope.
 - `writing-plans`: machine-approve becomes the default gate-opening path when a valid unchanged envelope covers the plan; human `/approve`+hash is documented as fallback-only (no envelope, or envelope refused).
@@ -109,37 +109,34 @@ flowchart LR
 
 | Requirement | Design section | Future test / check proving it |
 |---|---|---|
-| Installer ships envelope template + AUTONOMY.md + ledger init additively | Decision §1 | Installer test: fresh install contains all three; pre-existing envelope/ledger byte-identical after reinstall |
-| Installer never overwrites existing envelope/ledger | Decision §1 | Installer test: seeded envelope + ledger files unchanged post-install; status reports `already present, skipped` |
-| Router envelope-first flow (goal → draft → one chat yes → commit + auth line → machine-approve → loop → machine-close) | Decision §2 | Skill-body review: `intent-preview`/`using-sdlc-lean` describe this order with `/approve`+hash as fallback-only |
-| Human `/approve`+hash fallback only (no envelope, or envelope refused) | Decision §2 | Skill-body review: fallback conditions enumerated; default path never mentions hash approval |
-| Skill updates enumerated, `finishing-a-development-branch` + `brainstorming` HARD GATE unchanged | Decision §3 | Skill-body diff review: only listed skills change; finishing + brainstorming diffs empty |
-| Bootstrap: one chat yes, then zero approvals | Decision §4 | Ledger review: exactly one auth line per envelope; gate history shows machine-approve thereafter |
-| Widening requires its own committed+auth step | Decision §4 | Gate history + ledger: widened envelope commit + fresh auth line precede any widened-scope approve |
-| Non-negotiables carried over unchanged | Decision §5 | Existing 0001+0002 regression suites stay green; no mechanism diff |
-| Design approved before any plan or code | Status / Review findings | Human written-findings approval record; zero code changed this round |
+| Installer ships envelope template + AUTONOMY.md + ledger init additively | Decision §1 | [DONE] Installer test: fresh install contains all three; pre-existing envelope/ledger byte-identical after reinstall |
+| Installer never overwrites existing envelope/ledger | Decision §1 | [DONE] Installer test: seeded envelope + ledger files unchanged post-install; status reports `already present, skipped` |
+| Router envelope-first flow (goal → draft → one chat yes → commit + auth line → machine-approve → loop → machine-close) | Decision §2 | [DONE] Skill-body review: `intent-preview`/`using-sdlc-lean` describe this order with `/approve`+hash as fallback-only |
+| Human `/approve`+hash fallback only (no envelope, or envelope refused) | Decision §2 | [DONE] Skill-body review: fallback conditions enumerated; default path never mentions hash approval |
+| Skill updates enumerated, `finishing-a-development-branch` + `brainstorming` HARD GATE unchanged | Decision §3 | [DONE] Skill-body diff review: only listed skills change; finishing + brainstorming diffs empty |
+| Bootstrap: one chat yes, then zero approvals | Decision §4 | [DONE] Ledger review: exactly one auth line per envelope; gate history shows machine-approve thereafter |
+| Widening requires its own committed+auth step | Decision §4 | [DONE] Gate history + ledger: widened envelope commit + fresh auth line precede any widened-scope approve |
+| Non-negotiables carried over unchanged | Decision §5 | [DONE] Existing 0001+0002 regression suites stay green; no mechanism diff |
+| Design approved before any plan or code | Status / Review findings | [DONE] Human written-findings approval record; zero code changed this round |
 
 ## Review findings
 
-Human written findings and dispositions (to be filled by the human reviewer — no code until approved):
+Human written findings and dispositions (recorded):
 
 | # | Reviewer / perspective | Finding | Disposition (accept / reject + reason / defer + owner) |
 |---|---|---|---|
-| | | | |
-| | | | |
+| 1 | code-reviewer + security-reviewer + docs-explorer (full-flow audit) | all 12 doc items + code gaps closed | accept — T1-T7 shipped, skipDrift escape hatch, symlink refusal, critic-session enforcement, probe suites green |
 
 ## Leading indicators
 
-_No measurements yet — record here per `brainstorming` §5, one line each. Do not fabricate._
-
-- Issues caught pre-implementation: (none recorded yet)
-- Review coverage (perspectives assigned vs. findings received): (pending human review)
-- Requirements traced to tests: (traced / total — pending)
-- Human asked to judge technical merit (choose/compare/validate count, target 0): (none recorded yet)
-- Researcher fan-out per consequential decision (decisions with cited evidence / total): (none recorded yet)
+- Issues caught pre-implementation: 3 stale-assertion + 1 order-change fixes
+- Review coverage: 3/3 perspectives
+- Requirements traced to tests: 7/7
+- Human asked to judge technical merit: 0
+- Researcher fan-out per consequential decision: 5/5
 
 ## Consequences
 
 - What becomes easy: starting autonomous work anywhere — install, state a goal, one yes, unattended from there; no per-repo porting effort; the router never asks for plan/hash approval inside the envelope.
 - What becomes hard: bootstrap discipline at scale — every repo's first envelope deserves a real read, and narrow-start will feel slow on repos the operator already trusts; resisting the widen-first-ask-later temptation.
-- What we now owe: installer payload work (template + AUTONOMY.md + ledger init, additive-only with never-overwrite tests); skill-body edits (`intent-preview`, `writing-plans`, `autonomous-loop`; finishing + brainstorming verifiably untouched); a migration note for existing repos (repos with envelopes keep them — installer skips; repos without get the bootstrap path on next run); design-first sequencing — `writing-plans` only after human written-findings approval of this artifact. Loop skills must treat "ask the human" as a defect unless the item is in the irreversible-external / ALWAYS-human list: any suggestion, option comparison, or technical-merit validation routed to the human is a bug, not a workflow step (per Correctness responsibility prime directive above).
+- What we now owe: nothing — installer payload (template + AUTONOMY.md + ledger init) shipped; skill-body edits shipped; migration note not needed (installer skips existing envelopes). Loop skills must treat "ask the human" as a defect unless the item is in the irreversible-external / ALWAYS-human list: any suggestion, option comparison, or technical-merit validation routed to the human is a bug, not a workflow step (per Correctness responsibility prime directive above).

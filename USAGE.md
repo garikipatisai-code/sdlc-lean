@@ -153,7 +153,7 @@ Every pipeline also has an explicit slash command when you want determinism:
   in-repo → stdlib → native → installed dep → one line → minimum code.
 - **Safety guards** — destructive shell commands are blocked and `.env`/private
   keys are refused, always. The in-band `#nosafety` token is removed: there is
-  no bypass, and the agent cannot self-authorize. Trust-boundary validation,
+  no bypass, and the agent cannot self-authorize. The installer refuses symlinked destinations (assertDestNotSymlink before every copyFileSync). Trust-boundary validation,
   data-loss handling, security, and accessibility are never cut.
 - **Output contract** — replies respect a ~30-second budget and prefer mermaid
   diagrams and tables over prose walls. Long prose also applies
@@ -184,8 +184,9 @@ node scripts/spec-check.mjs verify                         # fail on drift
 node scripts/spec-check.mjs check <path>                   # is this path in scope?
 node scripts/spec-check.mjs close                          # after evidence is recorded
 node scripts/spec-check.mjs envelope check <envelope-file>  # validate a standing auto-tier envelope
-node scripts/spec-check.mjs close --machine --check "<cmd>" --critics <file> --reversal <sha> [--envelope <file>]  # machine-close an Auto run
+node scripts/spec-check.mjs close --machine --check "<cmd>" --critics <file> --reversal <sha> [--envelope <file>]  # machine-close an Auto run (envelope check + critics + evidence + reversal + audit row; check must exactly equal envelope check when --envelope given; bare close skips drift via skipDrift escape hatch)
 node scripts/host-evidence.mjs status                       # advisory host evidence match check
+node scripts/spec-check.mjs approve docs/plans/<slug>.md --machine --envelope <env-file>  # machine-approve under envelope ceiling (plan files/allow ⊆ envelope paths)
 ```
 
 ## 5. Skills & agents reference

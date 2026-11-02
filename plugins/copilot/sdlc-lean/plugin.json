@@ -1,0 +1,11 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "sdlc-lean",
+  "version": "1.0.0",
+  "description": "Lean SDLC agent skills and agents for GitHub Copilot CLI, alongside OpenCode",
+  "author": {
+    "name": "sdlc-lean"
+  },
+  "license": "MIT",
+  "keywords": ["sdlc", "agent", "skills", "copilot", "opencode"]
+}

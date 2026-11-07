@@ -644,8 +644,36 @@ export const buildGate = (root = process.cwd(), planPath) => {
   };
 };
 
+// Marker-home containment (mirrors the plugin approve containment):
+// a symlinked .sdlc would redirect the marker write outside the repo,
+// so refuse before any marker write. Missing .sdlc (ENOENT) falls through
+// to the mkdir below.
+const assertSdlcContained = (root) => {
+  const realRoot = fs.realpathSync(path.resolve(root));
+  const sdlcAbs = path.join(path.resolve(root), '.sdlc');
+  let st;
+  try {
+    st = fs.lstatSync(sdlcAbs);
+  } catch (err) {
+    if (err && err.code === 'ENOENT') return null;
+    fail('unsafe-path', `cannot inspect ".sdlc": ${err.message || err}`);
+  }
+  if (st.isSymbolicLink()) fail('symlink', '.sdlc must not be a symlink: .sdlc');
+  let real;
+  try {
+    real = fs.realpathSync(sdlcAbs);
+  } catch (err) {
+    fail('unsafe-path', `cannot resolve ".sdlc" (broken symlink?): ${err.message || err}`);
+  }
+  if (real !== realRoot && !real.startsWith(realRoot + path.sep)) {
+    fail('unsafe-path', 'path escapes the repo root through a symlink: ".sdlc"');
+  }
+  return real;
+};
+
 export const writeGate = (root, gate) => {
   validateGate(root, gate);
+  assertSdlcContained(root);
   const p = gatePath(root);
   const dir = path.dirname(p);
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
@@ -1504,6 +1532,7 @@ export const approveMachineGate = (root = process.cwd(), opts = {}) => {
     fail('double-gate', 'machine-approve refused: a spec gate is already active (prior gate must machine-close first; no double-gate)');
   }
   validateGate(root, gate);
+  assertSdlcContained(root);
   const markerPath = gatePath(root);
   const markerDir = path.dirname(markerPath);
   fs.mkdirSync(markerDir, { recursive: true, mode: 0o700 });

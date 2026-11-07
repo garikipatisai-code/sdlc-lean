@@ -14,6 +14,10 @@ differ; re-audit the source before claiming a capability.
 | Timeouts | startup `30000` ms, catalog `30000` ms |
 | Read date | 2026-10-12 |
 
+## Re-audit status (2026-11-07 follow-up)
+
+Matrix pin stays at `b9ab3899`. Dynamic catalog re-audit owed on pin change. Scope remains one CPU-only live session: 7-tool catalog plus `run_code_cell` ambiguity documented-only (see `evidence-and-incidents.md` (g)). Phase D T6 note was BLOCKED by spec gate (file outside approved plan scope, deviation, needs close plus re-approve to widen) and landed as nearest in-scope equivalent 2-line provenance note in `colab-lifecycle` SKILL.md body; this matrix edit lands in the follow-up. Src `docs/plans/2026-11-07-phase-d-eval-docs-progress.md:24,71`. Linked ledger row D-010 stays open for pin-change re-audit.
+
 ## Architecture: proxy, not controller
 
 ```mermaid

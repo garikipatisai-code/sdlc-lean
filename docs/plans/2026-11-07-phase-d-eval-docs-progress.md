@@ -94,3 +94,4 @@ plan is approved.
 - Prose Verify cells replaced with runnable commands: T2 now node --test tests/opencode/test-plugin-loading.mjs; T3 now diff -rq --exclude=lib .opencode/skills plugins/copilot/sdlc-lean/skills (candidate run first, exit 0, before writing into plan); T5 now node --test tests/opencode/test-tui-brain.mjs; T4 already bare node scripts/dashboard.mjs --check, untouched. T1 and T6 unchanged.
 - Rationale: close demands literal trim-equal rows, and prose cells are unmatchable and unrunnable — Verify must be an external command per the writing-plans mandate.
 - Gate was voided by operator: spec-check status shows no gate. Frontmatter reset to status draft with empty approved_by and approved_at; fresh human approval follows. Evidence rebind happens after re-approval. Spec docs/debt-ledger.md untouched (read-only).
+- Follow-up spec created: docs/specs/2026-11-07-follow-up-hardening.md (2026-11-07).

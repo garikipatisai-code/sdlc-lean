@@ -152,3 +152,7 @@ Residual risks (accepted by human operator): bootstrap rubber-stamp (one unread 
 - **D-031 — advisory-by-default host evidence**: host-evidence rows stay hash-only (`argv0`, `command_sha256`, `output_sha256`, byte count; never raw command/output) and advisory by design — no hard gate by default, `--require-host` is opt-in only. An agent with bash can append or edit `.sdlc/host-evidence.jsonl` to forge a passing row (same D-013 bash path as the gate file); the log is documented as not tamper-proof, no tamper-proof claim is made.
 - **broker/T3 — broker-attested identity residual**: `validateCriticsSessions` enforces duplicate-session + required-session refusal only (duplicate IDs refused, declared required sessions must be present, self-review refused). Agent self-attestation (`{verdict, session}`) remains forgeable by a single closer simulating independence. Full broker-attested session identity (trusted third-party identity provider) is explicitly out of scope — no broker code in this round, documented not fake-fixed.
 - **Owner**: human operator (host-evidence sampling + critic-independence sampling).
+
+### 2026-11-07 follow-up R3 — ledger status accuracy (D-001/D-002/D-004/D-009 pattern)
+
+R1 "closed" means behavior-shipped plus test-pinned, while ledger rows stay `open` while bypass tails remain. D-002/D-009 use open hardened-plus-green with T1 pinning; D-001/D-004 were untouched at R1 and flip to the same open-hardened-green pattern in this follow-up, still `open` not closed. Ledger `open` thus tracks tail risk, not shipped behavior.

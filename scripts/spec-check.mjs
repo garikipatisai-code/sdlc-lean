@@ -1255,9 +1255,14 @@ export const closeMachineGate = (root = process.cwd(), opts = {}) => {
     fail('invalid-critics', `machine-close refused: critics file is not valid JSON: ${err.message} (independent-critic criterion)`);
   }
   const verdicts = collectMachineVerdicts(criticsDoc);
-  // Enforce session independence
+  // Enforce session independence on the raw critic entries (collect strips
+  // to verdict strings, so the validator needs the objects to see sessions).
   const sessionRequirements = (criticsDoc && typeof criticsDoc === "object") ? (criticsDoc.requiredSessions || []) : [];
-  validateCriticsSessions(verdicts, sessionRequirements);
+  const sessionItems = Array.isArray(criticsDoc) ? criticsDoc
+    : (criticsDoc && typeof criticsDoc === 'object' && Array.isArray(criticsDoc.verdicts)) ? criticsDoc.verdicts
+    : (criticsDoc && typeof criticsDoc === 'object' && Array.isArray(criticsDoc.critics)) ? criticsDoc.critics
+    : [criticsDoc];
+  validateCriticsSessions(sessionItems, sessionRequirements);
   const rejected = verdicts.find((v) => v.trim().toUpperCase() !== 'ACCEPT');
   if (rejected !== undefined) {
     fail('critic-reject', `machine-close refused: critic verdict is "${String(rejected).trim()}" (independent-critic criterion: every verdict must be ACCEPT)`);

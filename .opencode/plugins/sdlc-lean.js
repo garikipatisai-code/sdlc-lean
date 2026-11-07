@@ -285,6 +285,8 @@ export const recordUxStatus = (result, sessionID = 'default') => {
 export const getSdlcStatus = (root) => {
   try {
     let gate = null;
+    // Future tool must clamp root to projectRoot + realpath containment;
+    // currently unwired so no finding.
     if (typeof root === 'string' && root) {
       try {
         const parsed = JSON.parse(fs.readFileSync(path.join(root, '.sdlc', 'spec-gate.json'), 'utf8'));
@@ -385,6 +387,7 @@ const normalizeRmCommand = (cmd) => {
   let s = String(cmd || '');
   s = s.replace(/\$\{HOME\}|\$HOME/g, '~');
   s = s.replace(/(['"])(\/[^'"]*)\1/g, '$2'); // unquote absolute paths: "/" -> /
+  s = s.replace(/(['"])(-[A-Za-z0-9]+)\1/g, '$2'); // unquote flags: "-rf" -> -rf
   s = s.replace(/(['"])~(\/[^'"]*)?\1/g, '~$2'); // H4: unquote quoted tilde: "~" -> ~ ("~/foo" -> ~/foo; both expand in shell)
   s = s.replace(/(?<!:)\/{2,}/g, '/'); // collapse //, keep :// URLs intact
   s = s.replace(/(?<!:)\/[^\s'";|&]*/g, (m) => {
@@ -1482,7 +1485,7 @@ const COLAB_KILL_CMD_RE = new RegExp(`${COLAB_CMD}(?:xargs\\b[^;\\n]*?\\b)?(?:ki
 // via `(?![\w-])` and quoted prose (`echo "git merge"`) passes.
 const MERGE_MSG = 'Refusing agent `git merge`. Merging is ALWAYS-human per `finishing-a-development-branch`: present merge/PR/keep, wait for explicit human approval, verify the final SHA with `spec-check verify`/`close`. Safe abort (`git merge --abort`/`--quit`) remains allowed.';
 
-const MERGE_CMD_RE = new RegExp(`${COLAB_CMD}git\\s+(?:(?:-c\\s+\\S+\\s+|-[A-Za-z]+(?:\\s+\\S+)?\\s+|--\\S+\\s+)*)merge(?![\\w-])`, 'g');
+const MERGE_CMD_RE = new RegExp(`${COLAB_CMD}git\\s+(?:(?:-c\\s+\\S+(?:\\s+\\S+)*\\s+|-[A-Za-z]+(?:[^\\s]*|\\s+\\S+)?\\s+|--\\S+\\s+)*)merge(?![\\w-])`, 'g');
 const MERGE_ABORT_RE = /(?:^|\s)--(?:abort|quit)(?![\w-])/;
 
 export const checkMergeGuard = (command) => {
@@ -1494,7 +1497,7 @@ export const checkMergeGuard = (command) => {
   while ((m = MERGE_CMD_RE.exec(text)) !== null) {
     if (!m[0]) { MERGE_CMD_RE.lastIndex += 1; continue; }
     let end = text.length;
-    for (const sep of [';', '&', '|', '\n']) {
+    for (const sep of [';', '&', '|', '\n', '`', '$(']) {
       const idx = text.indexOf(sep, m.index);
       if (idx !== -1) end = Math.min(end, idx);
     }

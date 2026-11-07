@@ -128,6 +128,33 @@ All notable changes to this project are documented here. Format follows
   `google.colab.runtime.unassign()` in an approved cell. Description-triggered,
   no router growth (bootstrap still 5029 B ≤5116).
 
+- Safety-guard hardening: quoted-root and dot-segment `rm` bypasses closed
+  (including quoted `$HOME`/tilde forms), env-prefix stripping for secret
+  readers, basename case-insensitive sensitive-path matching with a `.env`
+  regen pointer, and Colab bridge/content guards (launch prefixes, `sh -c`
+  inners, flags-after-path, `sudo -u` users, subshell separators).
+- CLI containment: the spec-check CLI refuses a symlinked `.sdlc` before any
+  marker write; threat-model residuals recorded (drift-guard-not-sandbox,
+  no-abandon, advisory hash-only host evidence).
+- Orchestration enforcement seams: strict phase-ledger validation (anchored
+  timestamps, exact schemas, post-write revalidation), invocation gate,
+  test-writer path scope, reviewer read-only bash allowlist, a `uxStatus`
+  caller plus read-only status query, and a wired `git merge` refusal
+  (abort/quit still allowed, worktrees pass by design).
+- Eval and docs: execution-probe boundary docs, Colab router line in budget,
+  copilot mirror sync, dashboard live snapshot with staleness badge, TUI
+  staleness honesty, and web-game/frontend skill notes.
+- Follow-up pinning: 10 safety-guard blocks, 17 phase/permissions/merge
+  blocks, and T5 guard nits pinned as tests (567 passing); machine-close
+  session-independence validator fixed to see raw critic sessions.
+
+### Fixed
+- Machine-close critic check no longer validates session-stripped verdicts:
+  duplicate critic sessions are refused again while plain verdicts still pass.
+- Quoted-flag `rm` bypass now refused.
+- `git merge` abort-decoy, attached `-C/tmp`, and multi-token `-c` bypasses
+  now refused; safe `--abort`/`--quit` still pass.
+
 ## 1.0.0 - 2026-10-04
 
 Initial tagged baseline. Reconstructed from git history before this date.

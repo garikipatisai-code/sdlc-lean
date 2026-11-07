@@ -705,3 +705,165 @@ test('simulated workflow: checkpoint -> interruption -> resume -> deadline stop 
   assert.equal(handoff.stopReason, 'deadline reached below the required observation allowance');
   assert.equal(handoff.phaseStatus, 'expired');
 });
+
+test('Phase C T1 pin: future-dated and pre-creation approvals refuse, valid passes', () => {
+  const ledger = setup({ deadlineMinutes: 30 });
+  phase.resumePhase(ledger, { now: at(31) });
+  assert.throws(() => phase.openPhase(ledger, {
+    phaseId: 'p2',
+    authorizationRef: 'approval-002',
+    deadlineUtc: iso(120),
+    observationAllowanceMs: 10 * 60_000,
+    approval: phaseApproval('p2', 'approval-002', 33),
+    now: at(32),
+  }), /approval-required/);
+  const early = {
+    approved: true,
+    approver: 'user',
+    at: new Date(T0 - 5 * 60_000).toISOString(),
+    scope: { taskId: 'task-1', phaseId: 'p2', authorizationRef: 'approval-002' },
+  };
+  assert.throws(() => phase.openPhase(ledger, {
+    phaseId: 'p2',
+    authorizationRef: 'approval-002',
+    deadlineUtc: iso(120),
+    observationAllowanceMs: 10 * 60_000,
+    approval: early,
+    now: at(32),
+  }), /approval-required/, 'createdAt anchor: at before ledger creation refuses');
+  phase.openPhase(ledger, {
+    phaseId: 'p2',
+    authorizationRef: 'approval-002',
+    deadlineUtc: iso(120),
+    observationAllowanceMs: 10 * 60_000,
+    approval: phaseApproval('p2', 'approval-002', 32),
+    now: at(32),
+  });
+  assert.equal(ledger.phases.length, 2);
+});
+
+test('Phase C T1 pin: stale and future retry approvals refuse', () => {
+  const ledger = setup();
+  const attemptId = beginFailedAttempt(ledger, 'fit');
+  assert.equal(phase.planRetry(ledger, { attemptId, approval: retryApproval('fit', 5), now: at(7) }).allowed, false);
+  assert.equal(phase.planRetry(ledger, { attemptId, approval: retryApproval('fit', 5), now: at(7) }).reason, 'recovery-not-authorized');
+  assert.equal(phase.planRetry(ledger, { attemptId, approval: retryApproval('fit', 8), now: at(7) }).allowed, false);
+  assert.equal(phase.planRetry(ledger, { attemptId, approval: retryApproval('fit', 8), now: at(7) }).reason, 'recovery-not-authorized');
+  assert.equal(phase.planRetry(ledger, { attemptId, approval: retryApproval('fit', 7), now: at(7) }).allowed, true);
+});
+
+test('Phase C T1 pin: strict schemas reject unknown fields', () => {
+  const ledger = setup({ deadlineMinutes: 30 });
+  phase.resumePhase(ledger, { now: at(31) });
+  const extraApproval = { ...phaseApproval('p2', 'approval-002', 32), extra: 1 };
+  assert.throws(() => phase.openPhase(ledger, {
+    phaseId: 'p2',
+    authorizationRef: 'approval-002',
+    deadlineUtc: iso(120),
+    observationAllowanceMs: 10 * 60_000,
+    approval: extraApproval,
+    now: at(32),
+  }), /approval-required/);
+  const ledger2 = setup({ deadlineMinutes: 120 });
+  assert.throws(() => phase.buildHandoff(ledger2, {
+    nextAction: 'continue',
+    now: at(5),
+    extra: 1,
+  }), /invalid-handoff/);
+});
+
+test('Phase C T1 pin: handoff and brief extras refuse', async () => {
+  const ledger = setup({ deadlineMinutes: 120 });
+  phase.beginDispatch(ledger, { actionId: 'fit', description: 'fit arm 1', now: at(4) });
+  const handoff = phase.buildHandoff(ledger, { nextAction: 'continue', now: at(5) });
+  const dir = mkTmp();
+  const tampered = JSON.parse(JSON.stringify(handoff));
+  tampered.inFlight[0].extra = 1;
+  const briefFile = path.join(dir, 'brief-extra.json');
+  fs.writeFileSync(briefFile, JSON.stringify(tampered));
+  await assert.rejects(phase.readHandoff(briefFile), /invalid-handoff/);
+  const handoffExtra = JSON.parse(JSON.stringify(handoff));
+  handoffExtra.extra = 1;
+  const handoffFile = path.join(dir, 'handoff-extra.json');
+  fs.writeFileSync(handoffFile, JSON.stringify(handoffExtra));
+  await assert.rejects(phase.readHandoff(handoffFile), /invalid-handoff/);
+});
+
+test('Phase C T1 pin: beginDispatch happy path holds, invalid ledger fails closed', () => {
+  const ledger = setup();
+  const { attemptId } = phase.beginDispatch(ledger, {
+    actionId: 'fit', description: 'fit arm 1', now: at(5),
+  });
+  assert.ok(attemptId);
+  assert.equal(ledger.phases[0].dispatches.length, 1);
+  const bad = setup();
+  bad.phases[0].deadlineUtc = 'next Tuesday';
+  assert.throws(() => phase.beginDispatch(bad, {
+    actionId: 'fit', description: 'x', now: at(5),
+  }), /invalid-deadline|invalid-ledger/);
+});
+
+test('Phase C residual pin: NaN clock fails closed, tie-safe retry, brief values, closeout taxonomy', () => {
+  const ledger = setup();
+  assert.throws(() => phase.openPhase(ledger, {
+    phaseId: 'p2',
+    authorizationRef: 'x',
+    deadlineUtc: iso(120),
+    observationAllowanceMs: 10 * 60_000,
+    now: NaN,
+  }), /invalid-clock/);
+  const attemptId = beginFailedAttempt(ledger, 'fit');
+  assert.throws(() => phase.planRetry(ledger, { attemptId, approval: retryApproval('fit', 7), now: NaN }), /invalid-clock/);
+  const decision = phase.planRetry(ledger, { attemptId, approval: retryApproval('fit', 7), now: at(7) });
+  assert.equal(decision.allowed, true, 'explicit attempt retry stays tie-safe');
+  const h = phase.buildHandoff(ledger, { nextAction: 'continue', now: at(8) });
+  assert.equal(h.failed[0].actionId, 'fit');
+  assert.equal(h.failed[0].description, 'fit attempt', 'brief values preserved verbatim (no value validation)');
+  const ledger2 = setup({ deadlineMinutes: 30 });
+  phase.closePhase(ledger2, { now: at(6), status: 'completed', reason: 'done', evidence: ['fit'] });
+  assert.equal(ledger2.phases[0].status, 'closed');
+  assert.equal(ledger2.phases[0].closeout.status, 'completed');
+  assert.throws(() => phase.closePhase(setup({ deadlineMinutes: 30 }), {
+    now: at(6), status: 'weird', reason: 'x', evidence: ['y'],
+  }), /invalid-close-status/);
+});
+
+test('Phase C T2 pin: invocation gate fails closed without ledger, passes when loaded', () => {
+  assert.equal(typeof phase.assertLedgerLoaded, 'function');
+  for (const fn of ['recordCheckpoint', 'resumePhase', 'beginDispatch', 'planRetry', 'settleDispatch', 'reconcileDispatch']) {
+    assert.throws(() => phase[fn](null, { now: at(5) }), /ledger-unreadable/, fn);
+  }
+  const ledger = setup();
+  phase.recordCheckpoint(ledger, { now: at(5), note: 'chunk 1 done' });
+  assert.equal(ledger.phases[0].checkpoints.length, 1);
+  assert.equal(phase.resumePhase(ledger, { now: at(6) }).resumed, true);
+  const { attemptId } = phase.beginDispatch(ledger, {
+    actionId: 'fit', description: 'fit arm 1', now: at(7),
+  });
+  const settled = phase.settleDispatch(ledger, { attemptId, status: 'completed', evidence: ['ok'], now: at(8) });
+  assert.equal(settled.status, 'completed');
+  assert.throws(() => phase.validateLedger({}), /invalid-ledger/);
+  assert.equal(phase.assertDelegationWithin(
+    { taskId: 'task-1', phaseId: 'p1', actions: ['a'] },
+    { taskId: 'task-1', phaseId: 'p1', actions: ['a'] },
+  ), true);
+});
+
+test('Phase C T2 pin: strictness holds under gate plus closeout taxonomy', () => {
+  const ledger = setup({ deadlineMinutes: 30 });
+  phase.resumePhase(ledger, { now: at(31) });
+  assert.throws(() => phase.openPhase(ledger, {
+    phaseId: 'p2',
+    authorizationRef: 'approval-002',
+    deadlineUtc: iso(120),
+    observationAllowanceMs: 10 * 60_000,
+    approval: phaseApproval('p2', 'approval-002', 33),
+    now: at(32),
+  }), /approval-required/);
+  const ledger2 = setup({ deadlineMinutes: 30 });
+  assert.throws(() => phase.closePhase(ledger2, {
+    now: at(31), status: 'completed', reason: 'late', evidence: ['x'],
+  }), /deadline-expired/);
+  phase.closePhase(ledger2, { now: at(31), status: 'expired', reason: 'deadline reached', evidence: [] });
+  assert.equal(ledger2.phases[0].status, 'expired');
+});

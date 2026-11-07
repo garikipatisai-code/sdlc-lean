@@ -36,7 +36,7 @@ Classify, run the pipeline, announce the route in one line. Pipeline skill first
 - External-evidence question (research/compare/SOTA) → `deep-research`. Comparing options → `option-selection`.
 - Empirical experiment → `research-protocol` (frozen, not `deep-research`).
 - Many tasks → `dispatching-parallel-agents`.
-- Colab run/release→`colab-lifecycle`.
+- Colab run/release →`colab-lifecycle`.
 
 Ambiguous? Pick the safer route.
 

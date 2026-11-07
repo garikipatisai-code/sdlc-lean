@@ -81,7 +81,7 @@ runtime allocation status.
 
 ## Decision core
 
-When a lifecycle decision is ambiguous, consult `lib/lifecycle.mjs`: the pure,
+When a lifecycle decision is ambiguous, see OpenCode source (`.opencode/skills/colab-lifecycle/lib/lifecycle.mjs`): the pure,
 zero-dep normative decision table (`validateEnvelope`, `deriveSessionState`,
 `classifyRelease`, `registerOwned`, `reconcileCells`, `guardAction`, `foldRun`)
 — 7 exports, all pinned by `tests/opencode/test-colab-lifecycle.mjs`. The core

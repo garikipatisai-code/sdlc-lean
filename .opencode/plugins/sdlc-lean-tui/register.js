@@ -253,15 +253,17 @@ export const hostEvidenceSummary = (root, gate) => {
   return { rows, matched, malformed };
 };
 
-// Inline staleness for sdlc.status: marker-file age against the 300s
-// dashboard threshold. No new deps: fs stat mtime + Date.now only.
+// Inline staleness for sdlc.status: marker-file age against the dashboard
+// threshold. No new deps: fs stat mtime + Date.now only.
+const STALE_AFTER_SEC = 300;
+const formatStaleness = (staleness) => staleness.known ? `staleness: ${staleness.stale ? 'stale' : 'fresh'} (marker age ${staleness.ageSec}s; stale>${STALE_AFTER_SEC}s)` : 'staleness: unknown (marker mtime unavailable)';
 export const markerStaleness = (root) => {
   if (!fsModule || !root) return { known: false };
   try {
     const st = fsModule.lstatSync(path.resolve(root, MARKER_REL));
     if (st.isSymbolicLink() || !st.isFile()) return { known: false };
-    const ageSec = Math.max(0, Math.floor((Date.now() - st.mtimeMs) / 1000));
-    return { known: true, ageSec, stale: ageSec > 300 };
+    const ageSec = Math.max(0, Math.round((Date.now() - st.mtimeMs) / 1000));
+    return { known: true, ageSec, stale: ageSec > STALE_AFTER_SEC };
   } catch {
     return { known: false };
   }
@@ -788,9 +790,7 @@ export const setupTui = async (context) => {
       const gate = gateSummary(liveRoot);
       if (gate?.active && gate.invalid) {
         const staleness = markerStaleness(liveRoot);
-        const detail = staleness.known
-          ? `staleness: ${staleness.stale ? 'stale' : 'fresh'} (marker age ${staleness.ageSec}s; stale>300s)`
-          : 'staleness: unknown (marker mtime unavailable)';
+        const detail = formatStaleness(staleness);
         await showToast(context, `gate invalid\n${detail}`, 'error');
         return;
       }
@@ -800,9 +800,7 @@ export const setupTui = async (context) => {
       }
       const evidence = hostEvidenceSummary(liveRoot, gate);
       const staleness = markerStaleness(liveRoot);
-      const stalenessLine = staleness.known
-        ? `staleness: ${staleness.stale ? 'stale' : 'fresh'} (marker age ${staleness.ageSec}s; stale>300s)`
-        : 'staleness: unknown (marker mtime unavailable)';
+      const stalenessLine = formatStaleness(staleness);
       const message = [
         'gate: active',
         `plan: ${gate.plan}`,

@@ -216,3 +216,21 @@ test('Phase C T3 seam pin: tasks 1-2 intact plus hooks unwired', async () => {
   const v2 = text.slice(v2Start, v2Start + 500);
   assert.ok(!v2.includes('checkAgentPathScope') && !v2.includes('checkReviewerBash'), 'V2 hook stays unwired');
 });
+
+test('T2 pins: static model pins (free-first, account 1 = console-openrouter)', () => {
+  const MINI = 'console-openrouter/nvidia/nemotron-3.5-super-vl:free';
+  const ULTRA = 'console-openrouter/nvidia/nemotron-3.5-super-vl:free';
+  const expected = {
+    'implementer': MINI,
+    'explorer': MINI,
+    'test-writer': MINI,
+    'planner': ULTRA,
+    'code-reviewer': ULTRA,
+    'security-reviewer': ULTRA,
+    'researcher': ULTRA,
+  };
+  for (const [agent, want] of Object.entries(expected)) {
+    const { yaml } = frontmatter(`.opencode/agents/${agent}.md`);
+    assert.equal(top(yaml, 'model'), want, `${agent}.md: model must be ${want}`);
+  }
+});

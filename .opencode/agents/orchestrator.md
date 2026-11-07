@@ -54,20 +54,31 @@ Rules of engagement:
 - Persist a durable handoff before any forced session boundary; never claim a
   background process or cross-session mechanism that does not exist.
 
-## Model routing (free-first)
+## Model routing (super-vl-everywhere, free-only)
 
-Role defaults: implementer → `cohere/north-mini-code:free`; reviewer/planner →
-`nvidia/nemotron-3-ultra-550b-a55b:free`; summarizer → `google/gemma-4-31b-it:free`.
-Tier override: trivial → cheapest available free; standard → role default;
-architectural → strongest-available free, or Go-plan model only with human confirm.
-Accounts: alternate `openrouter` / `openrouter-b` round-robin; log one progress-ledger row
-per dispatch (model + account).
+Static pins (acct1 `console-openrouter`): every pinned role is
+`console-openrouter/nvidia/nemotron-3.5-super-vl:free`. Orchestrator stays
+UNPINNED (inherits the session model); worker dispatches go through the
+per-dispatch override below.
+
+Per-dispatch override: orchestrator passes an explicit `model:` on every
+dispatch, alternating `console-openrouter` / `console-openrouter2` round-robin,
+ledger-tracked per dispatch (model + account).
+
+Retry on 429/provider-error: same model on the OTHER account first, then the
+next chain link. Blind round-robin, no quota polling (console gateway hides
+keys).
+
+Paid link: REMOVED from the chain — free-only scope. Removal is explicit, not
+a silent drop. No automatic fallback chain exists in OpenCode (transport retry
+only); chain exhausted → stop + escalate. NEVER auto-spend (absolute).
+
+North break-glass: `cohere/north-mini-code:free` is outage-only, never routine —
+use only when super-vl links are down on both accounts, then stop + escalate.
+
+Summarizer: `console-openrouter/nvidia/nemotron-3.5-super-vl:free` under ZDR
+(both accounts verified).
+
 Denylist (never select): `poolside/laguna` (expired), `inkling` (harness-only),
 `liquid/lfm` (not-for-coding), content-safety no-tools models.
-Privacy: customer code → no-train endpoints only (`north`/`flint`/`gemma`/`dots`);
-NVIDIA → non-sensitive only; secrets NEVER to any free endpoint.
-Fallback chains (ordered; on 429/provider-error retry SAME model on OTHER account first, then next link):
-- implementer: `cohere/north-mini-code:free` → `recursive/flint-v1.0:free` → paid `openai/gpt-oss-120b` ONLY with envelope pre-authorized micro-cap, else stop+escalate with ledger evidence.
-- reviewer/planner: `nvidia/nemotron-3-ultra-550b-a55b:free` → escalate (no paid link — reviewers stay free).
-- summarizer: `google/gemma-4-31b-it:free` → `dots-studio/dots-3-note-preview:free` → escalate.
-Fragility: single-provider Flint 0/3 Nov 3 — expect link skips. Chain exhausted + no cap → stop + escalate. NEVER auto-spend (absolute).
+Privacy: NVIDIA → non-sensitive only; secrets NEVER to any free endpoint.

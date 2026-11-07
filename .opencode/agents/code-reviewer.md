@@ -1,6 +1,7 @@
 ---
 description: Reviews diffs for correctness, security, performance, and maintainability with confidence-filtered file:line findings
 mode: subagent
+model: console-openrouter/nvidia/nemotron-3.5-super-vl:free
 temperature: 0.1
 permission:
   # V1 scalar deny preserved verbatim (V1 compat: no path-glob here).

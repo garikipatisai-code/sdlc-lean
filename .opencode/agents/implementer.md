@@ -1,6 +1,7 @@
 ---
 description: Executes one plan task with TDD, self-review, and evidence reporting
 mode: subagent
+model: console-openrouter/nvidia/nemotron-3.5-super-vl:free
 temperature: 0.2
 permission:
   edit: allow

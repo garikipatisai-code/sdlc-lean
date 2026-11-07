@@ -27,55 +27,45 @@ install to fix drift — it reports the drift and the human runs the
 installer. The installer is additive-only: existing envelope/ledger files
 are left untouched (`already present, skipped`).
 
-## Two-provider OpenRouter routing (generated snippet — human pastes only)
+## Two-provider OpenRouter routing (console-managed accounts — already live)
 
-Generate text only — never install, never touch `~/.config` from the agent.
-Model pins themselves land in T2; the snippet below lists provider
-endpoints + keys only, NOT the pins. Intended T2 pins (per account):
-implementer `cohere/north-mini-code:free`, reviewer/planner
-`nvidia/nemotron-3-ultra-550b-a55b:free`, summarizer
-`google/gemma-4-31b-it:free`.
+No local config needed (console-managed accounts); verify via `opencode models | grep console-openrouter`.
+All static pins are `console-openrouter/nvidia/nemotron-3.5-super-vl:free`
+(super-vl-everywhere, acct1). Orchestrator stays UNPINNED (inherits the
+session model).
 
-Merge into `~/.config/opencode/opencode.jsonc` (add both keys inside the existing `providers` object — do NOT nest a second `providers` key; distinct provider IDs keep both accounts live):
+Per-dispatch override: explicit `model:` alternates `console-openrouter` /
+`console-openrouter2` round-robin, ledger-tracked per dispatch (model +
+account). Same-model-other-account retry first on 429/provider-error, then
+next link.
 
-```jsonc
-  "openrouter": {
-    "package": "@opencode/ai/providers/openrouter",
-    "key": "{env:OPENROUTER_API_KEY}"
-  },
-  "openrouter-b": {
-    "package": "@opencode/ai/providers/openrouter",
-    "key": "{env:OPENROUTER_API_KEY_B}"
-  }
-```
+Paid link: REMOVED — free-only scope. Explicit removal, no silent drop.
 
-Alternation rule: the orchestrator alternates `openrouter` /
-`openrouter-b` per dispatch and records model+account in the progress
-ledger row.
+ZDR: verified on all Nemotron models (super-vl primary on both accounts).
 
-Human paste-and-verify steps:
+Gemma (`google/gemma-4-31b-it:free`) is dead on both accounts — capacity
+exhausted and no ZDR. Do not route; removed from the chain.
+Break-glass: `cohere/north-mini-code:free` retained outage-only, never routine;
+super-vl is primary on both accounts.
 
-1. Set the two env vars (`OPENROUTER_API_KEY`, `OPENROUTER_API_KEY_B`).
-2. Paste the snippet into the `providers` object of
-   `~/.config/opencode/opencode.jsonc`.
-3. Restart OpenCode.
-4. Confirm both IDs selectable: open the model picker and run a trivial
-   prompt on each (confirm in your OpenCode version).
+Human verify-both-IDs steps (already live — confirmation, not setup):
+
+1. Verify both IDs selectable: `opencode models | grep console-openrouter` shows `console-openrouter` and `console-openrouter2`.
+2. Confirm in the model picker and run a trivial prompt on each (confirm in your OpenCode version).
 
 ## Quota behavior (two $10 accounts, pooled free quota)
 
 - Pooled free budget: ~2,000 req/day (2 accounts × ~1,000 req/day each).
 - Per-account limits: 20 RPM / 1,000 req/day. Either account 429s
   independently; the other account still serves until it also exhausts.
-- Alternation: the orchestrator alternates `openrouter` / `openrouter-b`
+- Alternation: the orchestrator alternates `console-openrouter` / `console-openrouter2`
   per dispatch and records model+account in the progress ledger row
   (spreads load across both per-account RPM/day caps).
-- Exhaustion behavior: 429 → next link per the T3 fallback chain;
+- Exhaustion behavior: 429 → same model on the other account, then next link;
   pooled exhaustion (both accounts out) = stop + escalate — never silently
-  spend. The paid link requires an explicit pre-auth flag; absent pre-auth
-  = stop + escalate. (Chain mechanics + 429-retry live in T3.)
+  spend. No paid link exists (free-only scope, removed explicitly).
 
-## Full-ID mapping table (T2 pins + T4 carry-over; re-probe via catalog)
+## Full-ID mapping table (super-vl-everywhere; re-probe via catalog)
 
 Train route is routing policy, not a model rename: customer-code payloads
 use the no-train route only; non-sensitive payloads use the provider
@@ -84,12 +74,8 @@ default. Expiry is per-catalog `expiration_date` — re-probe, never hardcode
 
 | Role / use | Full model ID | Train route | Expiry note |
 |---|---|---|---|
-| Implementer primary | `cohere/north-mini-code:free` | no-train for customer code; provider default otherwise | `expiration_date` via re-probe |
-| Implementer fallback | `recursive/flint-v1.0:free` | no-train for customer code; provider default otherwise | `expiration_date` via re-probe |
-| Implementer alternate free | `dots-studio/dots-3-note-preview:free` | no-train for customer code; provider default otherwise | `expiration_date` via re-probe |
-| Reviewer / planner | `nvidia/nemotron-3-ultra-550b-a55b:free` | no-train for customer code; provider default otherwise | `expiration_date` via re-probe |
-| Summarizer | `google/gemma-4-31b-it:free` | no-train for customer code; provider default otherwise | `expiration_date` via re-probe |
-| Heavy / reasoning (paid-gated) | `openai/gpt-oss-120b` | pre-auth required; no-train for customer code | paid link — pre-auth flag only, never silent |
+| All roles (acct1 primary) | `console-openrouter/nvidia/nemotron-3.5-super-vl:free` | provider default | ZDR verified; `expiration_date` via re-probe |
+| All roles (acct2 override) | `console-openrouter2/nvidia/nemotron-3.5-super-vl:free` | provider default | ZDR verified; `expiration_date` via re-probe |
 | Denylist — never selected | `poolside/laguna*` | never (excluded) | excluded by mapping |
 | Denylist — never selected | `thinkingmachines/inkling*` | never (excluded) | excluded by mapping |
 | Denylist — never selected | `liquid/lfm-2.5*` | never (excluded) | excluded by mapping |

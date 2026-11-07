@@ -1,6 +1,7 @@
 ---
 description: Maps unfamiliar code fast - symbols, flows, change impact - read-only codebase reconnaissance
 mode: subagent
+model: console-openrouter/nvidia/nemotron-3.5-super-vl:free
 temperature: 0.1
 permission:
   edit: deny

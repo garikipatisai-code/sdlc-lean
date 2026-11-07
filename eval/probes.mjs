@@ -138,9 +138,9 @@ export const PROBES = [
     group: 'routing',
     prompt: 'Which free OpenRouter default serves each role — implementer, reviewer/planner, summarizer? Reply with the full model IDs.',
     expect: [
-      { kind: 'contains', value: 'cohere/north-mini-code:free' },
-      { kind: 'contains', value: 'nvidia/nemotron-3-ultra-550b-a55b:free' },
-      { kind: 'contains', value: 'google/gemma-4-31b-it:free' },
+      { kind: 'contains', value: 'console-openrouter/nvidia/nemotron-3.5-super-vl:free' },
+      { kind: 'contains', value: 'console-openrouter/nvidia/nemotron-3.5-super-vl:free' },
+      { kind: 'contains', value: 'console-openrouter/nvidia/nemotron-3.5-super-vl:free' },
     ],
   },
   {
@@ -159,9 +159,8 @@ export const PROBES = [
     group: 'routing',
     prompt: 'What is the implementer fallback chain when the primary free model is rate-limited? Reply with the chain order.',
     expect: [
-      { kind: 'contains', value: 'cohere/north-mini-code:free' },
-      { kind: 'contains', value: 'recursive/flint-v1.0:free' },
-      { kind: 'contains', value: 'paid' },
+      { kind: 'contains', value: 'console-openrouter/nvidia/nemotron-3.5-super-vl:free' },
+      { kind: 'contains', value: 'console-openrouter2/nvidia/nemotron-3.5-super-vl:free' },
     ],
   },
   {

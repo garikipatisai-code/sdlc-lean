@@ -1,6 +1,7 @@
 ---
 description: Security audit with traced exploit paths, severity graded by exploitability
 mode: subagent
+model: console-openrouter/nvidia/nemotron-3.5-super-vl:free
 temperature: 0.1
 permission:
   edit: deny

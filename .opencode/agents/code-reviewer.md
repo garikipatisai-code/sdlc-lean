@@ -3,6 +3,9 @@ description: Reviews diffs for correctness, security, performance, and maintaina
 mode: subagent
 temperature: 0.1
 permission:
+  # V1 scalar deny preserved verbatim (V1 compat: no path-glob here).
+  # Read-only test allowlist lives in runtime seam checkReviewerBash
+  # (node --test, git diff/status/log only); all other bash still denied.
   edit: deny
   bash: deny
 ---

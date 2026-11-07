@@ -2,6 +2,8 @@
 description: Writes or extends tests for a behavior, following the repo's existing test stack and hermetic fakes
 mode: subagent
 permissions:
+  # V1 parity: V1 hosts ignore path-glob resources; runtime seam
+  # checkAgentPathScope(test-writer, edit, target) enforces tests/** outside V1.
   - action: edit
     resource: "*"
     effect: deny

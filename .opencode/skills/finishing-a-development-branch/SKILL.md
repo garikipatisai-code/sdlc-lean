@@ -5,6 +5,8 @@ description: Use when implementation is complete and all tests pass, to decide h
 
 # Finishing a Development Branch
 
+Hook: agent `git merge` is refused at runtime (`checkMergeGuard` in `.opencode/plugins/sdlc-lean.js`); safe abort (`git merge --abort`/`--quit`) still passes — merging stays ALWAYS-human.
+
 1. Full verification green **on the final SHA** (`verification-before-completion`); record the SHA.
 2. **Explicit human approval** before merge/PR. Present merge, PR (summary + test evidence), or keep; if no reply, wait — no approval, no merge/PR.
 3. CI green **on the final SHA**; "confirm CI scope" is not a green build.

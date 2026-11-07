@@ -160,6 +160,10 @@ const validateDispatch = (dispatch, phaseId) => {
       || typeof dispatch.approval.approver !== 'string' || dispatch.approval.approver.trim() === '') {
       reject('invalid-ledger', `retry ${dispatch.attemptId} must record its approval`);
     }
+    const approvalKeys = Object.keys(dispatch.approval);
+    if (approvalKeys.length !== 2 || !approvalKeys.includes('approver') || !approvalKeys.includes('approvedAt')) {
+      reject('invalid-ledger', `retry ${dispatch.attemptId} approval must not carry extra fields`);
+    }
     parseUtc(dispatch.approval.approvedAt, 'dispatch.approval.approvedAt');
   }
   if (['failed', 'launch-failed'].includes(dispatch.status)) {
@@ -224,6 +228,28 @@ const locateDispatch = (ledger, attemptId) => {
   }
   return null;
 };
+
+/**
+ * Separable invocation gate (D-011): the model path must not bypass the phase
+ * ledger. Checkpoint/continuation/recovery entry points call this before
+ * `validateLedger` so an unloaded ledger fails closed as `ledger-unreadable`
+ * instead of a generic `invalid-ledger`. Pure validators stay untouched;
+ * this checks only the loaded marker (object + ledger schema + phases array),
+ * never full validity. Pass-through: a loaded ledger returns as-is.
+ * @param {object} ledgerLike
+ * @returns {object} the same ledger
+ * @throws {WorkflowStateError} `ledger-unreadable` when no ledger is loaded
+ */
+export function assertLedgerLoaded(ledgerLike) {
+  if (!isObject(ledgerLike)) reject('ledger-unreadable', 'phase ledger must be loaded before checkpoint/continuation');
+  if (ledgerLike.schema !== LEDGER_SCHEMA) {
+    reject('ledger-unreadable', 'phase ledger must be loaded before checkpoint/continuation (unknown schema)');
+  }
+  if (!Array.isArray(ledgerLike.phases)) {
+    reject('ledger-unreadable', 'phase ledger must be loaded before checkpoint/continuation (no phases)');
+  }
+  return ledgerLike;
+}
 
 /**
  * Validate a ledger fail-closed. Every public entry point calls this before
@@ -307,16 +333,27 @@ export function createLedger({ taskId, authorizationRef, cumulativeLimits, now }
   return validateLedger(ledger);
 }
 
-/** Whether an approval record is explicit and scoped exactly to `scope`. */
-const approvalMatches = (approval, scope) => {
-  if (!isObject(approval) || approval.approved !== true) return false;
+/** Whether an approval record is explicit and scoped exactly to `scope`. Strict:
+ * rejects unknown top-level fields; `at` must be <= `nowMs` and >= `anchorMs`.
+ * `nowMs` accepts Date|number, defaults to Date.now(); `anchorMs` is optional. */
+const approvalMatches = (approval, scope, nowMs = Date.now(), anchorMs = null) => {
+  if (!isObject(approval)) return false;
+  const allowedTop = ['approved', 'approver', 'at', 'scope'];
+  const topKeys = Object.keys(approval);
+  if (topKeys.length !== allowedTop.length || allowedTop.some((key) => !topKeys.includes(key))) return false;
+  if (approval.approved !== true) return false;
   if (typeof approval.approver !== 'string' || approval.approver.trim() === '') return false;
+  let atMs;
   try {
-    parseUtc(approval.at, 'approval.at');
+    atMs = parseUtc(approval.at, 'approval.at');
   } catch (err) {
     if (err instanceof WorkflowStateError) return false;
     throw err;
   }
+  const nowNum = nowMs instanceof Date ? nowMs.getTime() : nowMs;
+  if (typeof nowNum !== 'number' || !Number.isFinite(nowNum)) return false;
+  if (atMs > nowNum) return false;
+  if (anchorMs !== null && anchorMs !== undefined && atMs < anchorMs) return false;
   const actual = approval.scope;
   if (!isObject(actual)) return false;
   const expectedKeys = Object.keys(scope);
@@ -327,11 +364,12 @@ const approvalMatches = (approval, scope) => {
 
 /**
  * A retry authorization is the token `planRetry` issues: it must carry the
- * approval evidence and match exactly one task/phase/action/attempt.
+ * approval evidence and match exactly one task/phase/action/attempt. Strict:
+ * `approvedAt` must be <= `nowMs` and >= `anchorMs` (failure time) when given.
  */
 const retryAuthorizationMatches = (authorization, {
   taskId, phaseId, actionId, attemptId,
-}) => {
+}, nowMs = Date.now(), anchorMs = null) => {
   if (!isObject(authorization) || authorization.approved !== true) return false;
   const expectedKeys = ['approved', 'taskId', 'phaseId', 'actionId', 'forAttemptId', 'approver', 'approvedAt'];
   const keys = Object.keys(authorization);
@@ -341,12 +379,17 @@ const retryAuthorizationMatches = (authorization, {
   if (authorization.phaseId !== phaseId) return false;
   if (authorization.actionId !== actionId) return false;
   if (authorization.forAttemptId !== attemptId) return false;
+  let approvedAtMs;
   try {
-    parseUtc(authorization.approvedAt, 'authorization.approvedAt');
+    approvedAtMs = parseUtc(authorization.approvedAt, 'authorization.approvedAt');
   } catch (err) {
     if (err instanceof WorkflowStateError) return false;
     throw err;
   }
+  const nowNum = nowMs instanceof Date ? nowMs.getTime() : nowMs;
+  if (typeof nowNum !== 'number' || !Number.isFinite(nowNum)) return false;
+  if (approvedAtMs > nowNum) return false;
+  if (anchorMs !== null && anchorMs !== undefined && approvedAtMs < anchorMs) return false;
   return true;
 };
 
@@ -374,7 +417,8 @@ export function openPhase(ledger, {
 
   if (ledger.phases.length > 0) {
     const scope = { taskId: ledger.taskId, phaseId, authorizationRef };
-    if (!approvalMatches(approval, scope)) {
+    const createdAtMs = parseUtc(ledger.createdAt, 'createdAt');
+    if (!approvalMatches(approval, scope, clock.ms, createdAtMs)) {
       reject('approval-required', 'an additional phase needs a separate approval bound to this phase and authorization');
     }
   }
@@ -462,6 +506,7 @@ export function evaluateLaunch(ledger, { now, observationMs } = {}) {
  * @returns {object} the same ledger
  */
 export function recordCheckpoint(ledger, { now, note, usage } = {}) {
+  assertLedgerLoaded(ledger);
   validateLedger(ledger);
   const clock = resolveNow(now);
   const phase = activePhaseOf(ledger);
@@ -485,6 +530,7 @@ export function recordCheckpoint(ledger, { now, note, usage } = {}) {
  * @returns {{resumed: boolean, reason: string}} snapshot or blocked decision
  */
 export function resumePhase(ledger, { now } = {}) {
+  assertLedgerLoaded(ledger);
   validateLedger(ledger);
   const clock = resolveNow(now);
   const phase = activePhaseOf(ledger);
@@ -576,6 +622,7 @@ export function closePhase(ledger, {
 export function beginDispatch(ledger, {
   actionId, description, attemptId, authorization, now,
 } = {}) {
+  assertLedgerLoaded(ledger);
   validateLedger(ledger);
   const clock = resolveNow(now);
   const phase = activePhaseOf(ledger);
@@ -599,12 +646,18 @@ export function beginDispatch(ledger, {
       .sort((a, b) => a.startedAt.localeCompare(b.startedAt))
       .at(-1);
     if (!failed) reject('invalid-ledger', `no retryable attempt for ${actionId}`);
+    let failureMs = null;
+    try {
+      failureMs = parseUtc(failed.reconciledAt ?? failed.settledAt, 'dispatch.settledAt');
+    } catch {
+      reject('recovery-not-authorized', `${actionId} needs an explicit, narrowly scoped retry approval`);
+    }
     const valid = retryAuthorizationMatches(authorization, {
       taskId: ledger.taskId,
       phaseId: phase.phaseId,
       actionId,
       attemptId: failed.attemptId,
-    });
+    }, clock.ms, failureMs);
     if (!valid) reject('recovery-not-authorized', `${actionId} needs an explicit, narrowly scoped retry approval`);
     retryOf = failed.attemptId;
     retryApproval = { approver: authorization.approver, approvedAt: authorization.approvedAt };
@@ -622,6 +675,17 @@ export function beginDispatch(ledger, {
     record.approval = retryApproval;
   }
   phase.dispatches.push(record);
+  try {
+    validateLedger(ledger);
+  } catch (err) {
+    phase.dispatches.pop();
+    throw err;
+  }
+  const check = locateDispatch(ledger, id);
+  if (!check || check.record !== record || check.phase.phaseId !== phase.phaseId) {
+    phase.dispatches.pop();
+    reject('invalid-ledger', `dispatch ${id} post-write mismatch`);
+  }
   return {
     attemptId: id, actionId, phaseId: phase.phaseId, retryOf,
   };
@@ -668,6 +732,7 @@ const settlementAfterCloseout = (phase, attemptId) => {
 export function settleDispatch(ledger, {
   attemptId, status, evidence = [], failure, now,
 } = {}) {
+  assertLedgerLoaded(ledger);
   validateLedger(ledger);
   const clock = resolveNow(now);
   const found = locateDispatch(ledger, attemptId);
@@ -695,6 +760,7 @@ export function settleDispatch(ledger, {
 export function reconcileDispatch(ledger, {
   attemptId, status, evidence = [], failure, now,
 } = {}) {
+  assertLedgerLoaded(ledger);
   validateLedger(ledger);
   const clock = resolveNow(now);
   const found = locateDispatch(ledger, attemptId);
@@ -723,6 +789,7 @@ export function reconcileDispatch(ledger, {
  * @returns {{allowed: boolean, reason: string, stepZero?: boolean, authorization?: object}}
  */
 export function planRetry(ledger, { attemptId, approval, now } = {}) {
+  assertLedgerLoaded(ledger);
   validateLedger(ledger);
   const clock = resolveNow(now);
   const found = locateDispatch(ledger, attemptId);
@@ -741,7 +808,17 @@ export function planRetry(ledger, { attemptId, approval, now } = {}) {
   if (!['failed', 'launch-failed'].includes(record.status)) return { allowed: false, reason: 'invalid-state' };
 
   const scope = { taskId: ledger.taskId, phaseId: phase.phaseId, actionId: record.actionId };
-  if (!approvalMatches(approval, scope)) {
+  let failureMs = null;
+  try {
+    failureMs = parseUtc(record.reconciledAt ?? record.settledAt, 'dispatch.settledAt');
+  } catch {
+    return {
+      allowed: false,
+      reason: 'recovery-not-authorized',
+      stepZero: record.failure?.stage === 'step-0',
+    };
+  }
+  if (!approvalMatches(approval, scope, clock.ms, failureMs)) {
     return {
       allowed: false,
       reason: 'recovery-not-authorized',
@@ -828,8 +905,16 @@ const assertNoSecrets = (value, trail = 'handoff') => {
   }
 };
 
+const HANDOFF_KEYS = ['schema', 'generatedAt', 'taskId', 'authorizationRef', 'phaseId', 'phaseStatus', 'deadlineUtc', 'observationAllowanceMs', 'limits', 'usage', 'cumulativeLimits', 'cumulativeUsage', 'completed', 'inFlight', 'uncertain', 'failed', 'reservations', 'nextAction', 'allowedActions', 'forbiddenActions', 'deviations', 'stopReason', 'stopStatus', 'phaseHistory', 'sourceIdentities'];
+const BRIEF_KEYS = ['phaseId', 'attemptId', 'actionId', 'description', 'status', 'startedAt', 'settledAt', 'reconciledAt', 'evidence', 'failure', 'retryOf', 'approval'];
+const PHASE_HISTORY_KEYS = ['phaseId', 'authorizationRef', 'status', 'openedAt', 'deadlineUtc', 'usage', 'closeout'];
+const PHASE_HISTORY_CLOSEOUT_KEYS = ['status', 'reason', 'at', 'evidence', 'unresolved'];
+
 const validateBrief = (brief, field) => {
   if (!isObject(brief)) reject('invalid-handoff', `${field} entries must be objects`);
+  for (const key of Object.keys(brief)) {
+    if (!BRIEF_KEYS.includes(key)) reject('invalid-handoff', `${field}.${key} is not a known field`);
+  }
   requireString(brief.attemptId, `${field}.attemptId`);
   requireString(brief.actionId, `${field}.actionId`);
   requireString(brief.phaseId, `${field}.phaseId`);
@@ -847,6 +932,9 @@ const validateBrief = (brief, field) => {
 
 const validateHandoff = (handoff) => {
   if (!isObject(handoff)) reject('invalid-handoff', 'handoff must be an object');
+  for (const key of Object.keys(handoff)) {
+    if (!HANDOFF_KEYS.includes(key)) reject('invalid-handoff', `unknown handoff field: ${key}`);
+  }
   if (handoff.schema !== HANDOFF_SCHEMA) reject('invalid-handoff', `schema must be ${HANDOFF_SCHEMA}`);
   requireString(handoff.taskId, 'handoff.taskId');
   requireString(handoff.authorizationRef, 'handoff.authorizationRef');
@@ -877,6 +965,9 @@ const validateHandoff = (handoff) => {
   if (!Array.isArray(handoff.phaseHistory)) reject('invalid-handoff', 'phaseHistory must be an array');
   for (const entry of handoff.phaseHistory) {
     if (!isObject(entry)) reject('invalid-handoff', 'phaseHistory entries must be objects');
+    for (const key of Object.keys(entry)) {
+      if (!PHASE_HISTORY_KEYS.includes(key)) reject('invalid-handoff', `unknown phaseHistory field: ${key}`);
+    }
     requireString(entry.phaseId, 'phaseHistory.phaseId');
     requireString(entry.authorizationRef, 'phaseHistory.authorizationRef');
     if (!PHASE_STATUSES.includes(entry.status)) reject('invalid-handoff', 'phaseHistory.status is unknown');
@@ -885,6 +976,9 @@ const validateHandoff = (handoff) => {
     validateUsage(entry.usage, 'phaseHistory.usage');
     if (entry.closeout !== null && entry.closeout !== undefined) {
       if (!isObject(entry.closeout)) reject('invalid-handoff', 'phaseHistory.closeout must be an object');
+      for (const key of Object.keys(entry.closeout)) {
+        if (!PHASE_HISTORY_CLOSEOUT_KEYS.includes(key)) reject('invalid-handoff', `unknown phaseHistory.closeout field: ${key}`);
+      }
       requireString(entry.closeout.reason, 'phaseHistory.closeout.reason');
       parseUtc(entry.closeout.at, 'phaseHistory.closeout.at');
     }
@@ -906,10 +1000,15 @@ const validateHandoff = (handoff) => {
  *   now?: Date|number}} input
  * @returns {object} validated handoff record
  */
-export function buildHandoff(ledger, {
-  nextAction, allowedActions = [], forbiddenActions = [], deviations = [],
-  reservations = [], sourceIdentities = {}, now,
-} = {}) {
+export function buildHandoff(ledger, input = {}) {
+  const allowedInput = ['nextAction', 'allowedActions', 'forbiddenActions', 'deviations', 'reservations', 'sourceIdentities', 'now'];
+  for (const key of Object.keys(input)) {
+    if (!allowedInput.includes(key)) reject('invalid-handoff', `unknown handoff field: ${key}`);
+  }
+  const {
+    nextAction, allowedActions = [], forbiddenActions = [], deviations = [],
+    reservations = [], sourceIdentities = {}, now,
+  } = input;
   validateLedger(ledger);
   const clock = resolveNow(now);
   requireString(nextAction, 'nextAction');

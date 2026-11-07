@@ -1,0 +1,36 @@
+{
+  "plan": "docs/plans/2026-11-07-phase-c-perms.md",
+  "plan_sha256": "e8aef2a2def80b22deb8faa2806b7c7845a9d0332aa9cea33a8751ee506ec411",
+  "tasks": [
+    {
+      "task": 1,
+      "exit": 0,
+      "verify": "node --test tests/scripts/research/test-phase.mjs",
+      "at": "2026-11-07T03:04:28.122Z"
+    },
+    {
+      "task": 2,
+      "exit": 0,
+      "verify": "node --test tests/scripts/research/test-phase.mjs",
+      "at": "2026-11-07T03:07:43.000Z"
+    },
+    {
+      "task": 3,
+      "exit": 0,
+      "verify": "`node --test tests/scripts/research/test-phase.mjs` + plugin suite",
+      "at": "2026-11-07T03:18:19.000Z"
+    },
+    {
+      "task": 4,
+      "exit": 0,
+      "verify": "`node --test tests/scripts/research/test-phase.mjs` + plugin suite",
+      "at": "2026-11-07T03:18:19.000Z"
+    },
+    {
+      "task": 5,
+      "exit": 0,
+      "verify": "node --test tests/scripts/research/test-phase.mjs` + full `npm run verify",
+      "at": "2026-11-07T03:24:48.000Z"
+    }
+  ]
+}

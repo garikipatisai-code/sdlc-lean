@@ -246,6 +246,65 @@ export const getStatus = () => {
   }
 };
 
+// --- uxStatus caller + read-only status query (D-026/D-033; seam only) --------
+// Autonomy-dial success signal is a named check going green at Auto-run
+// completion — no plugin hook observes that event: tool execute.after sees
+// every tool exit, session hooks carry no check result, and /approve is a
+// human gate rather than a check result. So NEITHER helper is wired into a
+// global hook — same analyzed-but-deferred convention as checkPhaseLedgerGate
+// and the agent path guards. A future check-aware hook MUST call
+// recordUxStatus once with the green result; global behavior byte-identical.
+// Sink note: the plan Expected audit-ledger rows are NOT written here — that
+// ledger is outside this plan gate scope, so tier + confidence land in the
+// status file via the existing helper and task evidence lands in the progress
+// ledger; audit-ledger wiring is deferred to a follow-up whose gate includes
+// the ledger. Host-API note: the host exposes skill/session/tool-hook/command
+// surfaces only — no model-tool definition surface exists in this repo — so
+// no model tool is registered; getSdlcStatus is the pure read-only query a
+// future tool would wrap.
+export const recordUxStatus = (result, sessionID = 'default') => {
+  try {
+    const pass = typeof result === 'string'
+      ? result.trim().toLowerCase() === 'pass'
+      : result && typeof result === 'object' && !Array.isArray(result)
+        && String(result.result ?? '').trim().toLowerCase() === 'pass';
+    if (!pass) return getStatus();
+    const ux = result && typeof result === 'object' && !Array.isArray(result)
+      ? { tier: result.tier, confidence: result.confidence }
+      : undefined;
+    if (!ux || typeof ux.tier !== 'string' || typeof ux.confidence !== 'string') return getStatus();
+    if (!ux.tier.trim() || !ux.confidence.trim()) return getStatus();
+    return uxStatus({ tier: ux.tier.trim(), confidence: ux.confidence.trim() }, sessionID);
+  } catch (err) {
+    return null;
+  }
+};
+
+// Pure read-only query: plan/spec gate state without mutation. Never writes,
+// never spawns, never registers a tool — read-only by construction.
+export const getSdlcStatus = (root) => {
+  try {
+    let gate = null;
+    if (typeof root === 'string' && root) {
+      try {
+        const parsed = JSON.parse(fs.readFileSync(path.join(root, '.sdlc', 'spec-gate.json'), 'utf8'));
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          gate = {
+            plan: typeof parsed.plan === 'string' ? parsed.plan : null,
+            spec: typeof parsed.spec === 'string' ? parsed.spec : null,
+            files: Array.isArray(parsed.files) ? parsed.files.length : null,
+          };
+        }
+      } catch (err) {
+        gate = null;
+      }
+    }
+    return { skills: listSkills().length, status: getStatus(), gate };
+  } catch (err) {
+    return null;
+  }
+};
+
 // --- Project root resolution -------------------------------------------------
 // V2 exposes the project location; ctx.directory is the V1/best-effort field.
 // Never fall back to process.cwd(): a global install would gate the wrong repo.
@@ -477,6 +536,148 @@ export const checkSpecGate = (tool, args = {}, root, opts = {}) => {
   const detail = String(result.stderr || result.stdout || '').trim().split('\n').filter(Boolean).pop()
     || 'outside the approved plan scope';
   throw new Error(`[sdlc-lean] spec gate blocked: ${detail}`);
+};
+
+// --- Phase-ledger invocation gate (D-011, narrow; NOT wired into global hooks) -
+// Separable guard: pass-through by default, engages ONLY when phase-ledger flow
+// is in use (ledger context present: a phase marker supplied by the caller).
+// Normal non-research sessions (no context) see zero behavior change.
+//
+// Wiring is analyzed-but-deferred: no clean phase-relevant seam exists without
+// touching global hook behavior. Untouched hooks: V1 `tool.execute.before`
+// (checkSafety + checkSpecGate), V2 `ctx.tool.hook('execute.before')`,
+// session hooks (`prompt` / `context` / `compaction`,
+// `experimental.chat.messages.transform`, `experimental.session.compacting`)
+// and the `/approve` command path. None carries a phase-ledger context, so a
+// ledger check there would either fail-closed on every normal session or need
+// global mutable state — both violate the pass-through constraint. The model
+// dispatch path is gated in `scripts/research/phase.mjs` (`assertLedgerLoaded`
+// at the checkpoint/continuation entry points); this helper is the plugin-side
+// seam for a future research/phase-relevant hook to call.
+const PHASE_LEDGER_SCHEMA = 'sdlc-lean/phase-ledger@1';
+
+export const checkPhaseLedgerGate = (ledgerLike, context) => {
+  let hasMarker = false;
+  if (typeof context === 'string') {
+    hasMarker = context.trim() !== '';
+  } else if (context === true) {
+    hasMarker = true;
+  } else if (context && typeof context === 'object' && !Array.isArray(context)) {
+    hasMarker = ['phaseMarker', 'phaseId', 'ledgerFile', 'ledgerPath', 'ledger', 'activePhaseId', 'phaseLedgerFile']
+      .some((key) => {
+        const value = context[key];
+        return typeof value === 'string' ? value.trim() !== '' : value !== undefined && value !== null && value !== false;
+      });
+  }
+  if (!hasMarker) return null; // pass-through: no phase flow in use
+  const loaded = ledgerLike && typeof ledgerLike === 'object' && !Array.isArray(ledgerLike)
+    && ledgerLike.schema === PHASE_LEDGER_SCHEMA && Array.isArray(ledgerLike.phases);
+  if (!loaded) {
+    throw new Error('[sdlc-lean] ledger-unreadable: phase flow needs a loaded ledger before dispatch (load the phase ledger first)');
+  }
+  return true;
+};
+
+// --- Agent path guards (D-015/D-019, V1 parity; NOT wired into global hooks) --
+// V1 hosts ignore V2 `permissions` path-globs, so the test-writer `tests/**`
+// test-only boundary and the reviewer read-only bash allowlist are enforced
+// here as pure runtime seams.
+//
+// Wiring is analyzed-but-deferred (same convention as checkPhaseLedgerGate):
+// V1 `tool.execute.before` (checkSafety + checkSpecGate) and V2
+// `ctx.tool.hook('execute.before')` carry no observable agent identity (the
+// event carries tool/input only; sessionID alone does not say which agent
+// acts), so wiring here would either guess identity (refused) or fail-closed
+// on every normal session (breaks the pass-through constraint). Global
+// safety/spec-gate behavior is therefore byte-identical; a future agent-aware
+// hook MUST call these helpers with the acting agent id. Do NOT call them
+// from any V1-consumed path (V1 compat: no path-glob logic where V1 reads).
+const AGENT_FILE_TOOLS = new Set(['edit', 'write', 'patch', 'apply_patch']);
+
+const normalizeAgentPath = (p) => String(p ?? '').trim().replace(/^\.\//, '').replace(/\\/g, '/');
+
+const isTestsPath = (p) => {
+  const n = normalizeAgentPath(p);
+  if (!n) return false;
+  if (n.startsWith('/')) return n === '/tests' || n.includes('/tests/') || n.endsWith('/tests');
+  // Lexical resolve (posix-style, leading `..` preserved): reject escapes
+  // before the startsWith check so `tests/../src/app.js` cannot pass.
+  const stack = [];
+  for (const seg of n.split('/')) {
+    if (seg === '' || seg === '.') continue;
+    else if (seg === '..') {
+      if (stack.length && stack[stack.length - 1] !== '..') stack.pop();
+      else stack.push('..');
+    } else stack.push(seg);
+  }
+  const t = stack.join('/').replace(/\/+$/, '');
+  if (!t) return false;
+  if (t.startsWith('..') || t.includes('/../')) return false;
+  return t === 'tests' || t.startsWith('tests/');
+};
+
+// V1-parity test-only boundary: test-writer edits outside `tests/**` throw;
+// every other agent (including targetless/non-file calls) passes through.
+// `target` accepts a path string, an array of paths, or an args-like object
+// ({ filePath, path, patchText/diff/patch }); no-target mutating calls pass
+// so unscoped hosts never break.
+export const checkAgentPathScope = (agentId, tool, target) => {
+  if (agentId !== 'test-writer') return null;
+  if (!AGENT_FILE_TOOLS.has(tool)) return true;
+  let targets = [];
+  let bodyPresent = false;
+  let sawEmptyList = false;
+  if (typeof target === 'string') targets = [target];
+  else if (Array.isArray(target)) {
+    if (target.length === 0) sawEmptyList = true;
+    targets = target;
+  } else if (target && typeof target === 'object') {
+    for (const raw of [target.filePath, target.path]) {
+      if (Array.isArray(raw)) {
+        if (raw.length === 0) sawEmptyList = true;
+        else for (const e of raw) targets.push(e);
+      } else if (typeof raw === 'string' && raw) targets.push(raw);
+    }
+    const body = target.patchText ?? target.diff ?? target.patch;
+    if (typeof body === 'string' && body) {
+      bodyPresent = true;
+      targets.push(...pathsFromPatch(body));
+    }
+  }
+  // Fail-closed: an explicit patch body that yields zero paths, or an
+  // explicitly empty path list, refuses (unscoped hosts pass no target at
+  // all, which still returns true below via the non-file/no-body path).
+  if (!targets.length) {
+    if (bodyPresent || sawEmptyList) {
+      throw new Error('[sdlc-lean] test-writer edit refused: unparseable patch body or empty path list (fail-closed; no tests/** path recovered)');
+    }
+    return true;
+  }
+  for (const t of targets) {
+    if (!isTestsPath(t)) {
+      throw new Error(`[sdlc-lean] test-writer edit refused: "${String(t)}" outside tests/** (V1 parity: test-only boundary)`);
+    }
+  }
+  return true;
+};
+
+// Reviewer read-only bash allowlist: code-reviewer may run ONLY
+// `node --test …` and read-only `git diff|status|log …`; everything else
+// (including chained `;|&&|||$`/backtick/redirect spellings) still throws.
+// Every other agent passes through (null); empty commands throw.
+export const checkReviewerBash = (agentId, command) => {
+  if (agentId !== 'code-reviewer') return null;
+  const raw = typeof command === 'string' ? command : command?.command;
+  const cmd = String(raw ?? '').trim();
+  if (!cmd) {
+    throw new Error('[sdlc-lean] reviewer bash refused: empty command (allowlist: node --test, git diff/status/log only)');
+  }
+  if (/[;|`$<>&\n\r]/.test(cmd) || /&&/.test(cmd) || /\|\|/.test(cmd) || /(^|\s)\|(\s|$)/.test(cmd) || /(^|\s)&(\s|$)/.test(cmd)) {
+    throw new Error(`[sdlc-lean] reviewer bash refused: "${cmd}" (chained/redirect spellings denied; allowlist: node --test, git diff/status/log only)`);
+  }
+  if (/^node\s+--test\b/.test(cmd)) return true;
+  if (/^git\s+(diff|status|log)\b/.test(cmd)) return true;
+  throw new Error(`[sdlc-lean] reviewer bash refused: "${cmd}" (allowlist: node --test, git diff/status/log only)`);
 };
 
 // --- Separation of powers (SOP-1, auto-tier pilot) ---------------------------
@@ -1183,11 +1384,12 @@ const SECRET_REDIR_RE = /(?:[<>]|(?<!\|)\|(?!\|)|\btee\b)/i;
 // `grep -r x .env` too (both forms are checked; `FOO=1 echo hi` still passes).
 const stripEnvPrefix = (s) => String(s || '').replace(/^\s*(?:(?:sudo|env|command)\s+)?(?:\w+=(?:'[^']*'|"[^"]*"|\S*)\s+)+/, '');
 
-// One-level `sh|bash|dash -c 'inner'` unwrap: the inner string is tested with
+// One-level `sh|bash|dash|zsh|fish -c 'inner'` unwrap (flags like `-x` /
+// `--noprofile` before `-c` tolerated): the inner string is tested with
 // the same guards (`sh -c 'grep x .env'` refuses).
 const innerShellCommands = (s) => {
   const out = [];
-  const re = /(?<![\w-])(?:sh|bash|dash)\s+-c\s+(["'])(.*?)\1/gi;
+  const re = /(?<![\w-])(?:sh|bash|dash|zsh|fish)\s+(?:-\S+\s+)*-c\s+(["'])(.*?)\1/gi;
   let m;
   while ((m = re.exec(String(s || ''))) !== null) out.push(m[2]);
   return out.filter((inner) => typeof inner === 'string' && inner !== '');
@@ -1264,6 +1466,45 @@ const stripLaunchPrefix = (s) => String(s || '').replace(/^\s*(?:timeout\s+(?:-\
 const COLAB_TOKEN_RE = /\bcolab[_-]mcp(?![\w-])/;
 const COLAB_KILL_CMD_RE = new RegExp(`${COLAB_CMD}(?:xargs\\b[^;\\n]*?\\b)?(?:kill|pkill|killall)\\b(?![^;\\n]*\\s-0\\b)`);
 
+// --- Merge/worktree guard (D-018; merge refusal WIRED, worktree pass-by-design) -
+// Agent `git merge` is ALWAYS-human per `finishing-a-development-branch`: the
+// hook throws so the agent cannot merge any target branch; the human merges
+// after explicit approval + final SHA + `spec-check verify`/`close`. Safe abort
+// (`git merge --abort`/`--quit`) passes; read-only `git merge-base` and
+// `git log --merges` never match. `git worktree add` intentionally PASSES —
+// the suite's own parallel workflow depends on it — so no worktree refusal
+// exists here by design. Worktree baseline RECORDING stays artifact-level
+// (agent-written progress ledger; a hook cannot write files) — same
+// analyzed-but-deferred seam convention as Tasks 2-4; no recording hook is
+// faked. Match reuses COLAB_CMD anchoring (command position after
+// `^|;|&|||(|newline|backtick`, optional `sudo|env|command` + `/bin|/usr/bin`
+// prefix), so `sudo git merge` refuses the same way; `merge-base` is excluded
+// via `(?![\w-])` and quoted prose (`echo "git merge"`) passes.
+const MERGE_MSG = 'Refusing agent `git merge`. Merging is ALWAYS-human per `finishing-a-development-branch`: present merge/PR/keep, wait for explicit human approval, verify the final SHA with `spec-check verify`/`close`. Safe abort (`git merge --abort`/`--quit`) remains allowed.';
+
+const MERGE_CMD_RE = new RegExp(`${COLAB_CMD}git\\s+(?:(?:-c\\s+\\S+\\s+|-[A-Za-z]+(?:\\s+\\S+)?\\s+|--\\S+\\s+)*)merge(?![\\w-])`, 'g');
+const MERGE_ABORT_RE = /(?:^|\s)--(?:abort|quit)(?![\w-])/;
+
+export const checkMergeGuard = (command) => {
+  const cmd = typeof command === 'string' ? command : command?.command ?? '';
+  const text = String(cmd ?? '');
+  if (!text.trim()) return true;
+  MERGE_CMD_RE.lastIndex = 0;
+  let m;
+  while ((m = MERGE_CMD_RE.exec(text)) !== null) {
+    if (!m[0]) { MERGE_CMD_RE.lastIndex += 1; continue; }
+    let end = text.length;
+    for (const sep of [';', '&', '|', '\n']) {
+      const idx = text.indexOf(sep, m.index);
+      if (idx !== -1) end = Math.min(end, idx);
+    }
+    const segment = text.slice(m.index, end);
+    if (MERGE_ABORT_RE.test(segment)) continue;
+    throw new Error(`[sdlc-lean] ${MERGE_MSG}`);
+  }
+  return true;
+};
+
 export const checkSafety = (tool, args = {}) => {
   if (FILE_TOOLS.has(tool)) {
     const candidates = [args.filePath, args.path];
@@ -1326,6 +1567,10 @@ export const checkSafety = (tool, args = {}) => {
     }
     if (variants.some((v) => { const n = stripLaunchPrefix(normalizeRmCommand(v)); return COLAB_TOKEN_RE.test(n) && COLAB_KILL_CMD_RE.test(n); })) {
       throw new Error(`[sdlc-lean] ${COLAB_BRIDGE_MSG}`);
+    }
+    for (const v of variants) {
+      checkMergeGuard(v);
+      checkMergeGuard(stripLaunchPrefix(normalizeRmCommand(v)));
     }
   }
 };

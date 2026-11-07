@@ -37,12 +37,13 @@ Classify, run the pipeline, announce the route in one line. Pipeline skill first
 - Empirical experiment → `research-protocol` (frozen, not `deep-research`).
 - Many tasks → `dispatching-parallel-agents`.
 - Colab run/release →`colab-lifecycle`.
+- Model routing → orchestrator Model routing.
 
 Ambiguous? Pick the safer route.
 
 ## Default posture (envelope-first)
 
-Goal → draft envelope → one chat yes → commit envelope + auth ledger line → machine-approve → loop alone → machine-close. Human `/approve`+hash is fallback-only (no envelope, or envelope refused/changed); widening the envelope is its own committed+authorized step, never silent.
+Goal → draft envelope → one chat yes → commit envelope + auth ledger line → machine-approve → loop alone → machine-close. Human `/approve`+hash is fallback-only; widening needs its own commit+auth.
 
 ## Auto-Intensity (no user-facing levels)
 

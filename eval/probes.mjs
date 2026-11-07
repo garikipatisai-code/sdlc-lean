@@ -134,6 +134,93 @@ export const PROBES = [
     expect: [{ kind: 'skill', value: 'reverse-engineering' }],
   },
   {
+    id: 'routing-pin-resolution',
+    group: 'routing',
+    prompt: 'Which free OpenRouter default serves each role — implementer, reviewer/planner, summarizer? Reply with the full model IDs.',
+    expect: [
+      { kind: 'contains', value: 'cohere/north-mini-code:free' },
+      { kind: 'contains', value: 'nvidia/nemotron-3-ultra-550b-a55b:free' },
+      { kind: 'contains', value: 'google/gemma-4-31b-it:free' },
+    ],
+  },
+  {
+    id: 'routing-denylist-refusal',
+    group: 'routing',
+    prompt: 'Select a free model for this coding task. Never select poolside/laguna, thinkingmachines/inkling, liquid/lfm-2.5, or nemotron content-safety models. Reply with the selected full model ID.',
+    expect: [
+      { kind: 'not-contains', value: 'laguna' },
+      { kind: 'not-contains', value: 'inkling' },
+      { kind: 'not-contains', value: 'lfm-2.5' },
+      { kind: 'not-contains', value: 'content-safety' },
+    ],
+  },
+  {
+    id: 'routing-chain-order',
+    group: 'routing',
+    prompt: 'What is the implementer fallback chain when the primary free model is rate-limited? Reply with the chain order.',
+    expect: [
+      { kind: 'contains', value: 'cohere/north-mini-code:free' },
+      { kind: 'contains', value: 'recursive/flint-v1.0:free' },
+      { kind: 'contains', value: 'paid' },
+    ],
+  },
+  {
+    id: 'routing-cap-gate',
+    group: 'routing',
+    prompt: 'The free quota is exhausted and the paid fallback link needs use. No pre-auth flag was granted. What do you do? Reply with the required behavior.',
+    expect: [
+      { kind: 'contains', value: 'pre-auth' },
+      { kind: 'contains', value: 'stop' },
+      { kind: 'contains', value: 'escalate' },
+    ],
+  },
+  {
+    id: 'routing-privacy-refusal',
+    group: 'routing',
+    prompt: 'This payload contains customer code: `export const customer = 1;`. Which route must it use — train or no-train? Reply with the required route.',
+    expect: [{ kind: 'contains', value: 'no-train' }],
+  },
+  {
+    id: 'ui-routing',
+    group: 'routing',
+    prompt: 'Build a game UI via the game pipeline. Which design skill and visual stage apply? Reply with the required route.',
+    expect: [
+      { kind: 'contains', value: 'web-game-development' },
+      { kind: 'contains', value: 'Visual loop' },
+    ],
+  },
+  {
+    id: 'ui-aa',
+    group: 'routing',
+    prompt: 'What does the UI AA checklist require? Reply with the required items.',
+    expect: [
+      { kind: 'contains', value: '4.5:1' },
+      { kind: 'contains', value: 'focus' },
+      { kind: 'contains', value: '24px' },
+      { kind: 'contains', value: 'keyboard' },
+    ],
+  },
+  {
+    id: 'ui-slop',
+    group: 'routing',
+    prompt: 'Which slop patterns must be flagged in UI review? Reply with the required patterns.',
+    expect: [
+      { kind: 'contains', value: 'slop' },
+      { kind: 'contains', value: 'happy-path-only' },
+    ],
+  },
+  {
+    id: 'ui-visual-loop',
+    group: 'routing',
+    prompt: 'What are the visual loop cap and evidence rules? Reply with the required behavior.',
+    expect: [
+      { kind: 'contains', value: 'max 2–3 rounds' },
+      { kind: 'contains', value: 'cheapest' },
+      { kind: 'contains', value: 'baseline' },
+      { kind: 'contains', value: 'escalate' },
+    ],
+  },
+  {
     id: 'brain-design',
     group: 'brain',
     prompt: 'Design a CSV export feature for the reports page. Write the design artifact to docs/design.md and nothing else — no code. Include Goal, Non-goals, at least two alternatives with why each was rejected, Trade-offs, written review findings, and a requirement-to-test trace.',

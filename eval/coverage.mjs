@@ -26,6 +26,22 @@
 //   documentation only — NO flag flips, no count or CALIBRATION changes.
 //   Probe count, group membership, advisory flags, CALIBRATION map are
 //   behaviorally identical.
+//
+// T4 dry routing probes (docs/design/0004 carry-over; documented only):
+// - routing-pin-resolution, routing-denylist-refusal, routing-chain-order,
+//   routing-cap-gate, routing-privacy-refusal (group `routing`) are DRY
+//   structural probes: listed by dry `npm run eval`, live only via explicit
+//   `node eval/run.mjs --run`. Intentionally ABSENT from CALIBRATION
+//   (absent = uncalibrated, per schema above) — NO flag flips, no map
+//   changes. SKILLS/COMMANDS maps unchanged: model routing is not a
+//   skill/command trigger.
+//
+// Frontend v2 dry UI probes (documented only):
+// - ui-routing, ui-aa, ui-slop, ui-visual-loop (group `routing`) are DRY
+//   structural probes: listed by dry `npm run eval`, live only via explicit
+//   `node eval/run.mjs --run`. Comment-only — NO CALIBRATION flag flips, no
+//   map changes. SKILLS/COMMANDS maps unchanged: UI routing/visual checks
+//   assert shipped static content, not a new skill/command trigger.
 
 export const SKILLS = {
   'acquiring-capabilities': {

@@ -5,9 +5,26 @@ repo must cite fresh output of these commands (see `verification-before-completi
 
 ```sh
 npm run verify        # skill lint + node --test (counts as of 2026-11-01: 40 skills / 9 commands / 538 tests)
-npm run eval          # dry eval plan, 35 probes, zero spend — must list all probes
+npm run eval          # dry eval plan, 40 probes (35 + 5 routing: pin-resolution, denylist-refusal, chain-order, cap-gate, privacy-refusal), zero spend — must list all probes
 node scripts/spec-check.mjs verify --require-active   # active spec gate: no drift, no malformed marker # bare close skips drift (skipDrift escape hatch); approve/verify/keep full drift enforcement
 ```
+
+Routing verify (dry, zero spend — never pass `--run` for a completion claim):
+
+```sh
+npm run eval          # exit 0; confirm 40 probes listed, routing group = 17
+```
+
+Catalog re-probe procedure (documented, not automated — never auto-switch pins):
+
+```sh
+curl -s -H "Authorization: Bearer $OPENROUTER_API_KEY" https://openrouter.ai/api/v1/models | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{for(const m of JSON.parse(d).data){if(/north-mini-code|flint-v1\.0|dots-3-note|nemotron-3-ultra|gemma-4-31b|gpt-oss-120b|laguna|inkling|lfm-2\.5|content-safety/i.test(m.id))console.log(m.id,'|',m.expiration_date??'no-expiry');}})"
+```
+
+1. Compare each pinned/denylisted ID's `expiration_date` against the
+   `docs/AUTONOMY.md` mapping table; refresh expiry notes by hand.
+2. Expired or vanished free ID → stop + escalate (new pin = plan task,
+   never a silent edit).
 
 Live probes are opt-in and never required for completion claims:
 `node eval/run.mjs --run --max-probes N` (spends tokens; manual only).

@@ -1,0 +1,11 @@
+# 0005 frontend quality v2
+## Status: accepted (same chat approval as 0004)
+## Context: agent-generated UI judged bad. Research (2026-11-07): market-leading AI UI = React + Tailwind + shadcn/ui primitives (Radix WAI-ARIA), full-spec prompting (per-component behavior + per-element prefs + stack/fonts/palette + context), AA bar (WCAG 2.2: 4.5:1/3:1 contrast, focus-not-obscured, 24px targets, APG keyboard/landmarks), all-states + responsive (empty/loading/error/disabled, mobile→desktop), motion spec (framer-motion, skeletons). Pipeline SOTA: screenshot→critique→fix capped 2-3, cheapest-evidence-first (DOM/a11y before pixels), Playwright toHaveScreenshot + committed baselines + --update-snapshots, Build→Test gates, Figma-MCP token extraction into spec, living component constraint via MCP/UI context.
+## Decision: (1) frontend-design SKILL.md upgrade with the 5 rules + spec template. (2) ui-review upgrade: AA checklist + slop patterns (custom controls, happy-path-only, missing motion, broken primitive contract). (3) Visual loop stage (screenshot→critique→fix, cap 2-3, pixels-only-when-needed) wired into game pipeline first, feature optionally, using existing playwright MCP + committed baselines. (4) Figma-MCP token pattern documented (when Figma exists, coordinator extracts tokens into spec).
+## Goal: UI output clearing the defined bar + loop wired into pipelines; ui-review gate with AA checks.
+## Non-goals: vendoring component libraries; restacking existing projects; replacing human taste.
+## Alternatives: stack-agnostic only (evidence: stack-specific wins); manual review only (loop is the mechanism); full design-system vendoring (ownership beats dependency).
+## Trade-offs: loop token/time cost (capped, pixels-only-when-needed); baseline storage; shadcn assumption with documented deviation escape hatch.
+## Trace: UI rules→skill rules→contract tests; pipeline loop→loop stage→eval probes; AA bar→review checklist.
+## Review findings: requirements (bar completeness per WCAG 2.2 AA + Radix/APG); failure modes (loop non-convergence → escalate rule); operability (playwright MCP present, REA available). No open questions blocking plans.
+## Leading indicators: ui-review pass rate; loop rounds used vs cap; issues caught pre-implementation.

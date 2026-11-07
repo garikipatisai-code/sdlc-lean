@@ -30,4 +30,34 @@ Cream `#F4F1EA`+terracotta `#D97757`, black+acid accent, broadsheet hairlines, S
 3. Build: watch CSS specificity; React+Tailwind+shadcn default; tokens in `DESIGN.md`.
 4. Critique: responsive, keyboard focus visible, reduced-motion respected, accessible palette; remove one accessory.
 
+## Primitives
+
+Primitive-first: shadcn/Radix + Tailwind only, no custom controls. Customize via `className` and design tokens; never fork primitive behavior.
+
+## Full-spec prompt template
+
+Copy-paste this block per brief before building:
+
+```text
+Per-component behavior: <what each component does, its triggers, its outcome>.
+Per-element prefs: <type roles, spacing, emphasis per element>.
+Stack/fonts/palette: <React+Tailwind+shadcn, 1-2 font families + roles, 4-6 named hex>.
+App context: <audience, job, surrounding screens/flows>.
+Iteration protocol: <plan tokens + wireframe, build, review vs brief, revise with reason>.
+```
+
+Reject vague prompts; fill every slot or confirm subject first.
+
+## AA gate
+
+WCAG 2.2 AA: text contrast 4.5:1, large text/graphics 3:1. Focus-visible never obscured. Targets 24px min. Full keyboard path plus landmarks; reduced-motion respected.
+
+## States + responsive
+
+Spec all states: empty, loading, error, disabled — happy-path-only fails review. Mobile to desktop with one consistent spacing scale; no breakpoint-specific chrome.
+
+## Motion
+
+Framer-motion for hover/press/enter, focus transitions, skeleton loaders. Static-only fails review; keep motion to one orchestrated moment max per Principles.
+
 Provenance: upstream siblings `canvas-design` and `web-artifacts-builder` are not vendored here and their SPDX/license status is unverified — do not assume Apache-2.0 coverage.

@@ -14,6 +14,8 @@ Adapter of `vercel-labs/agent-skills` (`web-design-guidelines` + `react-best-pra
 3. Apply all fetched rules + React perf rules (waterfalls, bundle, server/client fetching, re-renders — 40+ rules, impact-ordered).
 4. Output terse `file:line` findings only. No prose walls. Group: design / a11y / UX / perf.
 
-## Quality floor
+## AA gate
 
-Semantic HTML first, visible focus, keyboard + focus-trap, 4.5:1 / 3:1 contrast, skip-links + live-regions, `prefers-reduced-motion`, 200% zoom. Tools catch ~30-40% — manual keyboard + screen-reader check still required.
+Contrast 4.5:1 / 3:1, focus-visible, 24px targets, keyboard + landmarks per APG/Radix; semantic HTML, skip-links + live-regions, `prefers-reduced-motion`, 200% zoom.
+Flag slop: custom controls, happy-path-only, missing motion, broken primitive contract.
+Manual keyboard + screen-reader check required (tools catch ~30-40%).

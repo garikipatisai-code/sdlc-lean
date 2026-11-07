@@ -53,3 +53,21 @@ Rules of engagement:
   its own relaunch.
 - Persist a durable handoff before any forced session boundary; never claim a
   background process or cross-session mechanism that does not exist.
+
+## Model routing (free-first)
+
+Role defaults: implementer → `cohere/north-mini-code:free`; reviewer/planner →
+`nvidia/nemotron-3-ultra-550b-a55b:free`; summarizer → `google/gemma-4-31b-it:free`.
+Tier override: trivial → cheapest available free; standard → role default;
+architectural → strongest-available free, or Go-plan model only with human confirm.
+Accounts: alternate `openrouter` / `openrouter-b` round-robin; log one progress-ledger row
+per dispatch (model + account).
+Denylist (never select): `poolside/laguna` (expired), `inkling` (harness-only),
+`liquid/lfm` (not-for-coding), content-safety no-tools models.
+Privacy: customer code → no-train endpoints only (`north`/`flint`/`gemma`/`dots`);
+NVIDIA → non-sensitive only; secrets NEVER to any free endpoint.
+Fallback chains (ordered; on 429/provider-error retry SAME model on OTHER account first, then next link):
+- implementer: `cohere/north-mini-code:free` → `recursive/flint-v1.0:free` → paid `openai/gpt-oss-120b` ONLY with envelope pre-authorized micro-cap, else stop+escalate with ledger evidence.
+- reviewer/planner: `nvidia/nemotron-3-ultra-550b-a55b:free` → escalate (no paid link — reviewers stay free).
+- summarizer: `google/gemma-4-31b-it:free` → `dots-studio/dots-3-note-preview:free` → escalate.
+Fragility: single-provider Flint 0/3 Nov 3 — expect link skips. Chain exhausted + no cap → stop + escalate. NEVER auto-spend (absolute).

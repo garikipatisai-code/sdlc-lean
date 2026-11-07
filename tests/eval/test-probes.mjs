@@ -41,8 +41,8 @@ test('every group is represented', () => {
   for (const g of GROUPS) assert.ok(PROBES.some((p) => p.group === g), `missing group ${g}`);
 });
 
-test('probe set: exactly 35 probes', () => {
-  assert.equal(PROBES.length, 35, `expected 35 probes, found ${PROBES.length}`);
+test('probe set: exactly 44 probes', () => {
+  assert.equal(PROBES.length, 44, `expected 44 probes (40 + 4 UI T4), found ${PROBES.length}`);
 });
 
 test('command, agent, and router groups are exactly the eight new advisory probes', () => {

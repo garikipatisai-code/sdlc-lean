@@ -18,10 +18,10 @@ Reimplemented from SOTA autonomy patterns (Cursor /goal + /loop, Copilot steer, 
 - Gate every Auto run on a named check command (tests, build, lint, or screenshot). State the exact command before the first edit; iterate until pass or honest stop.
 - Steer without interrupting: follow-ups queue for next tool call; long-lived `/goal` holds objective until complete.
 - Escalate when the same check fails twice with the same output, or when scope or reversibility is unclear. No unmeasured success rate: a check result is pass or fail, not a score.
-- Record exactly one row per Auto run in `docs/audit-ledger.md`:
-
-| date | tier | check | result | reversal |
-|---|---|---|---|---|
-| 2026-10-30 | Auto | `npm test` | pass | commit `abc1234` |
+- Record exactly one row per Auto run in `docs/audit-ledger.md` (`| date | tier | check | result | reversal |`), e.g. `2026-10-30 | Auto | npm test | pass | commit abc1234`.
 
 - `reversal` names the undo path: the reverting commit, the diff, or the path to restore. No reversal path, no Auto run.
+
+## Model tier note
+Light checks may ride cheap models; consequential runs use stronger — see orchestrator Model routing.
+Routing 429/provider-error follows fallback chain; exhausted chain stops and escalates — never auto-spends.

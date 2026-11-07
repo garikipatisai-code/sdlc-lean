@@ -147,6 +147,11 @@ All notable changes to this project are documented here. Format follows
 - Follow-up pinning: 10 safety-guard blocks, 17 phase/permissions/merge
   blocks, and T5 guard nits pinned as tests (567 passing); machine-close
   session-independence validator fixed to see raw critic sessions.
+- Router activation: every subagent pinned to `console-openrouter`
+  `super-vl:free`; per-dispatch override alternation across both accounts;
+  paid fallback removed; live both-account smokes run at $0.
+- Frontend v2: `frontend-design` skill as five rules, AA review gate, game
+  visual loop, and 44 probes.
 
 ### Fixed
 - Machine-close critic check no longer validates session-stripped verdicts:

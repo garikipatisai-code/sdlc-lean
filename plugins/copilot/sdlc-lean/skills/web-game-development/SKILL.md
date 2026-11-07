@@ -110,7 +110,7 @@ Every cell names evidence to show before any S-tier claim.
 4. **Build a vertical slice** — greybox first, measure frame time immediately,
    then add content. Juice and assets only after the loop reads.
 5. **Verify** — deterministic replay test; p95 frame time on target hardware;
-   bundle/asset/GPU-memory budget; input latency; a11y checklist; portal build.
+   bundle/asset/GPU-memory budget; input latency; a11y checklist; portal build; visual loop (screenshot→critique→fix, max 2–3 rounds) per `game.md`.
 6. **Ship** — portal channels, analytics, save schema version, rollback plan.
    Read `references/web-shipping.md` before the first upload.
 

@@ -184,3 +184,52 @@ tail risk, not shipped behavior (threat-model R3 section).
   `node --test tests/eval/test-probes.mjs` (20),
   `node --test tests/opencode/test-eval-coverage.mjs` (7),
   `npm run lint` (40 skills).
+
+## Routing + frontend tracks (closeout)
+
+Per-track dispositions for the two tracks closed in this sweep (prose/docs
+mirror only — no behavior changes, no source-skill edits).
+
+### Routing track
+
+**Commit:** `2c39c22` (Routing activation: super-vl pins all agents,
+per-dispatch override, live both-account smokes, probes updated); builds on
+`936fc3a` (free-model tiers + fallback chains + dry probes).
+
+**Shipped:**
+- All subagents pinned to `console-openrouter` `super-vl:free`.
+- Per-dispatch override alternation across both accounts.
+- Paid fallback removed (no paid link remains).
+- Live both-account smokes run at $0.
+- Verify gate green at 568 pass / 0 fail on this commit.
+
+**Residuals carried forward:**
+- Override-alternation live proof: pending the first real 429 /
+  multi-dispatch run on live traffic (no synthetic 429 injections).
+- ZDR re-probe procedure: not yet executed; remains a follow-up step.
+- Broker attestation: accepted residual — session independence is
+  self-attested, broker-attested identity is out of scope, no broker code
+  (see D-031 / Accepted-by-design).
+- No-sandbox: accepted-by-design residual — gate enforces marker-path
+  containment only; drift detection, not forgery prevention (see D-013).
+
+**Non-goals (explicit):**
+- No paid fallback link — paid path removed, not redirected.
+- No auto-spend — smokes verified at $0; no spend automation added.
+
+### Frontend track
+
+**Commit:** `936fc3a` (Frontend: 5-rule skill, AA review, visual loop,
+44 probes).
+
+**Shipped:**
+- `frontend-design` skill as five rules.
+- AA review gate.
+- Game visual loop.
+- 44 probes.
+
+**Residuals carried forward:** none beyond the shared broker-attestation and
+no-sandbox accepted residuals above.
+
+**Non-goals (explicit):**
+- No paid fallback link; no auto-spend (shared with routing track).

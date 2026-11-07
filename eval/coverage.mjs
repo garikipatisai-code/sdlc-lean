@@ -11,6 +11,21 @@
 // Exactly one of `probe`/`group`/`exempt` per entry. `probe` names a `PROBES`
 // id; `group` names a probe group containing at least one probe; `exempt`
 // carries a non-empty one-line `reason`.
+//
+// Calibration / structural boundary (D-022; D-017/D-020/D-027 notes):
+// - This map + content contracts are STRUCTURAL CHECKS ONLY, not runtime proof
+//   (D-022 boundary). Green coverage does not prove live-model behavior.
+// - Advisory probes are UNCALIBRATED (absent from CALIBRATION = uncalibrated;
+//   only the 5 stable entries below are calibrated). Live-run entry criteria:
+//   explicit live-harness run with a real model, human approval where required,
+//   fresh scratch per probe; advisory never fails a run until calibrated.
+// - D-017 staleness note: ledger/task advisory-count wording (11 advisory:
+//   3 execution + 7 command/agent/router + command-release; ledger claimed
+//   3x advisory) is stale vs this file + eval/probes.mjs, which govern
+//   (currently 8 advisory: 4 command + 1 agent + 3 router). Reconciled by
+//   documentation only — NO flag flips, no count or CALIBRATION changes.
+//   Probe count, group membership, advisory flags, CALIBRATION map are
+//   behaviorally identical.
 
 export const SKILLS = {
   'acquiring-capabilities': {

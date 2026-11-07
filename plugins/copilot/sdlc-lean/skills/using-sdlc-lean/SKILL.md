@@ -35,7 +35,8 @@ Classify, run the pipeline, announce the route in one line. Pipeline skill first
 - Unfamiliar domain / capability gap → `acquiring-capabilities`: reuse before building.
 - External-evidence question (research/compare/SOTA) → `deep-research`. Comparing options → `option-selection`.
 - Empirical experiment → `research-protocol` (frozen, not `deep-research`).
-- Many independent sub-tasks → `dispatching-parallel-agents` (fan-out/fan-in).
+- Many tasks → `dispatching-parallel-agents`.
+- Colab run/release→`colab-lifecycle`.
 
 Ambiguous? Pick the safer route.
 

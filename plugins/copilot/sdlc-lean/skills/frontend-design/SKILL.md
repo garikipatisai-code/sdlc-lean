@@ -29,3 +29,5 @@ Cream `#F4F1EA`+terracotta `#D97757`, black+acid accent, broadsheet hairlines, S
 2. Review vs brief: generic for any page? Revise and state why.
 3. Build: watch CSS specificity; React+Tailwind+shadcn default; tokens in `DESIGN.md`.
 4. Critique: responsive, keyboard focus visible, reduced-motion respected, accessible palette; remove one accessory.
+
+Provenance: upstream siblings `canvas-design` and `web-artifacts-builder` are not vendored here and their SPDX/license status is unverified — do not assume Apache-2.0 coverage.

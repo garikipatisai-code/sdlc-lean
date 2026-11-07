@@ -4,6 +4,7 @@
 <title>sdlc-lean dashboard (read-only)</title>
 <style>:root{color-scheme:light dark}body{font-family:system-ui,sans-serif;max-width:60ch;margin:2rem auto;padding:0 1rem}pre{overflow:auto}</style>
 <h1>sdlc-lean dashboard</h1>
-<p>Read-only companion. No auth, no sync. Data from <code>/api/snapshot</code>.</p>
+<p>Read-only companion. No auth, no sync. Data from <code>/api/snapshot</code>. Polls every 15s (zero-dep fetch only, no sockets).</p>
+<p id="meta">loading…</p>
 <pre id="s">loading…</pre>
-<script>fetch('/api/snapshot').then(r=>r.json()).then(j=>{document.getElementById('s').textContent=JSON.stringify(j,null,2)}).catch(e=>{document.getElementById('s').textContent='snapshot failed: '+e})</script>
+<script>function load(){fetch('/api/snapshot').then(r=>r.json()).then(j=>{document.getElementById('s').textContent=JSON.stringify(j,null,2);document.getElementById('meta').textContent='age '+(j.ageSec==null?'unknown':j.ageSec+'s')+' · '+(j.badge||(j.stale?'stale':'fresh'))+' · mtime '+(j.mtime||'unknown')}).catch(e=>{document.getElementById('s').textContent='snapshot failed: '+e})}load();setInterval(load,15000)</script>

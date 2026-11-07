@@ -13,17 +13,34 @@ const repoRoot = path.resolve(__dirname, '..');
 
 const statusPath = path.join(process.env.XDG_STATE_HOME || path.join(os.homedir(), '.local', 'state'), 'sdlc-lean', 'status.json');
 
+const STALE_AFTER_SEC = 300;
+
 export const snapshot = () => {
-  const out = { status: null, eval: [], progress: [] };
+  const out = { status: null, eval: [], progress: [], mtime: null, ageSec: null, stale: true, badge: 'stale' };
+  let latest = 0;
+  const touch = (p) => { try { const m = fs.statSync(p).mtimeMs; if (m > latest) latest = m; } catch {} };
   try { out.status = JSON.parse(fs.readFileSync(statusPath, 'utf8')); } catch {}
+  touch(statusPath);
   try {
     const dir = path.join(repoRoot, 'eval', 'results');
-    if (fs.existsSync(dir)) out.eval = fs.readdirSync(dir).filter((f) => f.endsWith('.md')).slice(-10);
+    if (fs.existsSync(dir)) {
+      out.eval = fs.readdirSync(dir).filter((f) => f.endsWith('.md')).slice(-10);
+      for (const f of out.eval) touch(path.join(dir, f));
+    }
   } catch {}
   try {
     const dir = path.join(repoRoot, 'docs', 'plans');
-    if (fs.existsSync(dir)) out.progress = fs.readdirSync(dir).filter((f) => f.endsWith('-progress.md'));
+    if (fs.existsSync(dir)) {
+      out.progress = fs.readdirSync(dir).filter((f) => f.endsWith('-progress.md'));
+      for (const f of out.progress) touch(path.join(dir, f));
+    }
   } catch {}
+  if (latest > 0) {
+    out.mtime = new Date(latest).toISOString();
+    out.ageSec = Math.max(0, Math.round((Date.now() - latest) / 1000));
+    out.stale = out.ageSec > STALE_AFTER_SEC;
+    out.badge = out.stale ? 'stale' : 'fresh';
+  }
   return out;
 };
 
@@ -32,7 +49,7 @@ if (isMain) {
   const args = process.argv.slice(2);
   if (args.includes('--check')) {
     const s = snapshot();
-    console.log(`dashboard check: status=${s.status ? 'ok' : 'missing'} eval=${s.eval.length} progress=${s.progress.length}`);
+    console.log(`dashboard check: status=${s.status ? 'ok' : 'missing'} eval=${s.eval.length} progress=${s.progress.length} age=${s.ageSec ?? 'unknown'}s stale=${s.stale} badge=${s.badge} mtime=${s.mtime ?? 'unknown'}`);
     process.exit(0);
   }
   const port = Number(args[args.indexOf('--port') + 1]) || 18749;

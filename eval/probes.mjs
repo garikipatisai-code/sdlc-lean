@@ -16,6 +16,22 @@
 // the probe; `baseline` lists files hashed before and after for file-unchanged.
 // `command` declares static argv the harness runs after the model (never a
 // shell); `command-exit` checks the recorded exit status.
+//
+// Calibration / structural boundary (D-022, D-020, D-027; D-017 staleness note):
+// - Content contracts + probe expectations are STRUCTURAL CHECKS ONLY, not
+//   runtime proof (D-022 boundary). A green structural suite does not prove
+//   live-model behavior; runtime proof requires a live run (see criteria below).
+// - Advisory probes are UNCALIBRATED: model-dependent, never fail a run,
+//   reported separately. Live-run entry criteria: explicit live-harness run
+//   with a real model, human approval where required, fresh scratch per probe;
+//   do not gate merges on advisory outcomes until calibrated to
+//   stable/unstable in eval/coverage.mjs CALIBRATION.
+// - D-017 staleness note: task/ledger advisory-count wording (11 advisory:
+//   3 execution + 7 command/agent/router + command-release; ledger claimed
+//   3x advisory) is stale vs this file, which is the source of truth
+//   (currently 8 advisory: 4 command + 1 agent + 3 router). Reconciled here
+//   by documentation only — NO flag flips, no count changes, no CALIBRATION
+//   edits. Record any follow-up pinning need separately; do not edit tests.
 
 export const PROBES = [
   {

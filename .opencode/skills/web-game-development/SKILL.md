@@ -151,3 +151,4 @@ input log must reproduce the same state hash in CI.
 - `references/web-shipping.md` — portals, PWA, saves, audio unlock, a11y, launch.
 - `references/game-design-playtest.md` — core loop, feel, balance, playtest, a11y.
 - `references/VENDORED.md` — upstream source, commit, license, scope.
+> Provenance: this tree shipped without spec-gate approval — future edits need an approved plan; upstream pin in `references/VENDORED.md`.

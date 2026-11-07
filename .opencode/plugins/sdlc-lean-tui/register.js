@@ -253,6 +253,20 @@ export const hostEvidenceSummary = (root, gate) => {
   return { rows, matched, malformed };
 };
 
+// Inline staleness for sdlc.status: marker-file age against the 300s
+// dashboard threshold. No new deps: fs stat mtime + Date.now only.
+export const markerStaleness = (root) => {
+  if (!fsModule || !root) return { known: false };
+  try {
+    const st = fsModule.lstatSync(path.resolve(root, MARKER_REL));
+    if (st.isSymbolicLink() || !st.isFile()) return { known: false };
+    const ageSec = Math.max(0, Math.floor((Date.now() - st.mtimeMs) / 1000));
+    return { known: true, ageSec, stale: ageSec > 300 };
+  } catch {
+    return { known: false };
+  }
+};
+
 export const resolveSessionID = (context) => {
   let route;
   try {
@@ -540,7 +554,8 @@ export const setupTui = async (context) => {
         `excerpt (first ${EXCERPT_CHARS} chars):`,
         excerpt,
         '',
-        'Approve writes .sdlc/spec-gate.json here (preview-only retired).',
+        'Preview-only details above — a pre-write preview, not an approval claim.',
+        'TUI tools here are read-only for commands (no session command is run); approval needs a gated write tool, so confirming writes the marker directly, or approve in a terminal instead:',
         `Fallback: ${buildApproveCommand(root, displayPlan, shownPlanHash)}`,
       ].join('\n');
 
@@ -772,7 +787,11 @@ export const setupTui = async (context) => {
       }
       const gate = gateSummary(liveRoot);
       if (gate?.active && gate.invalid) {
-        await showToast(context, 'gate invalid', 'error');
+        const staleness = markerStaleness(liveRoot);
+        const detail = staleness.known
+          ? `staleness: ${staleness.stale ? 'stale' : 'fresh'} (marker age ${staleness.ageSec}s; stale>300s)`
+          : 'staleness: unknown (marker mtime unavailable)';
+        await showToast(context, `gate invalid\n${detail}`, 'error');
         return;
       }
       if (!gate?.active) {
@@ -780,6 +799,10 @@ export const setupTui = async (context) => {
         return;
       }
       const evidence = hostEvidenceSummary(liveRoot, gate);
+      const staleness = markerStaleness(liveRoot);
+      const stalenessLine = staleness.known
+        ? `staleness: ${staleness.stale ? 'stale' : 'fresh'} (marker age ${staleness.ageSec}s; stale>300s)`
+        : 'staleness: unknown (marker mtime unavailable)';
       const message = [
         'gate: active',
         `plan: ${gate.plan}`,
@@ -787,6 +810,7 @@ export const setupTui = async (context) => {
         `files: ${gate.files.length}`,
         `allow: ${gate.allow.length}`,
         `host evidence: ${evidence.matched}/${evidence.rows} rows (advisory)`,
+        stalenessLine,
       ].join('\n');
       await showToast(context, message, 'info');
     } catch (err) {

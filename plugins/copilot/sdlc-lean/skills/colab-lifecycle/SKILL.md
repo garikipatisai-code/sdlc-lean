@@ -10,6 +10,8 @@ Run approved Colab workloads end to end. The pinned `colab-mcp` server is a
 cannot allocate, inspect, or shut down a runtime. Allocation is **manual**
 (Colab UI). Release goes through `runtime.unassign()` in an approved cell.
 Full audit: `references/capability-matrix.md`.
+Matrix pin stays; the tool catalog is dynamic — re-audit on pin change.
+Observations here are scoped to the CPU-only live run (7-tool catalog; run_code_cell ambiguity documented-only).
 
 ```mermaid
 flowchart LR

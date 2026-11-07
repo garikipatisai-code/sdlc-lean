@@ -303,9 +303,43 @@ export const compactionContext = (root) => {
 // --- Safety guards (ALWAYS ON) --------------
 // Fail-open: only exact-known destructive patterns throw; everything else
 // passes untouched. Errors explain the safe alternative.
+// Normalization (D-001/D-009 rm class): expand $HOME, collapse //, resolve
+// dot segments, canonicalize rm flags (case-insensitive R, split flags, --)
+// BEFORE matching so equivalent forms hit the same exact-known patterns.
+const normalizePosixPath = (p) => {
+  const parts = p.split('/');
+  const stack = [];
+  for (const seg of parts) {
+    if (seg === '' || seg === '.') continue;
+    else if (seg === '..') { if (stack.length) stack.pop(); }
+    else if (/^\*+$/.test(seg)) continue; // /* -> parent (rm -rf /* == rm -rf /)
+    else stack.push(seg);
+  }
+  let out = `/${stack.join('/')}`;
+  if (p.endsWith('/') && out !== '/' && !out.endsWith('/')) out += '/';
+  return out || '/';
+};
+
+// Pure string rewrite (never throws): equivalent destructive forms canonicalize
+// to the same literal the exact-known patterns already refuse.
+const normalizeRmCommand = (cmd) => {
+  let s = String(cmd || '');
+  s = s.replace(/\$\{HOME\}|\$HOME/g, '~');
+  s = s.replace(/(['"])(\/[^'"]*)\1/g, '$2'); // unquote absolute paths: "/" -> /
+  s = s.replace(/(['"])~(\/[^'"]*)?\1/g, '~$2'); // H4: unquote quoted tilde: "~" -> ~ ("~/foo" -> ~/foo; both expand in shell)
+  s = s.replace(/(?<!:)\/{2,}/g, '/'); // collapse //, keep :// URLs intact
+  s = s.replace(/(?<!:)\/[^\s'";|&]*/g, (m) => {
+    if (!m.includes('/./') && !m.includes('/../') && !m.endsWith('/.') && !m.endsWith('/..') && !m.includes('*')) return m;
+    return normalizePosixPath(m);
+  });
+  s = s.replace(/\s+--(?:no-)?preserve-root\b/g, ''); // H2: strip --preserve-root/--no-preserve-root so equivalents hit the same patterns
+  s = s.replace(/\brm\s+((?:-[A-Za-z0-9]+\s+)+)(--\s+)?/g, 'rm -rf ');
+  s = s.replace(/\brm\s+--\s+/g, 'rm -rf ');
+  return s;
+};
 const DESTRUCTIVE_PATTERNS = [
-  /\brm\s+(-[^;\s]*r[^;\s]*\s+)?(-{0,2}\s*\/(\s|$|;))/, // rm -rf / variants
-  /\brm\s+(-[^;\s]*r[^;\s]*\s+)?~(\s|$|;|\/)/, // rm -rf ~ variants
+  /\brm\s+(-[^;\s]*r[^;\s]*\s+)?(-{0,2}\s*\/(\s|$|;|\)|`|\|))/, // rm -rf / variants
+  /\brm\s+(-[^;\s]*r[^;\s]*\s+)?~(\s|$|;|\/|\)|`|\|)/, // rm -rf ~ variants
   /:\(\)\s*\{\s*:\|\:&\s*\}\s*;/, // fork bomb
   /\bmkfs(\.|$|\s)/,
   /\bdd\s+.*of=\/dev\/(sd|hd|nvme)/,
@@ -313,7 +347,7 @@ const DESTRUCTIVE_PATTERNS = [
 
 // Files whose contents must not enter the model context. Templates
 // (`.env.example`/`.sample`/`.template`) are not secrets.
-const SENSITIVE_PATH_RE = /(^|\/)\.env(?:\.(?!example$|sample$|template$)[^/]*)?$|(^|\/)(id_rsa|id_ed25519)$|\.pem$|\.key$/;
+const SENSITIVE_PATH_RE = /(^|\/)[^/]*\.env(?:\.(?!example$|sample$|template$)[^/]*)?$|(^|\/)(id_rsa|id_ed25519)$|\.pem$|\.key$/i;
 
 const FILE_TOOLS = new Set(['read', 'edit', 'write', 'patch', 'apply_patch']);
 
@@ -1115,12 +1149,66 @@ const approvePlan = async (ctx, { sessionID, prompt } = {}) => {
 // only counts at the start of a simple command (optionally after sudo/env), so
 // benign prose such as `git commit -m "remove cat .env"` still passes.
 const SECRET_READ_RE = new RegExp(
-  `(?:^|[;&|\\n]\\s*)(?:sudo\\s+|env\\s+|command\\s+)?`
-  + `(?:cat|bat|tac|head|tail|less|more|strings|xxd|od|hexdump|base64|nl)\\b[^\\n|;&]*`
+  `(?:^|[;&|(\\n$\`]\\s*)(?:sudo\\s+|env\\s+|command\\s+)?(?:\\/(?:bin|usr\\/bin)\\/)?`
+  + `(?:cat|bat|tac|head|tail|less|more|strings|xxd|od|hexdump|base64|nl|dd)\\b[^\\n|;&]*`
   + `(?:\\.env(?:\\.(?!example\\b|sample\\b|template\\b)[\\w.-]+)?|id_rsa|id_ed25519|[\\w.-]+\\.(?:pem|key))`
-  + `(?=[\\s'"]|$)`,
+  + `(?![\\w.-])`,
   'i',
 );
+
+// Shell exfiltration verbs beyond plain readers: grep/sed/awk (plus the
+// egrep/fgrep/gawk/mawk spellings), cp/mv/tee and friends at a command
+// position with a sensitive path refuse the same way.
+// Basename-aware (D-004): `[\\w.-]*\\.env` refuses `config.env`/`my.env` while
+// `(?!process\\.env\\b)` keeps `process.env` benign; the trailing
+// `(?![\\w.-])` refuses `x.env)`, `$(x.env)`, `x.env,` spellings.
+const SECRET_EXFIL_RE = new RegExp(
+  `(?:^|[;&|(\\n$\`]\\s*)(?:sudo\\s+|env\\s+|command\\s+)?(?:\\/(?:bin|usr\\/bin)\\/)?`
+  + `(?:egrep|fgrep|grep|sed|gawk|mawk|awk|cp|mv|tee|install|diff|cut|tr|sort|uniq|shred)\\b[^\\n|;&]*`
+  + `(?<![\\w.])(?:(?!process\\.env\\b)[\\w.-]*\\.env(?:\\.(?!example\\b|sample\\b|template\\b)[\\w.-]+)?|id_rsa|id_ed25519|[\\w.-]+\\.(?:pem|key))`
+  + `(?![\\w.-])`,
+  'i',
+);
+
+// Sensitive token anywhere in the command (template-aware, same left guard +
+// `process.env` exclusion so `CONFIG.ENV`/`config.env` refuse while
+// `process.env` stays benign; trailing `(?![\w.-])` so `x.env)`, `x.env,`
+// still refuse).
+const SENSITIVE_TOKEN_RE = /(?<![\w.])(?:(?!process\.env\b)[\w.-]*\.env(?:\.(?!example\b|sample\b|template\b)[\w.-]+)?|id_rsa|id_ed25519|[\w.-]+\.(?:pem|key))(?![\w.-])/i;
+
+// Redirection/exfil operators: < > | (single pipe, not ||) or outfile-ish tee.
+const SECRET_REDIR_RE = /(?:[<>]|(?<!\|)\|(?!\|)|\btee\b)/i;
+
+// Strip leading `VAR=val` assignments so `FOO=1 grep -r x .env` is tested as
+// `grep -r x .env` too (both forms are checked; `FOO=1 echo hi` still passes).
+const stripEnvPrefix = (s) => String(s || '').replace(/^\s*(?:(?:sudo|env|command)\s+)?(?:\w+=(?:'[^']*'|"[^"]*"|\S*)\s+)+/, '');
+
+// One-level `sh|bash|dash -c 'inner'` unwrap: the inner string is tested with
+// the same guards (`sh -c 'grep x .env'` refuses).
+const innerShellCommands = (s) => {
+  const out = [];
+  const re = /(?<![\w-])(?:sh|bash|dash)\s+-c\s+(["'])(.*?)\1/gi;
+  let m;
+  while ((m = re.exec(String(s || ''))) !== null) out.push(m[2]);
+  return out.filter((inner) => typeof inner === 'string' && inner !== '');
+};
+
+// Quote-aware redir exfil: operators inside quotes don't count
+// (`echo "a > b" .env` passes), and a pure-stderr `2>` redirect whose token
+// is a read argument (`ls -l .env 2>/tmp/e`) is not exfiltration. Refuses
+// when the token appears AFTER `<`/`>`/`>>`/`|`/`tee`, or when a
+// stdout-writing `>`/`>>`/`|`/`tee` co-occurs with the token anywhere.
+const hasExfilRedir = (commandText) => {
+  const raw = String(commandText || '');
+  if (!SENSITIVE_TOKEN_RE.test(raw)) return false;
+  const masked = raw.replace(/(["'`]).*?\1/g, (m) => ' '.repeat(m.length));
+  if (/\b[io]f=/.test(masked)) return true; // H5: dd if=/of= with a sensitive token is exfiltration
+  if (!SECRET_REDIR_RE.test(masked)) return false;
+  const opAt = masked.search(/(?:[<>]|(?<!\|)\|(?!\|)|\btee\b)/i);
+  if (opAt !== -1 && SENSITIVE_TOKEN_RE.test(raw.slice(opAt + 1))) return true;
+  const noStderr = masked.replace(/2>>?/g, (m) => ' '.repeat(m.length));
+  return /(?:>>?|(?<!\|)\|(?!\|)|\btee\b)/i.test(noStderr);
+};
 
 // Colab lifecycle guards: killing the MCP bridge is not a release substitute
 // (the runtime stays allocated), and /content is VM-ephemeral — unexported
@@ -1128,7 +1216,7 @@ const SECRET_READ_RE = new RegExp(
 // Like SECRET_READ_RE, each pattern only counts at the start of a simple
 // command (optionally after sudo/env/command), so quoted prose passes; the
 // trailing `(?![\w-])` keeps suffixed processes (colab-mcp-helper) benign.
-const COLAB_CMD = '(?:^|[;&|\\n]\\s*)(?:sudo\\s+|env\\s+|command\\s+)?';
+const COLAB_CMD = '(?:^|[;&|(\\n$\\`]\\s*)(?:(?:sudo(?:\\s+-[^\\s]+|\\s+-u\\s+[\\w.-]+)?|env|command)\\s+)?(?:\\/(?:bin|usr\\/bin)\\/)?';
 
 const COLAB_BRIDGE_MSG = 'Refusing to kill the Colab MCP bridge process. Killing the colab-mcp server is not a release substitute — the runtime stays allocated. Release compute with `google.colab.runtime.unassign()` in an approved notebook cell, then verify per the `colab-lifecycle` skill.';
 
@@ -1143,10 +1231,38 @@ const COLAB_GUARDS = [
     msg: COLAB_BRIDGE_MSG,
   },
   {
-    re: new RegExp(`${COLAB_CMD}rm\\s+(?:-[^;\\s]*r[^;\\s]*\\s+)['"]?\\/content(?:\\/|\\s|$|;|['"])`),
+    re: new RegExp(`${COLAB_CMD}rm\\s+(?:-[^;\\s]*r[^;\\s]*\\s+)['"]?\\/content(?:\\/|\\s|$|;|['"]|\\)|\`|\\|)`),
+    msg: 'Refusing to delete /content. On a Colab VM /content is deleted with the runtime, so unexported artifacts are lost with it. Export artifacts to an approved destination and verify hashes/acks before deleting.',
+  },
+  {
+    // Same class as rm /content (D-001/D-009): find -delete on /content.
+    re: new RegExp(`${COLAB_CMD}find\\b[^;\\n]*?\\/content(?:\\/|\\s|$|;|['"]|\\)|\`|\\|)[^;\\n]*?-delete\\b`),
+    msg: 'Refusing to delete /content. On a Colab VM /content is deleted with the runtime, so unexported artifacts are lost with it. Export artifacts to an approved destination and verify hashes/acks before deleting.',
+  },
+  {
+    // Reviewer Q (Task 1 deferred): flags-after-path `rm /content -rf`.
+    // Lookahead boundary keeps the trailing space for the flags-after match.
+    re: new RegExp(`${COLAB_CMD}rm\\s+['"]?\\/content(?=\\/|\\s|$|;|['"]|\\)|\`|\\|)[^;\\n]*?\\s-[^;\\s]*[Rr][^;\\s]*`),
     msg: 'Refusing to delete /content. On a Colab VM /content is deleted with the runtime, so unexported artifacts are lost with it. Export artifacts to an approved destination and verify hashes/acks before deleting.',
   },
 ];
+
+// Repeated/mixed launch prefixes for the COLAB bridge combo (M1): exec/nohup/
+// setsid/timeout and VAR= assignments in any order, incl. timeout's duration
+// (and flags). The brief's strip shape is extended with a timeout-with-arg
+// alternative — the literal shape leaves `timeout 5 pkill` unstripped
+// (bare `5` matches neither a launch word nor `\w+=`), so the duration must
+// be consumed for the must-throw `timeout 5 pkill -f colab-mcp` to throw.
+const stripLaunchPrefix = (s) => String(s || '').replace(/^\s*(?:timeout\s+(?:-\S+(?:\s+[^\s]+)?\s+)*\d\S*\s+|(?:sudo|env|command|exec|nohup|setsid|timeout)\s+|\w+=(?:'[^']*'|"[^"]*"|\S*)\s+)+/, '');
+
+// Numeric-pid / xargs bridge intent (D-009): kill verb at a command position
+// (optionally via `xargs`) + colab-mcp reference anywhere in the same command.
+// Liveness `-0` excluded, `-helper` suffix stays benign via `(?![\w-])`, and
+// quoted prose (`echo "…pkill…colab-mcp"`) passes because the verb is not at a
+// command position. Bare `kill <pid>` with no colab reference still passes
+// (pid unknowable — residual).
+const COLAB_TOKEN_RE = /\bcolab[_-]mcp(?![\w-])/;
+const COLAB_KILL_CMD_RE = new RegExp(`${COLAB_CMD}(?:xargs\\b[^;\\n]*?\\b)?(?:kill|pkill|killall)\\b(?![^;\\n]*\\s-0\\b)`);
 
 export const checkSafety = (tool, args = {}) => {
   if (FILE_TOOLS.has(tool)) {
@@ -1156,6 +1272,11 @@ export const checkSafety = (tool, args = {}) => {
     for (const raw of candidates) {
       const p = String(raw || '');
       if (p && SENSITIVE_PATH_RE.test(p)) {
+        if (tool === 'write' || tool === 'edit') {
+          throw new Error(
+            `[sdlc-lean] Refusing to write sensitive file "${p}". Secrets stay out of context — to regenerate, copy .env.example out-of-band or ask the human operator; direct agent write is refused.`,
+          );
+        }
         throw new Error(
           `[sdlc-lean] Refusing to open sensitive file "${p}". Inspect keys/fingerprints via a safe command instead; never load secrets into context.`,
         );
@@ -1164,20 +1285,47 @@ export const checkSafety = (tool, args = {}) => {
   }
   if (tool === 'bash' || tool === 'shell') {
     const cmd = String(args.command || '');
+    // Env-prefix (`FOO=1 ...`) and `sh -c '...'` spellings (nested to depth
+    // 3) are tested with the same guards as the raw command.
+    const variants = [cmd];
+    const variantDepth = [0];
+    const bare = stripEnvPrefix(cmd);
+    if (bare !== cmd) { variants.push(bare); variantDepth.push(0); }
+    for (let i = 0; i < variants.length; i++) {
+      if (variantDepth[i] >= 3) continue;
+      for (const inner of innerShellCommands(variants[i])) {
+        variants.push(inner); variantDepth.push(variantDepth[i] + 1);
+        const innerBare = stripEnvPrefix(inner);
+        if (innerBare !== inner) { variants.push(innerBare); variantDepth.push(variantDepth[i] + 1); }
+      }
+    }
     for (const re of DESTRUCTIVE_PATTERNS) {
-      if (re.test(cmd)) {
+      if (variants.some((v) => re.test(normalizeRmCommand(v)))) {
         throw new Error(
           '[sdlc-lean] Refusing destructive command. Narrow the target path or ask the human operator to run it outside the agent.',
         );
       }
     }
-    if (SECRET_READ_RE.test(cmd)) {
+    if (variants.some((v) => SECRET_READ_RE.test(v))) {
+      throw new Error(
+        '[sdlc-lean] Refusing to read a sensitive file into context. Inspect metadata (e.g. `ls -l`, key fingerprints) instead; secrets never enter the model context.',
+      );
+    }
+    if (variants.some((v) => SECRET_EXFIL_RE.test(v))) {
+      throw new Error(
+        '[sdlc-lean] Refusing to read a sensitive file into context. Inspect metadata (e.g. `ls -l`, key fingerprints) instead; secrets never enter the model context.',
+      );
+    }
+    if (variants.some(hasExfilRedir)) {
       throw new Error(
         '[sdlc-lean] Refusing to read a sensitive file into context. Inspect metadata (e.g. `ls -l`, key fingerprints) instead; secrets never enter the model context.',
       );
     }
     for (const { re, msg } of COLAB_GUARDS) {
-      if (re.test(cmd)) throw new Error(`[sdlc-lean] ${msg}`);
+      if (variants.some((v) => re.test(normalizeRmCommand(v)))) throw new Error(`[sdlc-lean] ${msg}`);
+    }
+    if (variants.some((v) => { const n = stripLaunchPrefix(normalizeRmCommand(v)); return COLAB_TOKEN_RE.test(n) && COLAB_KILL_CMD_RE.test(n); })) {
+      throw new Error(`[sdlc-lean] ${COLAB_BRIDGE_MSG}`);
     }
   }
 };

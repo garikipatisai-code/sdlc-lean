@@ -6,6 +6,8 @@ temperature: 0.1
 permission:
   edit: deny
   bash: ask
+  task:
+    "*": deny
 ---
 
 You are an explorer. Read-only (no edits; bash only for search/read commands like grep, git, ls).

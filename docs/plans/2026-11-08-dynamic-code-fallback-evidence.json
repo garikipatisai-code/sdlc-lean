@@ -1,0 +1,83 @@
+{
+  "plan": "docs/plans/2026-11-08-dynamic-code-fallback-progress.md",
+  "spec": "docs/specs/2026-11-08-dynamic-code-fallback.md",
+  "spec_missing": true,
+  "plan_missing_at_start": true,
+  "tasks": [
+    {
+      "task": "1 dynamic fallback session-model resolver no hardcode",
+      "verify": "node --check .opencode/plugins/sdlc-lean.js && node --check scripts/research/phase.mjs",
+      "exit": 0
+    },
+    {
+      "task": "1 RED probe resolver null fallback",
+      "verify": "node --input-type=module -e import assert p.FALLBACK===null resolveFallback/resolveQuotaFallback (pre-GREEN)",
+      "exit": 1
+    },
+    {
+      "task": "1 GREEN probe resolver mirror",
+      "verify": "node --input-type=module -e import assert resolver/dispatched-safe/bare/denied/variant/mismatch (post-GREEN)",
+      "exit": 0
+    },
+    {
+      "task": "1 quota plugin tests (failing pin reported, tests untouched)",
+      "verify": "node --test tests/opencode/test-quota-tracker.mjs",
+      "exit": 1
+    },
+    {
+      "task": "1 quota phase tests",
+      "verify": "node --test tests/scripts/research/test-quota-tracker.mjs",
+      "exit": 0
+    },
+    {
+      "task": "1 phase ledger regression",
+      "verify": "node --test tests/scripts/research/test-phase.mjs",
+      "exit": 0
+    }
+  ],
+  "files_changed": [
+    ".opencode/plugins/sdlc-lean.js",
+    "scripts/research/phase.mjs",
+    "docs/plans/2026-11-08-dynamic-code-fallback-progress.md",
+    "docs/plans/2026-11-08-dynamic-code-fallback-evidence.json"
+  ],
+  "known_failing_pin": "tests/opencode/test-quota-tracker.mjs:29 fallback is exactly muse-spark-1.3-contributor (actual null) - Task 3 owns re-pin with re-approval gate; do not edit tests in Task 1",
+  "task2_tests": [
+    "tests/opencode/test-dynamic-fallback.mjs",
+    "tests/scripts/research/test-dynamic-fallback.mjs"
+  ],
+  "task2_verify": "node --test tests/opencode/test-dynamic-fallback.mjs tests/scripts/research/test-dynamic-fallback.mjs",
+  "task2_exit": 0,
+  "task2_tests_passed": 18,
+  "task3_verify": "node --test tests/opencode/test-quota-tracker.mjs tests/scripts/research/test-quota-tracker.mjs tests/opencode/test-dynamic-fallback.mjs tests/scripts/research/test-dynamic-fallback.mjs tests/scripts/research/test-phase.mjs",
+  "task3_exit": 0,
+  "task3_tests_passed": 74,
+  "task3_files": [
+    "tests/opencode/test-quota-tracker.mjs",
+    "tests/scripts/research/test-quota-tracker.mjs",
+    "docs/plans/2026-11-08-dynamic-code-fallback-progress.md",
+    "docs/plans/2026-11-08-dynamic-code-fallback-evidence.json"
+  ],
+  "task4_verify": [
+    {
+      "task": "4 verify-only lint",
+      "verify": "node scripts/validate-skills.mjs",
+      "exit": 0,
+      "at": "2026-11-08T21:59:19Z"
+    },
+    {
+      "task": "4 verify-only full suite (bootstrap enforced by existing test-plugin-loading.mjs bootstrap stays within the 5KB budget)",
+      "verify": "npm run verify",
+      "exit": 0,
+      "at": "2026-11-08T21:59:19Z"
+    }
+  ],
+  "task4_exit": 0,
+  "task4_at": "2026-11-08T21:59:19Z",
+  "task4_spec_status": "docs/specs/2026-11-08-dynamic-code-fallback.md MISSING (checked 2026-11-08T21:59:19Z; not created, out of scope per brief)",
+  "task4_files": [
+    "docs/plans/2026-11-08-dynamic-code-fallback-progress.md",
+    "docs/plans/2026-11-08-dynamic-code-fallback-evidence.json"
+  ],
+  "non_sensitive": true
+}

@@ -1,0 +1,30 @@
+{
+  "plan": "docs/plans/2026-11-08-lean-ui-open-design.md",
+  "plan_sha256": "8d7274e03738590798108fe7327173811ebc1723c66c6254c699fc443521f810",
+  "tasks": [
+    {
+      "task": 1,
+      "verify": "node scripts/validate-skills.mjs",
+      "exit": 0,
+      "at": "2026-11-08T17:50:51.000Z"
+    },
+    {
+      "task": 3,
+      "verify": "node --test tests/opencode/test-skill-contracts.mjs",
+      "exit": 0,
+      "at": "2026-11-08T17:50:51.000Z"
+    },
+    {
+      "task": 5,
+      "verify": "npm run verify",
+      "exit": 0,
+      "at": "2026-11-08T17:50:51.000Z"
+    },
+    {
+      "task": 6,
+      "verify": "node -e 'const fs=require(\"fs\");const c=p=>fs.readFileSync(p,\"utf8\").split(\"\\n\").length-1;const a=[[\".opencode/skills/frontend-design/SKILL.md\",160],[\".opencode/skills/ui-review/SKILL.md\",25],[\".opencode/skills/web-game-development/SKILL.md\",155]];process.exit(a.every(([p,n])=>c(p)<=n)?0:1)'",
+      "exit": 0,
+      "at": "2026-11-08T17:50:51.000Z"
+    }
+  ]
+}

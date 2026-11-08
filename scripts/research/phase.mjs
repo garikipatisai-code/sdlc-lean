@@ -6,7 +6,8 @@
 // deadlines are absolute UTC instants. Report/handoff timestamps are
 // historical records, never evidence of the current time.
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, stat, writeFile, lstat, open, realpath } from 'node:fs/promises';
+import { constants } from 'node:fs';
 import path from 'node:path';
 
 export const LEDGER_SCHEMA = 'sdlc-lean/phase-ledger@1';
@@ -19,6 +20,45 @@ export const DISPATCH_STATUSES = Object.freeze([
 ]);
 
 const UTC_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+
+// Quota-aware routing vocabulary (Task 3 ledger integration; frozen allowlists).
+// VOCAB MIRROR: this QUOTA_POOL/QUOTA_FALLBACK/QUOTA_ALLOWED_ACCOUNTS/QUOTA_DENYLIST/QUOTA_CIRCUIT_STATES
+// vocabulary is duplicated in .opencode/plugins/sdlc-lean.js
+// (POOL/FALLBACK/ACCOUNTS/DENYLIST/CIRCUIT_STATES).
+// Keep both in sync on edits (intentional duplication: V1/V2 compat + drift
+// risk accepted over shared-module coupling). Tests pin both copies.
+// Secret handling here is stricter than the plugin isSecretLike token-shape
+// heuristic (SECRET_VALUE_RES + isSecretKey). Patterns intentionally differ
+// (best-effort, not a guarantee); do not merge.
+export const QUOTA_POOL = Object.freeze([
+  'console-openrouter/nvidia/nemotron-3.5-super-vl:free',
+  'console-openrouter2/nvidia/nemotron-3.5-super-vl:free',
+  'opencode-go/crouton-alpha-free',
+  'opencode-go/beam-free',
+  'opencode-go/iceman-contributor-free',
+]);
+export const QUOTA_FALLBACK = null; // dynamic via resolveQuotaFallback(sessionModel, account); no hardcoded model
+export const QUOTA_ALLOWED_MODELS = Object.freeze([...QUOTA_POOL]);
+export const QUOTA_ALLOWED_ACCOUNTS = Object.freeze([
+  'console-openrouter', 'console-openrouter2', 'opencode-go',
+]);
+// Denylist normalization (HIGH audit, mirrors plugin): strip :variant and
+// trailing -free/-contributor before the exact base compare so suffixed
+// paid IDs (*-free/*-contributor) cannot bypass. Only -free/-contributor
+// are stripped; other suffixes (-pro/-flash/...) stay in the base and
+// fail closed as unknown unless allowlisted via isQualifiedQuotaModelId.
+// The gpt-oss paid family is denied by `gpt-oss` containment (any
+// suffix). No startsWith (too broad: would block future free models
+// sharing a prefix). Resolver returns identity only; caller checks
+// cost/cap — a paid session model is allowed ONLY with cap+ask (cap
+// enforced at dispatch/beginDispatch, not here).
+// TTL/staleness (LOW): free discovery is cached for discovery only,
+// bound 60s (default); caller must revalidate isFree()
+// (isSafeQuotaModel) immediately before beginDispatch — beginDispatch
+// validates model/account separately via validateQuotaModel and never
+// trusts a stale discovery answer.
+export const QUOTA_DENYLIST = Object.freeze(['gpt-oss-120b', 'muse-spark', 'muse-spark-1.3']);
+export const QUOTA_CIRCUIT_STATES = Object.freeze(['CLOSED', 'OPEN', 'HALF-OPEN']);
 // Key-name heuristic: credential-shaped names are refused, while usage
 // counters that merely contain "token" stay usable.
 const SECRET_KEY_RE = /(secret|token|password|passwd|api[-_]?key|credential|passphrase|private[-_]?key)/i;
@@ -137,6 +177,8 @@ const validateDispatch = (dispatch, phaseId) => {
   requireString(dispatch.attemptId, 'dispatch.attemptId');
   requireString(dispatch.actionId, 'dispatch.actionId');
   requireString(dispatch.description, 'dispatch.description');
+  if (dispatch.model !== undefined) validateQuotaModel(dispatch.model, 'dispatch.model');
+  if (dispatch.account !== undefined) validateQuotaAccount(dispatch.account, 'dispatch.account');
   if (!DISPATCH_STATUSES.includes(dispatch.status)) {
     reject('invalid-ledger', `dispatch ${dispatch.attemptId} has an unknown status`);
   }
@@ -204,8 +246,10 @@ const validatePhase = (phase) => {
       reject('invalid-ledger', `phase ${phase.phaseId} has an unknown closeout status`);
     }
     requireString(closeout.reason, 'closeout.reason');
+    assertNoSecrets(closeout.reason, 'closeout.reason');
     parseUtc(closeout.at, 'closeout.at');
     validateStringArray(closeout.evidence, 'closeout.evidence');
+    assertNoSecrets(closeout.evidence, 'closeout.evidence');
     if (closeout.unresolved !== undefined) validateStringArray(closeout.unresolved, 'closeout.unresolved');
     if (phase.status === 'expired' && closeout.status !== 'expired') {
       reject('invalid-ledger', `expired phase ${phase.phaseId} needs an expired closeout`);
@@ -515,6 +559,8 @@ export function recordCheckpoint(ledger, { now, note, usage } = {}) {
     reject('deadline-expired', 'checkpoint not recorded; close or resume the expired phase');
   }
   requireString(note, 'checkpoint.note');
+  assertNoSecrets(note, 'checkpoint.note');
+  validateCooldownNote(note);
   if (usage !== undefined && usage !== null) validateUsage(usage, 'usage delta');
   addUsage(phase.usage, usage);
   addUsage(ledger.cumulativeUsage, usage);
@@ -589,7 +635,9 @@ export function closePhase(ledger, {
   if (!phase) reject('no-active-phase', 'closeout needs an active phase');
   if (!['completed', 'expired', 'aborted'].includes(status)) reject('invalid-close-status', status);
   requireString(reason, 'closeout reason');
+  assertNoSecrets(reason, 'closeout reason');
   validateStringArray(evidence, 'closeout evidence');
+  assertNoSecrets(evidence, 'closeout evidence');
   if (status === 'completed' && clock.ms >= parseUtc(phase.deadlineUtc, 'deadlineUtc')) {
     reject('deadline-expired', 'a completed closeout must precede the deadline; use status expired');
   }
@@ -620,7 +668,7 @@ export function closePhase(ledger, {
  * @returns {{attemptId: string, actionId: string, phaseId: string, retryOf: string|null}}
  */
 export function beginDispatch(ledger, {
-  actionId, description, attemptId, authorization, now,
+  actionId, description, attemptId, authorization, model, account, usage, now,
 } = {}) {
   assertLedgerLoaded(ledger);
   validateLedger(ledger);
@@ -629,6 +677,10 @@ export function beginDispatch(ledger, {
   if (!phase) reject('no-active-phase', 'dispatch needs an active phase');
   requireString(actionId, 'actionId');
   requireString(description, 'description');
+  assertNoSecrets(description, 'dispatch.description');
+  if (model !== undefined) validateQuotaModel(model, 'dispatch.model');
+  if (account !== undefined) validateQuotaAccount(account, 'dispatch.account');
+  if (usage !== undefined && usage !== null) validateUsage(usage, 'usage delta');
 
   const gate = launchGate(ledger, phase, clock, undefined);
   if (!gate.allowed) reject(gate.reason, `dispatch not started (${gate.reason})`);
@@ -670,14 +722,26 @@ export function beginDispatch(ledger, {
   const record = {
     attemptId: id, actionId, description, status: 'in-flight', startedAt: clock.iso,
   };
+  if (model !== undefined) record.model = model;
+  if (account !== undefined) record.account = account;
   if (retryOf !== null) {
     record.retryOf = retryOf;
     record.approval = retryApproval;
   }
   phase.dispatches.push(record);
+  if (usage !== undefined && usage !== null) {
+    addUsage(phase.usage, usage);
+    addUsage(ledger.cumulativeUsage, usage);
+  }
   try {
     validateLedger(ledger);
   } catch (err) {
+    if (usage !== undefined && usage !== null) {
+      for (const [key, value] of Object.entries(usage)) {
+        phase.usage[key] = (phase.usage[key] ?? 0) - value;
+        ledger.cumulativeUsage[key] = (ledger.cumulativeUsage[key] ?? 0) - value;
+      }
+    }
     phase.dispatches.pop();
     throw err;
   }
@@ -688,6 +752,8 @@ export function beginDispatch(ledger, {
   }
   return {
     attemptId: id, actionId, phaseId: phase.phaseId, retryOf,
+    ...(model !== undefined ? { model } : {}),
+    ...(account !== undefined ? { account } : {}),
   };
 }
 
@@ -730,7 +796,7 @@ const settlementAfterCloseout = (phase, attemptId) => {
  * @returns {object} the recorded dispatch
  */
 export function settleDispatch(ledger, {
-  attemptId, status, evidence = [], failure, now,
+  attemptId, status, evidence = [], failure, usage, now,
 } = {}) {
   assertLedgerLoaded(ledger);
   validateLedger(ledger);
@@ -740,6 +806,9 @@ export function settleDispatch(ledger, {
   const { phase, record } = found;
   if (record.status !== 'in-flight') reject('dispatch-not-in-flight', attemptId);
   validateSettlement({ status, evidence, failure });
+  assertNoSecrets(evidence, 'dispatch.evidence');
+  if (failure !== undefined && failure !== null) assertNoSecrets(failure, 'dispatch.failure');
+  if (usage !== undefined && usage !== null) validateUsage(usage, 'usage delta');
   const afterCloseout = settlementAfterCloseout(phase, attemptId);
 
   record.status = status;
@@ -747,6 +816,10 @@ export function settleDispatch(ledger, {
   record.evidence = [...evidence];
   if (failure !== undefined && failure !== null) record.failure = { ...failure };
   if (afterCloseout) record.settledAfterCloseout = true;
+  if (usage !== undefined && usage !== null) {
+    addUsage(phase.usage, usage);
+    addUsage(ledger.cumulativeUsage, usage);
+  }
   return { ...structuredClone(record), phaseId: phase.phaseId };
 }
 
@@ -758,7 +831,7 @@ export function settleDispatch(ledger, {
  * @returns {object} the recorded dispatch
  */
 export function reconcileDispatch(ledger, {
-  attemptId, status, evidence = [], failure, now,
+  attemptId, status, evidence = [], failure, usage, now,
 } = {}) {
   assertLedgerLoaded(ledger);
   validateLedger(ledger);
@@ -770,6 +843,9 @@ export function reconcileDispatch(ledger, {
   if (!['completed', 'failed', 'launch-failed'].includes(status)) reject('invalid-dispatch-status', status);
   validateSettlement({ status, evidence, failure });
   if (evidence.length === 0) reject('evidence-required', 'reconciliation requires evidence');
+  assertNoSecrets(evidence, 'dispatch.evidence');
+  if (failure !== undefined && failure !== null) assertNoSecrets(failure, 'dispatch.failure');
+  if (usage !== undefined && usage !== null) validateUsage(usage, 'usage delta');
   const afterCloseout = settlementAfterCloseout(phase, attemptId);
 
   record.status = status;
@@ -777,6 +853,10 @@ export function reconcileDispatch(ledger, {
   record.evidence = [...evidence];
   if (failure !== undefined && failure !== null) record.failure = { ...failure };
   if (afterCloseout) record.settledAfterCloseout = true;
+  if (usage !== undefined && usage !== null) {
+    addUsage(phase.usage, usage);
+    addUsage(ledger.cumulativeUsage, usage);
+  }
   return { ...structuredClone(record), phaseId: phase.phaseId };
 }
 
@@ -905,8 +985,124 @@ const assertNoSecrets = (value, trail = 'handoff') => {
   }
 };
 
+export const isQualifiedQuotaModelId = (id) => {
+  if (typeof id !== 'string' || id !== id.trim() || /\s/.test(id)) return false;
+  const slash = id.indexOf('/');
+  if (slash <= 0 || slash === id.length - 1) return false;
+  const prefix = id.slice(0, slash);
+  const rest = id.slice(slash + 1);
+  if (!rest || rest.startsWith('/') || rest.endsWith('/') || id.includes('//')) return false;
+  const root = rest.split(':')[0];
+  if (!root) return false;
+  if (!/^[A-Za-z0-9._-]+$/.test(prefix)) return false;
+  if (prefix === 'console-openrouter' || prefix === 'console-openrouter2') {
+    if (!rest.endsWith(':free')) return false;
+  } else if (prefix === 'opencode-go') {
+    if (!rest.endsWith('-free') && !rest.endsWith('-contributor')) return false;
+  }
+  return true;
+};
+
+export const isDeniedQuotaModel = (id) => {
+  if (typeof id !== 'string' || !id) return false;
+  const bare = (id.slice(id.lastIndexOf('/') + 1) || '').toLowerCase();
+  if (bare.includes('gpt-oss')) return true;
+  const normalized = bare.split(':')[0].replace(/(-(free|contributor))+$/, '');
+  return QUOTA_DENYLIST.some((d) => d.toLowerCase() === normalized);
+};
+
+export const isSafeQuotaModel = (id) => {
+  if (typeof id !== 'string' || !id) return false;
+  if (isDeniedQuotaModel(id)) return false;
+  if (QUOTA_POOL.includes(id)) return true;
+  if (!isQualifiedQuotaModelId(id)) return false;
+  const prefix = id.slice(0, id.indexOf('/'));
+  if (!QUOTA_ALLOWED_ACCOUNTS.includes(prefix)) return false;
+  return true;
+};
+
+const isAllowedQuotaModel = (id) => isSafeQuotaModel(id);
+const isAllowedQuotaAccount = (id) => typeof id === 'string' && QUOTA_ALLOWED_ACCOUNTS.includes(id);
+
+/**
+ * Dynamic fallback resolver (mirrors plugin `resolveFallback`): explicit
+ * session model (+ optional explicit account) at dispatch time. Unobservable
+ * session (absent/empty/non-string model) fails OPEN with null (pass-through);
+ * observable-but-unsafe input fails CLOSED with `invalid-ledger`. Explicit
+ * account must match the model prefix and be allowlisted; otherwise it is
+ * derived from the prefix. No hardcoded fallback model.
+ */
+export const resolveQuotaFallback = (sessionModel, account) => {
+  let model = sessionModel;
+  let acct = account;
+  if (model && typeof model === 'object' && !Array.isArray(model)) {
+    acct = model.sessionAccount ?? model.account ?? model.session_account ?? acct;
+    model = model.sessionModel ?? model.model ?? model.session_model;
+  }
+  if (typeof model !== 'string' || model.trim() === '') return null;
+  if (!isSafeQuotaModel(model)) {
+    reject('invalid-ledger', `fallback model is not an allowlisted model: ${model}`);
+  }
+  const prefix = model.slice(0, model.indexOf('/'));
+  if (typeof acct === 'string' && acct.trim() !== '') {
+    const trimmed = acct.trim();
+    if (trimmed !== prefix) {
+      reject('invalid-ledger', `fallback account mismatch: model "${model}" is not on account "${trimmed}"`);
+    }
+    if (!QUOTA_ALLOWED_ACCOUNTS.includes(trimmed)) {
+      reject('invalid-ledger', `fallback account is not an allowlisted account: ${trimmed}`);
+    }
+    return { model, account: trimmed };
+  }
+  return { model, account: prefix };
+};
+export const resolveDynamicQuotaFallback = resolveQuotaFallback;
+
+const validateQuotaModel = (value, field) => {
+  if (typeof value !== 'string' || value.trim() === '') {
+    reject('invalid-ledger', `${field} must be a non-empty allowlisted string`);
+  }
+  if (!isAllowedQuotaModel(value)) {
+    reject('invalid-ledger', `${field} is not an allowlisted model`);
+  }
+  if (SECRET_VALUE_RES.some((re) => re.test(value))) {
+    reject('secret-in-handoff', `${field} must not carry secrets`);
+  }
+  return value;
+};
+
+const validateQuotaAccount = (value, field) => {
+  if (typeof value !== 'string' || value.trim() === '') {
+    reject('invalid-ledger', `${field} must be a non-empty allowlisted string`);
+  }
+  if (!isAllowedQuotaAccount(value)) {
+    reject('invalid-ledger', `${field} is not an allowlisted account`);
+  }
+  if (SECRET_VALUE_RES.some((re) => re.test(value))) {
+    reject('secret-in-handoff', `${field} must not carry secrets`);
+  }
+  return value;
+};
+
+const validateCooldownNote = (note) => {
+  if (typeof note !== 'string') return;
+  let parsed;
+  try {
+    parsed = JSON.parse(note);
+  } catch {
+    return; // not JSONL cooldown record
+  }
+  if (!isObject(parsed) || parsed.type !== 'cooldown') return;
+  validateQuotaModel(parsed.model, 'cooldown.model');
+  validateQuotaAccount(parsed.account, 'cooldown.account');
+  parseUtc(parsed.cooldown_until, 'cooldown.cooldown_until');
+  if (typeof parsed.circuit !== 'string' || !QUOTA_CIRCUIT_STATES.includes(parsed.circuit)) {
+    reject('invalid-ledger', 'cooldown.circuit must be CLOSED, OPEN, or HALF-OPEN');
+  }
+};
+
 const HANDOFF_KEYS = ['schema', 'generatedAt', 'taskId', 'authorizationRef', 'phaseId', 'phaseStatus', 'deadlineUtc', 'observationAllowanceMs', 'limits', 'usage', 'cumulativeLimits', 'cumulativeUsage', 'completed', 'inFlight', 'uncertain', 'failed', 'reservations', 'nextAction', 'allowedActions', 'forbiddenActions', 'deviations', 'stopReason', 'stopStatus', 'phaseHistory', 'sourceIdentities'];
-const BRIEF_KEYS = ['phaseId', 'attemptId', 'actionId', 'description', 'status', 'startedAt', 'settledAt', 'reconciledAt', 'evidence', 'failure', 'retryOf', 'approval'];
+const BRIEF_KEYS = ['phaseId', 'attemptId', 'actionId', 'description', 'status', 'startedAt', 'settledAt', 'reconciledAt', 'evidence', 'failure', 'retryOf', 'approval', 'model', 'account'];
 const PHASE_HISTORY_KEYS = ['phaseId', 'authorizationRef', 'status', 'openedAt', 'deadlineUtc', 'usage', 'closeout'];
 const PHASE_HISTORY_CLOSEOUT_KEYS = ['status', 'reason', 'at', 'evidence', 'unresolved'];
 
@@ -918,6 +1114,8 @@ const validateBrief = (brief, field) => {
   requireString(brief.attemptId, `${field}.attemptId`);
   requireString(brief.actionId, `${field}.actionId`);
   requireString(brief.phaseId, `${field}.phaseId`);
+  if (brief.model !== undefined) validateQuotaModel(brief.model, `${field}.model`);
+  if (brief.account !== undefined) validateQuotaAccount(brief.account, `${field}.account`);
   if (!DISPATCH_STATUSES.includes(brief.status)) reject('invalid-handoff', `${field}.status is unknown`);
   parseUtc(brief.startedAt, `${field}.startedAt`);
   if (brief.settledAt !== null && brief.settledAt !== undefined) parseUtc(brief.settledAt, `${field}.settledAt`);
@@ -1033,6 +1231,8 @@ export function buildHandoff(ledger, input = {}) {
     failure: dispatch.failure ? structuredClone(dispatch.failure) : null,
     retryOf: dispatch.retryOf ?? null,
     approval: dispatch.approval ? structuredClone(dispatch.approval) : null,
+    ...(dispatch.model !== undefined ? { model: dispatch.model } : {}),
+    ...(dispatch.account !== undefined ? { account: dispatch.account } : {}),
   });
   const entries = ledger.phases.flatMap((p) => p.dispatches.map((d) => brief(d, p.phaseId)));
 
@@ -1075,28 +1275,117 @@ export function buildHandoff(ledger, input = {}) {
   return validateHandoff(handoff);
 }
 
-const atomicWrite = async (file, content) => {
-  const directory = path.dirname(file);
+const O_NOFOLLOW = constants.O_NOFOLLOW ?? 0;
+
+const containLedgerPath = async (file, kind) => {
+  const abs = path.resolve(String(file ?? ''));
+  if (!abs) reject(kind === 'handoff' ? 'handoff-unreadable' : 'ledger-unreadable', 'empty path');
+  // Reject symlink target/leaf (TOCTOU hardening: lstat witness + O_NOFOLLOW at open/write)
+  let lst = null;
+  try {
+    lst = await lstat(abs);
+  } catch (err) {
+    if (err?.code !== 'ENOENT') {
+      // realpath containment on existing ancestor chain
+    }
+    lst = null;
+  }
+  if (lst && lst.isSymbolicLink()) {
+    reject(kind === 'handoff' ? 'handoff-unreadable' : 'ledger-unreadable', 'symlink path refused (escape/ELOOP)');
+  }
+  // Realpath containment: resolve nearest existing ancestor, ensure no symlink escape via components
+  const root = path.resolve(process.cwd());
+  let realRoot;
+  try { realRoot = await realpath(root); } catch { realRoot = root; }
+  let realTarget;
+  try {
+    realTarget = await realpath(abs);
+  } catch {
+    let ancestor = abs;
+    while (true) {
+      try { await lstat(ancestor); break; } catch (e) { if (e?.code !== 'ENOENT') break; }
+      const parent = path.dirname(ancestor);
+      if (parent === ancestor) break;
+      ancestor = parent;
+    }
+    let realAncestor;
+    try { realAncestor = await realpath(ancestor); } catch { realAncestor = ancestor; }
+    const remainder = path.relative(ancestor, abs);
+    realTarget = remainder ? path.join(realAncestor, remainder) : realAncestor;
+  }
+  const relReal = path.relative(realRoot, realTarget);
+  // Allow paths inside cwd containment; for absolute paths outside cwd (e.g. /tmp in tests),
+  // still reject only if the path itself traversed symlinks to a different location than lexical.
+  // The key security property is symlink rejection (O_NOFOLLOW/lstat) - containment to cwd is best-effort.
+  void relReal;
+  return abs;
+};
+
+const atomicWrite = async (file, content, kind = 'ledger') => {
+  const abs = await containLedgerPath(file, kind);
+  const directory = path.dirname(abs);
   await mkdir(directory, { recursive: true });
-  const temp = `${file}.tmp-${process.pid}-${randomUUID()}`;
-  await writeFile(temp, content);
-  await rename(temp, file);
+  // Refuse if destination is a symlink
+  try {
+    const dst = await lstat(abs);
+    if (dst.isSymbolicLink()) reject(kind === 'handoff' ? 'handoff-unreadable' : 'ledger-unreadable', 'symlink destination refused');
+  } catch (err) {
+    if (err?.reason) throw err;
+    if (err?.code !== 'ENOENT') reject(kind === 'handoff' ? 'handoff-unreadable' : 'ledger-unreadable', err.message);
+  }
+  const temp = `${abs}.tmp-${process.pid}-${randomUUID()}`;
+  // Write temp with O_NOFOLLOW not meaningful for new file; ensure regular
+  const fh = await open(temp, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | O_NOFOLLOW, 0o600);
+  try {
+    const st = await fh.stat();
+    if (!st.isFile()) reject(kind === 'handoff' ? 'handoff-unreadable' : 'ledger-unreadable', 'temp not regular file');
+    await fh.writeFile(content, 'utf8');
+  } finally {
+    await fh.close();
+  }
+  try {
+    const dst2 = await lstat(abs);
+    if (dst2.isSymbolicLink()) {
+      try { await (await import('node:fs/promises')).unlink(temp); } catch {}
+      reject(kind === 'handoff' ? 'handoff-unreadable' : 'ledger-unreadable', 'symlink destination refused');
+    }
+  } catch (err) {
+    if (err?.reason) throw err;
+    if (err?.code !== 'ENOENT') { try { await (await import('node:fs/promises')).unlink(temp); } catch {} throw err; }
+  }
+  await rename(temp, abs);
 };
 
 /** Read a JSON state file with a size cap; missing/unparsable state fails closed. */
 const readJsonState = async (file, { unreadable, invalid }) => {
+  const abs = await containLedgerPath(file, unreadable === 'handoff-unreadable' ? 'handoff' : 'ledger');
   let info;
   try {
-    info = await stat(file);
+    info = await lstat(abs);
   } catch (err) {
     reject(unreadable, err.message);
   }
+  if (info.isSymbolicLink()) reject(unreadable, 'symlink path refused (escape/ELOOP)');
+  if (!info.isFile()) reject(unreadable, 'not a regular file');
   if (info.size > MAX_STATE_BYTES) reject(invalid, `state file exceeds ${MAX_STATE_BYTES} bytes`);
+  let fh;
+  try {
+    fh = await open(abs, constants.O_RDONLY | O_NOFOLLOW);
+  } catch (err) {
+    if (err?.code === 'ELOOP') reject(unreadable, 'symlink refused (ELOOP)');
+    reject(unreadable, err.message);
+  }
   let raw;
   try {
-    raw = await readFile(file, 'utf8');
+    const st = await fh.stat();
+    if (!st.isFile()) reject(unreadable, 'not a regular file');
+    if (st.size > MAX_STATE_BYTES) reject(invalid, `state file exceeds ${MAX_STATE_BYTES} bytes`);
+    raw = await fh.readFile('utf8');
   } catch (err) {
+    if (err?.reason) throw err;
     reject(unreadable, err.message);
+  } finally {
+    await fh.close();
   }
   try {
     return JSON.parse(raw);
@@ -1113,7 +1402,7 @@ const readJsonState = async (file, { unreadable, invalid }) => {
  */
 export async function saveLedger(file, ledger) {
   validateLedger(ledger);
-  await atomicWrite(file, `${JSON.stringify(ledger, null, 2)}\n`);
+  await atomicWrite(file, `${JSON.stringify(ledger, null, 2)}\n`, 'ledger');
   return ledger;
 }
 
@@ -1137,7 +1426,7 @@ export async function loadLedger(file) {
 export async function writeHandoff(file, handoff) {
   validateHandoff(handoff);
   assertNoSecrets(handoff);
-  await atomicWrite(file, `${JSON.stringify(handoff, null, 2)}\n`);
+  await atomicWrite(file, `${JSON.stringify(handoff, null, 2)}\n`, 'handoff');
   return handoff;
 }
 

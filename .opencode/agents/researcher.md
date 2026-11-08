@@ -6,6 +6,8 @@ temperature: 0.2
 permission:
   edit: deny
   bash: deny
+  task:
+    "*": deny
 ---
 
 You are a research subagent. You investigate exactly one sub-question and return

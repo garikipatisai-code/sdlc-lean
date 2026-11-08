@@ -1,0 +1,121 @@
+{
+  "$comment": "DERIVED contract for the vendored ComponentsManifest shape. No upstream JSON contract exists at pinned SHA; this file is derived from the TS type structure in contracts/components-manifest.ts (upstream packages/contracts/src/design-systems/components-manifest.ts). Required/optional, literal values, enums, and array/nesting are taken verbatim from the types — no guessing.",
+  "derived": true,
+  "derivedDate": "2026-11-08",
+  "upstream": "nexu-io/open-design",
+  "sha": "87a4f91c308170a8270458fc40fc66a86ed69aac",
+  "license": "Apache-2.0",
+  "sourceFiles": [
+    "packages/contracts/src/design-systems/components-manifest.ts",
+    "scripts/extract-components-manifest.ts"
+  ],
+  "vendoredAs": {
+    "type": ".opencode/skills/frontend-design/references/vendor/open-design/contracts/components-manifest.ts",
+    "extractor": ".opencode/skills/frontend-design/references/vendor/open-design/extract-components-manifest.ts"
+  },
+  "note": "contracts/components-manifest.ts is vendored byte-identical. extract-components-manifest.ts is vendored with ONE minimal adaptation: upstream import '../packages/contracts/src/design-systems/components-manifest.ts' (line 9) changed to './contracts/components-manifest.ts' so the extractor resolves the vendored dep; mirrored upstream path was not in the allowed file list. All other bytes unchanged.",
+  "schemaVersion": 1,
+  "type": "ComponentsManifest",
+  "requiredFields": [
+    "schemaVersion",
+    "brandId",
+    "source",
+    "fixture",
+    "tokens",
+    "selectors",
+    "classes",
+    "elements",
+    "groups",
+    "literals"
+  ],
+  "optionalFields": [],
+  "fields": {
+    "schemaVersion": { "type": "number (literal)", "value": 1, "required": true, "from": "COMPONENTS_MANIFEST_SCHEMA_VERSION = 1 as const" },
+    "brandId": { "type": "string", "required": true },
+    "source": {
+      "type": "object",
+      "required": true,
+      "requiredFields": ["componentsHtml"],
+      "optionalFields": ["tokensCss"],
+      "fields": {
+        "componentsHtml": { "type": "string (literal)", "value": "components.html", "required": true },
+        "tokensCss": { "type": "string (literal)", "value": "tokens.css", "required": false }
+      }
+    },
+    "fixture": {
+      "type": "object",
+      "required": true,
+      "requiredFields": ["styleBlockCount", "selectorCount", "classCount", "elementCount"],
+      "optionalFields": ["title", "description"],
+      "fields": {
+        "title": { "type": "string", "required": false },
+        "description": { "type": "string", "required": false },
+        "styleBlockCount": { "type": "number", "required": true },
+        "selectorCount": { "type": "number", "required": true },
+        "classCount": { "type": "number", "required": true },
+        "elementCount": { "type": "number", "required": true }
+      }
+    },
+    "tokens": {
+      "type": "object",
+      "required": true,
+      "requiredFields": ["declared", "referenced", "unusedDeclared", "undeclaredReferenced"],
+      "fields": {
+        "declared": { "type": "string[]", "required": true },
+        "referenced": { "type": "string[]", "required": true },
+        "unusedDeclared": { "type": "string[]", "required": true },
+        "undeclaredReferenced": { "type": "string[]", "required": true }
+      }
+    },
+    "selectors": { "type": "string[]", "required": true },
+    "classes": { "type": "string[]", "required": true },
+    "elements": { "type": "string[]", "required": true },
+    "groups": {
+      "type": "ComponentManifestGroup[]",
+      "required": true,
+      "item": {
+        "type": "object",
+        "requiredFields": ["id", "label", "present", "selectors", "classes", "elements", "tokenReferences"],
+        "fields": {
+          "id": { "type": "string (enum)", "value": ["buttons", "inputs", "cards", "badges", "links", "keyboard", "icons", "typography", "layout"], "required": true },
+          "label": { "type": "string", "required": true },
+          "present": { "type": "boolean", "required": true },
+          "selectors": { "type": "string[]", "required": true },
+          "classes": { "type": "string[]", "required": true },
+          "elements": { "type": "string[]", "required": true },
+          "tokenReferences": { "type": "string[]", "required": true }
+        }
+      }
+    },
+    "literals": {
+      "type": "object (ComponentManifestLiteralInventory)",
+      "required": true,
+      "requiredFields": ["colorExpressions", "pixelValues", "hardcodedFontFamilies"],
+      "fields": {
+        "colorExpressions": { "type": "number", "required": true },
+        "pixelValues": { "type": "number", "required": true },
+        "hardcodedFontFamilies": { "type": "number", "required": true }
+      }
+    }
+  },
+  "extractorCollection": {
+    "type": "ManifestCollection (scripts/extract-components-manifest.ts toCollection)",
+    "requiredFields": ["schemaVersion", "count", "manifests"],
+    "fields": {
+      "schemaVersion": { "type": "number (literal)", "value": 1, "required": true },
+      "count": { "type": "number", "required": true },
+      "manifests": { "type": "ComponentsManifest[]", "required": true }
+    }
+  },
+  "inputs": {
+    "ExtractComponentsManifestInput": {
+      "requiredFields": ["brandId", "fixtureHtml"],
+      "optionalFields": ["tokensCss"],
+      "fields": {
+        "brandId": { "type": "string", "required": true },
+        "fixtureHtml": { "type": "string", "required": true },
+        "tokensCss": { "type": "string", "required": false }
+      }
+    }
+  }
+}

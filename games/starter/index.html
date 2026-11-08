@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Greybox Starter — Sim / Render / Input Split</title>
+<style>
+  body { margin: 0; background: #0b0c10; color: #d8d8d8; font-family: system-ui, sans-serif; }
+  canvas { display: block; margin: 1rem auto; border: 1px solid #333; background: #000; }
+  p { max-width: 640px; margin: 0 auto 1rem; text-align: center; }
+</style>
+</head>
+<body>
+<p>DOM-free deterministic fixed-step sim + Canvas render (alpha = acc/dt) + input action mapping. Zero deps.</p>
+<canvas width="640" height="480"></canvas>
+<script type="module" src="./render.js"></script>
+</body>
+</html>

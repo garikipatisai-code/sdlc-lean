@@ -429,6 +429,45 @@ const pathsFromPatch = (text) => {
   return out;
 };
 
+// Parse a bash/shell command for file-write targets introduced by redirects
+// (`>`, `>>`), `tee`, and `sed -i`. Returns an array of target path strings.
+// Fail-open by design: unparseable or complex commands yield [] so callers
+// treat them as non-mutating (no block). Pure string parsing, no I/O.
+export const parseBashWriteTargets = (command) => {
+  const out = [];
+  const cmd = (typeof command === 'string')
+    ? command
+    : (command && typeof command === 'object'
+        ? (command.command ?? command.cmd ?? command.input?.command)
+        : '');
+  const s = String(cmd ?? '');
+  if (!s.trim()) return out;
+  for (const m of s.matchAll(/>{1,2}\s*(['"]?)([^\s'";|&<>]+)/g)) {
+    const t = String(m[2] || '').replace(/^['"]+|['"]+$/g, '');
+    if (t && t !== '/dev/null') out.push(t);
+  }
+  for (const m of s.matchAll(/\btee\b([^;|&]*)/g)) {
+    const seg = m[1] || '';
+    for (const tok of seg.trim().split(/\\s+/)) {
+      if (!tok) continue;
+      if (tok.startsWith('-')) continue;
+      const t = tok.replace(/^['"]+|['"]+$/g, '');
+      if (t && !/^[|;&]/.test(t)) out.push(t);
+    }
+  }
+  for (const m of s.matchAll(/\bsed\b[^;|&]*/g)) {
+    const seg = m[0] || '';
+    if (!/\s-i(\b|\.)/.test(seg)) continue;
+    const toks = seg.trim().split(/\s+/).slice(1);
+    const nonOpt = toks.filter((t) => !t.startsWith('-'));
+    if (nonOpt.length >= 2) {
+      const t = nonOpt[nonOpt.length - 1].replace(/^['"]+|['"]+$/g, '');
+      if (t) out.push(t);
+    }
+  }
+  return [...new Set(out)];
+};
+
 // --- Spec gate (opt-in, marker-driven) --------------------------------------
 // An approved plan writes .sdlc/spec-gate.json via scripts/spec-check.mjs. The
 // plugin delegates validation to that CLI (single contract implementation) and
@@ -467,6 +506,10 @@ export const resolveNodeExecutable = (execPath = process.execPath) => {
 };
 
 const specTargets = (tool, args = {}) => {
+  if (tool === 'bash' || tool === 'shell') {
+    const cmd = args?.command ?? args?.cmd ?? args?.input?.command;
+    return parseBashWriteTargets(cmd);
+  }
   if (!SPEC_MUTATING_TOOLS.has(tool)) return [];
   const targets = [];
   for (const raw of [args.filePath, args.path]) {
@@ -487,7 +530,9 @@ export const checkSpecGate = (tool, args = {}, root, opts = {}) => {
     const bound = normalizeRunRoles(opts);
     if (bound) checkSeparationOfPowers(bound);
   }
+  const isBash = tool === 'bash' || tool === 'shell';
   if (!root) {
+    if (isBash) return; // fail open for bash write-target checks
     // Fail closed: an unknown root must never silently skip a mutating target.
     throw new Error(`[sdlc-lean] spec gate root unknown: refusing ${tool} (no location or directory)`);
   }
@@ -497,6 +542,8 @@ export const checkSpecGate = (tool, args = {}, root, opts = {}) => {
     fs.lstatSync(marker);
   } catch (err) {
     if (err.code === 'ENOENT') return; // no gate: fail open
+    const isBash = tool === 'bash' || tool === 'shell';
+    if (isBash) return; // fail open
     // Unreadable marker: let the CLI report it (fail closed for edits).
   }
 
@@ -504,7 +551,10 @@ export const checkSpecGate = (tool, args = {}, root, opts = {}) => {
   // Marker is present but the contract module is missing: fail closed so
   // edits cannot silently skip the gate. Only the no-marker path above
   // fails open.
-  if (!cli) throw new Error('[sdlc-lean] spec gate unavailable: spec-check CLI not found');
+  if (!cli) {
+    if (isBash) return; // fail open
+    throw new Error('[sdlc-lean] spec gate unavailable: spec-check CLI not found');
+  }
 
   // The CLI is in the plan scope in some repos; a marker written by a modified
   // CLI must not be trusted. Malformed JSON is left to the CLI to report.
@@ -516,12 +566,16 @@ export const checkSpecGate = (tool, args = {}, root, opts = {}) => {
   }
   if (markerData && typeof markerData === 'object' && !Array.isArray(markerData)) {
     if (typeof markerData.cli_sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(markerData.cli_sha256)) {
+      if (isBash) return;
       throw new Error('[sdlc-lean] spec gate marker has no CLI hash. Run spec-check close && approve.');
     }
     const cliHash = crypto.createHash('sha256').update(fs.readFileSync(cli)).digest('hex');
     if (cliHash !== markerData.cli_sha256) {
+      if (isBash) return;
       throw new Error('[sdlc-lean] spec gate CLI changed since approval. Run spec-check close && approve.');
     }
+  } else if (markerData === null) {
+    if (isBash) return;
   }
 
   const absTargets = targets.map((target) => (path.isAbsolute(target) ? target : path.resolve(root, target)));
@@ -532,6 +586,7 @@ export const checkSpecGate = (tool, args = {}, root, opts = {}) => {
     windowsHide: true,
   });
   if (result.error) {
+    if (isBash) return; // fail open
     // Marker is active and the CLI resolved: a fault must not skip targets.
     throw new Error(`[sdlc-lean] spec gate unavailable: ${result.error.message}`);
   }
@@ -682,6 +737,29 @@ export const checkReviewerBash = (agentId, command) => {
   if (/^git\s+(diff|status|log)\b/.test(cmd)) return true;
   throw new Error(`[sdlc-lean] reviewer bash refused: "${cmd}" (allowlist: node --test, git diff/status/log only)`);
 };
+
+// Implementer bash allowlist seam: implementer may run tests/verify and
+// read-only git commands via bash; everything else (including redirect writes)
+// is refused. Mirrors checkReviewerBash. Every other agent passes through (null).
+export const checkImplementerBash = (agentId, command) => {
+  if (agentId !== 'implementer') return null;
+  const raw = typeof command === 'string' ? command : command?.command;
+  const cmd = String(raw ?? '').trim();
+  if (!cmd) {
+    throw new Error('[sdlc-lean] implementer bash refused: empty command (allowlist: test, verify, git-read only)');
+  }
+  if (/^npm\s+(test|run\s+(test|verify|lint))\b/.test(cmd)) return true;
+  if (/^pnpm\s+(test|run\s+(test|verify|lint))\b/.test(cmd)) return true;
+  if (/^yarn\s+(test|run\s+(test|verify|lint))\b/.test(cmd)) return true;
+  if (/^node\s+--test\b/.test(cmd)) return true;
+  if (/^git\s+(diff|status|log|show|rev-parse)\b/.test(cmd)) return true;
+  throw new Error(`[sdlc-lean] implementer bash refused: "${cmd}" (allowlist: test, verify, git-read only)`);
+};
+
+// Aliases for plausible caller names.
+export const checkBashGate = checkSpecGate;
+export const checkBashWriteTargets = parseBashWriteTargets;
+export const bashWriteTargets = parseBashWriteTargets;
 
 // --- Separation of powers (SOP-1, auto-tier pilot) ---------------------------
 // Run-role tracking: every Auto run declares author/implementer/critic/closer
@@ -1741,6 +1819,234 @@ export const recordHostEvidence = async (event, root) => {
     return false;
   }
 };
+
+// --- Quota tracker (free-first, pure unwired exports; D-011-style seam) -------
+// Frozen free pool, dynamic session-model fallback resolver (no hardcode),
+// quota-error classification (429/provider-error only), admission
+// (settled+outstanding+next <= cap), circuit states, cooldown_until strict
+// format, cheap probe steps, and secret-like refusal. No hook calls these
+// helpers; pass-through by default.
+// VOCAB MIRROR: this POOL/FALLBACK/ACCOUNTS/DENYLIST/CIRCUIT_STATES vocabulary
+// is duplicated in scripts/research/phase.mjs
+// (QUOTA_POOL/QUOTA_FALLBACK/QUOTA_ALLOWED_ACCOUNTS/QUOTA_DENYLIST/QUOTA_CIRCUIT_STATES).
+// Keep both in sync on edits (intentional duplication: V1/V2 compat + drift
+// risk accepted over shared-module coupling). Tests pin both copies.
+// isSecretLike here is a token-shape heuristic only; phase.mjs uses the
+// stricter SECRET_VALUE_RES + isSecretKey key-name guard. Patterns intentionally
+// differ (best-effort, not a guarantee); do not merge.
+export const POOL = Object.freeze([
+  'console-openrouter/nvidia/nemotron-3.5-super-vl:free',
+  'console-openrouter2/nvidia/nemotron-3.5-super-vl:free',
+  'opencode-go/crouton-alpha-free',
+  'opencode-go/beam-free',
+  'opencode-go/iceman-contributor-free',
+]);
+export const FALLBACK = null; // dynamic via resolveFallback(sessionModel, account); no hardcoded model
+export const ACCOUNTS = Object.freeze(['console-openrouter', 'console-openrouter2', 'opencode-go']);
+// Denylist normalization (HIGH audit): strip :variant and trailing
+// -free/-contributor before the exact base compare so suffixed paid IDs
+// (*-free/*-contributor) cannot bypass. Only -free/-contributor are
+// stripped; other suffixes (-pro/-flash/...) stay in the base and fail
+// closed as unknown unless allowlisted via isQualifiedModelId. The
+// gpt-oss paid family is denied by `gpt-oss` containment (any suffix).
+// No startsWith (too broad: would block future free models sharing a
+// prefix). Resolver returns identity only; caller checks cost/cap — a
+// paid session model is allowed ONLY with cap+ask (cap enforced at
+// dispatch, not here).
+// TTL/staleness (LOW): free discovery is cached for discovery only,
+// bound 60s (default); caller must revalidate isFree() (isSafeModel)
+// immediately before dispatch/beginDispatch — dispatch validates
+// separately and never trusts a stale discovery answer.
+export const DENYLIST = Object.freeze(['gpt-oss-120b', 'muse-spark', 'muse-spark-1.3']);
+
+export const isQualifiedModelId = (id) => {
+  if (typeof id !== 'string' || id !== id.trim() || /\s/.test(id)) return false;
+  const slash = id.indexOf('/');
+  if (slash <= 0 || slash === id.length - 1) return false;
+  const prefix = id.slice(0, slash);
+  const rest = id.slice(slash + 1);
+  if (!rest || rest.startsWith('/') || rest.endsWith('/') || id.includes('//')) return false;
+  // Model root before any :variant must be non-empty.
+  const root = rest.split(':')[0];
+  if (!root) return false;
+  if (!/^[A-Za-z0-9._-]+$/.test(prefix)) return false;
+  // Missing-variant rule: OpenRouter paid/free distinguished by :free;
+  // opencode-go distinguished by -free/-contributor suffix.
+  if (prefix === 'console-openrouter' || prefix === 'console-openrouter2') {
+    if (!rest.endsWith(':free')) return false;
+  } else if (prefix === 'opencode-go') {
+    if (!rest.endsWith('-free') && !rest.endsWith('-contributor')) return false;
+  }
+  return true;
+};
+
+export const isDeniedModel = (id) => {
+  if (typeof id !== 'string' || !id) return false;
+  const bare = (id.slice(id.lastIndexOf('/') + 1) || '').toLowerCase();
+  if (bare.includes('gpt-oss')) return true;
+  const normalized = bare.split(':')[0].replace(/(-(free|contributor))+$/, '');
+  return DENYLIST.some((d) => d.toLowerCase() === normalized);
+};
+
+export const isSafeModel = (id) => {
+  if (typeof id !== 'string' || !id) return false;
+  if (isDeniedModel(id)) return false;
+  if (POOL.indexOf(id) !== -1) return true;
+  if (!isQualifiedModelId(id)) return false;
+  const prefix = id.slice(0, id.indexOf('/'));
+  if (ACCOUNTS.indexOf(prefix) === -1) return false;
+  return true;
+};
+
+export const isAllowedModel = (id) => isSafeModel(id);
+
+export const assertAllowedModel = (id) => {
+  if (!isAllowedModel(id)) {
+    throw new Error(`[sdlc-lean] quota tracker: model not-allowed/unknown-model: ${String(id)}`);
+  }
+  return true;
+};
+
+// Dynamic fallback resolver: explicit session model (+ optional explicit
+// account) at dispatch time. Unobservable session (absent/empty/non-string
+// model) fails OPEN with null (pass-through); observable-but-unsafe input
+// fails CLOSED with a throw. Explicit account must match the model prefix
+// and be allowlisted; otherwise it is derived from the prefix.
+export const resolveFallback = (sessionModel, account) => {
+  let model = sessionModel;
+  let acct = account;
+  if (model && typeof model === 'object' && !Array.isArray(model)) {
+    acct = model.sessionAccount ?? model.account ?? model.session_account ?? acct;
+    model = model.sessionModel ?? model.model ?? model.session_model;
+  }
+  if (typeof model !== 'string' || model.trim() === '') return null;
+  if (!isSafeModel(model)) {
+    throw new Error(`[sdlc-lean] quota tracker: fallback model not-allowed/unknown-model: ${model}`);
+  }
+  const prefix = model.slice(0, model.indexOf('/'));
+  if (typeof acct === 'string' && acct.trim() !== '') {
+    const trimmed = acct.trim();
+    if (trimmed !== prefix) {
+      throw new Error(`[sdlc-lean] quota tracker: fallback account mismatch: model "${model}" is not on account "${trimmed}"`);
+    }
+    if (ACCOUNTS.indexOf(trimmed) === -1) {
+      throw new Error(`[sdlc-lean] quota tracker: fallback account not-allowed/unknown-account: ${trimmed}`);
+    }
+    return { model, account: trimmed };
+  }
+  return { model, account: prefix };
+};
+export const resolveDynamicFallback = resolveFallback;
+
+// Fail-closed strict: only finite numbers admitted. null/boolean/object/array/
+// undefined/string/NaN/Infinity are rejected (Number(null)=0 / Number(true)=1
+// coercions would otherwise admit).
+export const admits = (input) => {
+  const o = input && typeof input === 'object' && !Array.isArray(input) ? input : null;
+  if (!o) return false;
+  const settled = o.settled;
+  const outstanding = o.outstanding;
+  const next = o.next;
+  const cap = o.cap;
+  if (typeof settled !== 'number' || typeof outstanding !== 'number' || typeof next !== 'number' || typeof cap !== 'number') {
+    return false;
+  }
+  if (!Number.isFinite(settled) || !Number.isFinite(outstanding) || !Number.isFinite(next) || !Number.isFinite(cap)) {
+    return false;
+  }
+  return settled + outstanding + next <= cap;
+};
+
+export const classifyQuotaError = (err) => {
+  if (!err || typeof err !== 'object' || Array.isArray(err)) return false;
+  if (err.status === 429) return true;
+  if (err.code === 'provider-error') return true;
+  return false;
+};
+export const shouldTriggerFallback = classifyQuotaError;
+
+export const CIRCUIT_STATES = Object.freeze(['CLOSED', 'OPEN', 'HALF-OPEN']);
+
+const COOLDOWN_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+export const isValidCooldownUntil = (value) =>
+  typeof value === 'string' && COOLDOWN_RE.test(value) && !Number.isNaN(Date.parse(value));
+
+export const assertValidCooldownUntil = (value) => {
+  if (!isValidCooldownUntil(value)) {
+    throw new Error(`[sdlc-lean] quota tracker: invalid cooldown_until: ${String(value)}`);
+  }
+  return true;
+};
+
+export const PROBE_STEPS = Object.freeze(['GET /api/v1/models', 'completion max_tokens:1']);
+export const PAID_PROBE_ALLOWED = false;
+
+const SECRET_PATTERNS = [
+  /sk-[A-Za-z0-9_-]{16,}/,
+  /AKIA[0-9A-Z]{16}/,
+  /ghp_[A-Za-z0-9]{36}/,
+  /github_pat_[A-Za-z0-9_]{20,}/,
+  /xox[baprs]-[A-Za-z0-9-]{10,}/,
+  /Bearer\s+[A-Za-z0-9._-]{20,}/,
+  /-----BEGIN [A-Z ]*PRIVATE KEY-----/,
+];
+export const isSecretLike = (value) => {
+  if (typeof value !== 'string') return false;
+  return SECRET_PATTERNS.some((re) => re.test(value));
+};
+
+export const assertNotSecretLike = (value) => {
+  if (isSecretLike(value)) {
+    throw new Error(`[sdlc-lean] quota tracker: secret-like input refused`);
+  }
+  return true;
+};
+
+// Circuit transition (pure, mechanical). Fail-closed unknowns -> OPEN.
+export const transitionCircuit = (current, event = {}) => {
+  const state = typeof current === 'string'
+    ? current
+    : (current && typeof current === 'object' ? (current.state || current.status || 'CLOSED') : 'CLOSED');
+  const e = event && typeof event === 'object' ? event : {};
+  const failed = e.failure === true || e.failed === true || e.error === true;
+  const succeeded = e.success === true || e.ok === true || e.pass === true;
+  const cooldownElapsed = e.cooldownElapsed === true || e.cooldown_elapsed === true || e.probe === true;
+  if (state === 'CLOSED') return failed ? 'OPEN' : 'CLOSED';
+  if (state === 'OPEN') return cooldownElapsed ? 'HALF-OPEN' : 'OPEN';
+  if (state === 'HALF-OPEN') {
+    if (succeeded) return 'CLOSED';
+    if (failed) return 'OPEN';
+    return 'HALF-OPEN';
+  }
+  return 'OPEN';
+};
+export const circuitTransition = transitionCircuit;
+export const nextCircuitState = transitionCircuit;
+
+// Pass-through gate mirroring checkPhaseLedgerGate (no quota flow => null).
+const QUOTA_TRACKER_SCHEMA = 'sdlc-lean/quota-tracker@1';
+export const checkQuotaTrackerGate = (trackerLike, context) => {
+  let hasMarker = false;
+  if (typeof context === 'string') hasMarker = context.trim() !== '';
+  else if (context === true) hasMarker = true;
+  else if (context && typeof context === 'object' && !Array.isArray(context)) {
+    hasMarker = ['quotaMarker', 'quotaId', 'trackerFile', 'trackerPath', 'tracker', 'activeQuotaId', 'quotaTrackerFile']
+      .some((key) => {
+        const value = context[key];
+        return typeof value === 'string' ? value.trim() !== '' : value !== undefined && value !== null && value !== false;
+      });
+  }
+  if (!hasMarker) return null;
+  const loaded = trackerLike && typeof trackerLike === 'object' && !Array.isArray(trackerLike)
+    && trackerLike.schema === QUOTA_TRACKER_SCHEMA && Array.isArray(trackerLike.entries);
+  if (!loaded) {
+    throw new Error('[sdlc-lean] quota-tracker-unreadable: quota flow needs a loaded tracker before dispatch');
+  }
+  return true;
+};
+export const checkQuotaGate = checkQuotaTrackerGate;
+export const checkQuotaLedgerGate = checkQuotaTrackerGate;
+export const quotaTrackerGate = checkQuotaTrackerGate;
 
 /** V1 plugin (named export, OpenCode 1.x). */
 export const SdlcLeanPlugin = async ({ client, directory } = {}) => {

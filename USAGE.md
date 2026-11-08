@@ -46,6 +46,13 @@ cp scripts/spec-check.mjs scripts/host-evidence.mjs ~/.config/opencode/scripts/
 cp -r scripts/research     ~/.config/opencode/scripts/
 ```
 
+> **Console connections (no local JSONC):** The suite routes free-only through two OpenCode console connections — `console-openrouter` (acct1, static worker pins) and `console-openrouter2` (acct2, per-dispatch override round-robin). No local `model.jsonc` / provider config is needed; OpenCode provisions both console connections. Verify each account in the model picker, then send a trivial prompt once per account:
+>
+> ```sh
+> opencode run --archived --model console-openrouter/nvidia/nemotron-3.5-super-vl:free "ping: reply ok"
+> opencode run --archived --model console-openrouter2/nvidia/nemotron-3.5-super-vl:free "ping: reply ok"
+> ```
+
 ### Updating (this PC and other PCs)
 
 After enhancements land on `main`, refresh any machine that has a clone:
@@ -244,6 +251,16 @@ Restrict skills per agent (in `opencode.json`):
 ```json
 { "agent": { "plan": { "permission": { "skill": { "acquiring-capabilities": "deny" } } } } }
 ```
+
+### Model routing
+
+BRAIN is the `orchestrator` session model (UNPINNED, inherits session). Reviewers (`code-reviewer`, `security-reviewer`), `planner`, `researcher` synthesis, and brainstorming facilitation run on BRAIN; cap + ask-to-extend, secrets NEVER to any free endpoint. MUSCLE is free-first for `explorer` maps and `implementer` / `test-writer` execution with thick briefs:
+
+1. `console-openrouter/nvidia/nemotron-3.5-super-vl:free` on both `console-openrouter` / `console-openrouter2` accounts, round-robin, ledger-tracked per dispatch; 429 → other account first, blind, no quota polling.
+2. `opencode-go` cost-0/0 models re-discovered via the models API at dispatch (denylist excluded; `crouton`/`beam`/`iceman` are fallback examples only, never hardcoded).
+3. All free exhausted → orchestrator's own model (cap + ask-to-extend; secrets never free; North break-glass outage-only).
+
+Guard: `tests/opencode/test-model-routing.mjs` + pre-dispatch role→tier check before every dispatch; mismatch → stop + correct + ledger row (model+account). Watch usage in the OpenConsole model picker / per-account console.
 
 Add a skill: follow `writing-skills`, then run `node scripts/validate-skills.mjs`.
 

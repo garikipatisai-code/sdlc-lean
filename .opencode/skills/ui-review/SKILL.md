@@ -9,13 +9,15 @@ Adapter of `vercel-labs/agent-skills` (`web-design-guidelines` + `react-best-pra
 
 ## Procedure
 
-1. Fetch pinned guidelines per run: `https://raw.githubusercontent.com/vercel-labs/web-interface-guidelines/e3d624baaf29dc1fc645aff3e38f03e564d2d6b1/command.md` via WebFetch (re-pin in `references/ATTRIBUTION.md` to update). If the fetch fails, stop: report the failure and review nothing. Never review from memory or a cached copy; the review fails closed.
-2. Read target files (arg `<file-or-pattern>` or ask which files).
-3. Apply all fetched rules + React perf rules (waterfalls, bundle, server/client fetching, re-renders — 40+ rules, impact-ordered).
-4. Output terse `file:line` findings only. No prose walls. Group: design / a11y / UX / perf.
+1. Fetch pinned guidelines per run: `https://raw.githubusercontent.com/vercel-labs/web-interface-guidelines/e3d624baaf29dc1fc645aff3e38f03e564d2d6b1/command.md` via WebFetch (re-pin in `references/ATTRIBUTION.md` to update). If the fetch fails, stop: report and review nothing; fails closed (fail-closed). Never review from memory.
+2. Read target files (arg `<file-or-pattern>` or ask).
+3. Apply fetched rules + React perf rules (waterfalls, bundle, server/client fetching, re-renders, impact-ordered).
+4. Output terse `file:line` findings only. Group: design / a11y / UX / perf.
 
-## AA gate
+## Gates
 
-Contrast 4.5:1 / 3:1, focus-visible, 24px targets, keyboard + landmarks per APG/Radix; semantic HTML, skip-links + live-regions, `prefers-reduced-motion`, 200% zoom.
-Flag slop: custom controls, happy-path-only, missing motion, broken primitive contract.
-Manual keyboard + screen-reader check required (tools catch ~30-40%).
+- **Token-first:** flag default Tailwind palette and unregistered hardcoded colors; require design tokens.
+- **AA:** contrast 4.5:1/3:1, focus-visible, 24px targets, keyboard + landmarks (APG/Radix), semantic HTML, skip-links, live-regions, `prefers-reduced-motion`, 200% zoom.
+- **Motion + slop:** no gratuitous motion; honor reduced-motion; flag custom controls, happy-path-only, broken primitive contract.
+- **Manual Axe DevTools Extension run pointer:** free automated + guided testing, manual browser workflow – Deque axe powers it, 5B+ downloads.
+- Manual keyboard + screen-reader check required (tools catch ~30-40%).

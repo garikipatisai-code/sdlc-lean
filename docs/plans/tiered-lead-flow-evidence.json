@@ -1,0 +1,28 @@
+{
+  "plan": "docs/plans/tiered-lead-flow-progress.md",
+  "tasks": [
+    {
+      "task": 1,
+      "verify": "node --test tests/opencode/test-agent-permissions.mjs",
+      "exit": 0,
+      "at": "2026-11-07T20:45:00.000Z"
+    },
+    {
+      "task": 2,
+      "verify": "node --test tests/opencode/test-agent-permissions.mjs",
+      "exit": 0,
+      "at": "2026-11-07T21:15:00.000Z"
+    },
+    {
+      "task": 3,
+      "verify": "npm run verify",
+      "exit": 0,
+      "bootstrap_bytes": 5075,
+      "bootstrap_budget": 5120,
+      "agents_head": 8,
+      "agents_now": 9,
+      "agents_delta": 1,
+      "at": "2026-11-08T02:54:47.000Z"
+    }
+  ]
+}

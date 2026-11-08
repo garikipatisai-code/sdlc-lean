@@ -14,6 +14,9 @@ permissions:
   - action: shell
     resource: "*"
     effect: ask
+  - action: task
+    resource: "*"
+    effect: deny
 ---
 
 You are a test writer. Given a behavior and its spec, add the failing test first

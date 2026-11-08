@@ -103,18 +103,67 @@ function writeFixtures(scratch, fixtures = {}) {
   }
 }
 
+const O_NOFOLLOW_RUN = fs.constants.O_NOFOLLOW ?? 0;
+
+// Reject symlink escapes for an artifact/baseline path: any path component that
+// resolves outside `root` (via symlink or otherwise) is refused.
+function rejectSymlinkEscape(abs, root) {
+  const realRoot = fs.realpathSync(root);
+  let realTarget;
+  try {
+    realTarget = fs.realpathSync(abs);
+  } catch (err) {
+    let ancestor = abs;
+    while (true) {
+      try { fs.lstatSync(ancestor); break; } catch (e) { if (e?.code !== 'ENOENT') break; }
+      const parent = path.dirname(ancestor);
+      if (parent === ancestor) break;
+      ancestor = parent;
+    }
+    let realAncestor;
+    try { realAncestor = fs.realpathSync(ancestor); } catch { realAncestor = ancestor; }
+    const remainder = path.relative(ancestor, abs);
+    realTarget = remainder ? path.join(realAncestor, remainder) : realAncestor;
+  }
+  const rel = path.relative(realRoot, realTarget);
+  if (rel === '' ) return;
+  if (rel.startsWith('..') || path.isAbsolute(rel)) {
+    throw new Error('symlink escape refused (escape/ELOOP)');
+  }
+}
+
 // Snapshot declared baseline files as `sha256:<hex>`; an absent file is `null`
 // so "absent before and after" can pass `file-unchanged`.
-function snapshotHashes(scratch, paths = []) {
+export function snapshotHashes(scratch, paths = []) {
   const hashes = {};
   for (const rel of paths) {
     if (typeof rel !== 'string' || rel === '' || path.isAbsolute(rel) || rel.includes('..')) continue;
+    const abs = path.join(scratch, rel);
+    let lst;
     try {
-      const digest = crypto.createHash('sha256').update(fs.readFileSync(path.join(scratch, rel))).digest('hex');
-      hashes[rel] = `sha256:${digest}`;
+      lst = fs.lstatSync(abs);
     } catch (err) {
-      if (err.code !== 'ENOENT') throw err;
-      hashes[rel] = null;
+      if (err.code === 'ENOENT') { hashes[rel] = null; continue; }
+      throw err;
+    }
+    if (lst.isSymbolicLink()) throw new Error('symlink path refused (escape/ELOOP)');
+    rejectSymlinkEscape(abs, scratch);
+    let fd;
+    try {
+      fd = fs.openSync(abs, fs.constants.O_RDONLY | O_NOFOLLOW_RUN);
+    } catch (err) {
+      if (err.code === 'ENOENT') { hashes[rel] = null; continue; }
+      if (err.code === 'ELOOP') throw new Error('symlink path refused (escape/ELOOP)');
+      throw err;
+    }
+    try {
+      const st = fs.fstatSync(fd);
+      if (!st.isFile()) throw new Error('not a regular file');
+      const buf = fs.readFileSync(fd);
+      const digest = crypto.createHash('sha256').update(buf).digest('hex');
+      hashes[rel] = `sha256:${digest}`;
+    } finally {
+      try { fs.closeSync(fd); } catch {}
     }
   }
   return hashes;
@@ -123,14 +172,34 @@ function snapshotHashes(scratch, paths = []) {
 // Read probe-declared artifact files from the scratch project. Paths are
 // relative; absolute and parent-escaping paths are ignored, missing files are
 // omitted (so a missing key means "artifact absent").
-function readArtifacts(scratch, paths = []) {
+export function readArtifacts(scratch, paths = []) {
   const artifacts = {};
   for (const rel of paths) {
     if (typeof rel !== 'string' || rel === '' || path.isAbsolute(rel) || rel.includes('..')) continue;
+    const abs = path.join(scratch, rel);
+    let lst;
     try {
-      artifacts[rel] = fs.readFileSync(path.join(scratch, rel), 'utf8');
+      lst = fs.lstatSync(abs);
     } catch (err) {
-      if (err.code !== 'ENOENT') throw err;
+      if (err.code === 'ENOENT') continue;
+      throw err;
+    }
+    if (lst.isSymbolicLink()) throw new Error('symlink path refused (escape/ELOOP)');
+    rejectSymlinkEscape(abs, scratch);
+    let fd;
+    try {
+      fd = fs.openSync(abs, fs.constants.O_RDONLY | O_NOFOLLOW_RUN);
+    } catch (err) {
+      if (err.code === 'ENOENT') continue;
+      if (err.code === 'ELOOP') throw new Error('symlink path refused (escape/ELOOP)');
+      throw err;
+    }
+    try {
+      const st = fs.fstatSync(fd);
+      if (!st.isFile()) throw new Error('not a regular file');
+      artifacts[rel] = fs.readFileSync(fd, 'utf8');
+    } finally {
+      try { fs.closeSync(fd); } catch {}
     }
   }
   return artifacts;

@@ -6,6 +6,8 @@ temperature: 0.1
 permission:
   edit: deny
   bash: deny
+  task:
+    "*": deny
 ---
 
 You are a security reviewer. Read-only. Follow `reviewing-security`:

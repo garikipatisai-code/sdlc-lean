@@ -1,0 +1,36 @@
+{
+  "plan": "docs/plans/2026-11-08-uncompromised-quality-upgrades.md",
+  "plan_sha256": "700d37c1cb3b4d8869b795ef2c4387486e10578f45e29ca5a6583979b7f83846",
+  "tasks": [
+    {
+      "task": 1,
+      "verify": "node scripts/validate-skills.mjs",
+      "exit": 0,
+      "at": "2026-11-08T20:42:12.000Z"
+    },
+    {
+      "task": 2,
+      "verify": "node scripts/validate-skills.mjs",
+      "exit": 0,
+      "at": "2026-11-08T20:42:13.000Z"
+    },
+    {
+      "task": 3,
+      "verify": "node scripts/validate-skills.mjs",
+      "exit": 0,
+      "at": "2026-11-08T20:42:14.000Z"
+    },
+    {
+      "task": 4,
+      "verify": "node scripts/validate-skills.mjs",
+      "exit": 0,
+      "at": "2026-11-08T20:42:16.000Z"
+    },
+    {
+      "task": 5,
+      "verify": "node scripts/validate-skills.mjs",
+      "exit": 0,
+      "at": "2026-11-08T20:42:17.000Z"
+    }
+  ]
+}

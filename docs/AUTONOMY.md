@@ -30,43 +30,54 @@ are left untouched (`already present, skipped`).
 ## Two-provider OpenRouter routing (console-managed accounts — already live)
 
 No local config needed (console-managed accounts); verify via `opencode models | grep console-openrouter`.
-All static pins are `console-openrouter/nvidia/nemotron-3.5-super-vl:free`
-(super-vl-everywhere, acct1). Orchestrator stays UNPINNED (inherits the
-session model).
-
-Per-dispatch override: explicit `model:` alternates `console-openrouter` /
-`console-openrouter2` round-robin, ledger-tracked per dispatch (model +
-account). Same-model-other-account retry first on 429/provider-error, then
-next link.
-
+Dynamic free pool below (re-discovered at dispatch) supersedes earlier
+super-vl-only wording. Orchestrator stays UNPINNED (inherits the session
+model). Per-dispatch override: explicit `model:` + `account:` from the pool,
+ledger-tracked per dispatch.
 Paid link: REMOVED — free-only scope. Explicit removal, no silent drop.
 
 ZDR: verified on all Nemotron models (super-vl primary on both accounts).
 
-Gemma (`google/gemma-4-31b-it:free`) is dead on both accounts — capacity
-exhausted and no ZDR. Do not route; removed from the chain.
-Break-glass: `cohere/north-mini-code:free` retained outage-only, never routine;
-super-vl is primary on both accounts.
-
+Prior north-mini-code / gemma pins are retired (historical only); do not route.
 Human verify-both-IDs steps (already live — confirmation, not setup):
 
 1. Verify both IDs selectable: `opencode models | grep console-openrouter` shows `console-openrouter` and `console-openrouter2`.
 2. Confirm in the model picker and run a trivial prompt on each (confirm in your OpenCode version).
 
-## Quota behavior (two $10 accounts, pooled free quota)
+## Quota-aware routing (dynamic free-first pool)
 
-- Pooled free budget: ~2,000 req/day (2 accounts × ~1,000 req/day each).
-- Per-account limits: 20 RPM / 1,000 req/day. Either account 429s
-  independently; the other account still serves until it also exhausts.
-- Alternation: the orchestrator alternates `console-openrouter` / `console-openrouter2`
-  per dispatch and records model+account in the progress ledger row
-  (spreads load across both per-account RPM/day caps).
-- Exhaustion behavior: 429 → same model on the other account, then next link;
-  pooled exhaustion (both accounts out) = stop + escalate — never silently
-  spend. No paid link exists (free-only scope, removed explicitly).
+Dynamic pool (re-discovered at dispatch; no frozen IDs):
+- `console-openrouter/nvidia/nemotron-3.5-super-vl:free` on
+  `console-openrouter` + `console-openrouter2/nvidia/nemotron-3.5-super-vl:free`
+  on `console-openrouter2` (round-robin, ledger-tracked; `429` → other account first).
+- then `opencode-go` models discovered as cost `0/0` via models API at dispatch
+  (denylist excluded; thick briefs required). Known-good examples only:
+  `opencode-go/crouton-alpha-free` / `opencode-go/beam-free` /
+  `opencode-go/iceman-contributor-free` — examples, NOT a frozen requirement;
+  free list may change anytime, always re-discover.
+- then orchestrator's own session model (BRAIN fallback; cap + ask-to-extend;
+  secrets never free).
 
-## Full-ID mapping table (super-vl-everywhere; re-probe via catalog)
+Fallback: orchestrator's session model (inherits session; contributor-grade required where paid) — blocked models: reject `opencode-go/muse-spark-1.3` and paid `openai/gpt-oss-120b`.
+Orchestrator stays UNPINNED; every worker dispatch passes explicit
+`model:` + `account:` and records one ledger row per dispatch (model + account).
+Delegation is narrow-only (allowed worker subagents only).
 
+Trigger: `429` / `provider-error` only (billing codes never trigger).
+Retry order: super-vl same-model other-account, then next re-discovered free model,
+then orchestrator model fallback.
+Circuit: `CLOSED` / `OPEN` / `HALF-OPEN`. Cooldown JSONL:
+`{"type":"cooldown","model":"<pool-id>","account":"<account>","cooldown_until":"YYYY-MM-DDTHH:mm:ss.sssZ","circuit":"OPEN"}` (strict `YYYY-MM-DDTHH:mm:ss.sssZ`).
+Cheap probe only: `GET /api/v1/models`, then tiny completion `max_tokens:1`;
+never a paid probe. Exhaustion → stop + escalate.
+
+Admission: `settled+outstanding+next<=cap`. At cap: block, ask the user for
+an extension, escalate — never auto-extend and never auto-spend.
+Privacy: secrets NEVER to any free endpoint.
+
+Resolver: `eval/lib/free-models.mjs` (filter: `opencode-go/` prefix, cost `0/0`,
+denylist, secrets-never-free, tool_call required; 30/30 tests).
+## Full-ID mapping table (dynamic free-first; re-probe via catalog)
 Train route is routing policy, not a model rename: customer-code payloads
 use the no-train route only; non-sensitive payloads use the provider
 default. Expiry is per-catalog `expiration_date` — re-probe, never hardcode
@@ -74,9 +85,13 @@ default. Expiry is per-catalog `expiration_date` — re-probe, never hardcode
 
 | Role / use | Full model ID | Train route | Expiry note |
 |---|---|---|---|
-| All roles (acct1 primary) | `console-openrouter/nvidia/nemotron-3.5-super-vl:free` | provider default | ZDR verified; `expiration_date` via re-probe |
-| All roles (acct2 override) | `console-openrouter2/nvidia/nemotron-3.5-super-vl:free` | provider default | ZDR verified; `expiration_date` via re-probe |
-| Denylist — never selected | `poolside/laguna*` | never (excluded) | excluded by mapping |
+| Pool | `console-openrouter/nvidia/nemotron-3.5-super-vl:free` | provider default | ZDR verified; `expiration_date` via re-probe |
+| Pool | `console-openrouter2/nvidia/nemotron-3.5-super-vl:free` | provider default | ZDR verified; `expiration_date` via re-probe |
+| Pool (example) | `opencode-go/crouton-alpha-free` | provider default | example only; re-discover via cost `0/0`; `expiration_date` via re-probe |
+| Pool (example) | `opencode-go/beam-free` | provider default | example only; re-discover via cost `0/0`; `expiration_date` via re-probe |
+| Pool (example) | `opencode-go/iceman-contributor-free` | provider default | example only; re-discover via cost `0/0`; `expiration_date` via re-probe |
+| Fallback | orchestrator session model | provider default | contributor-grade required where paid; blocked models: reject `opencode-go/muse-spark-1.3` and `openai/gpt-oss-120b` |
+| Fallback (dynamic) | orchestrator session model | provider default | cap + ask-to-extend; secrets never free || Denylist — never selected | `poolside/laguna*` | never (excluded) | excluded by mapping |
 | Denylist — never selected | `thinkingmachines/inkling*` | never (excluded) | excluded by mapping |
 | Denylist — never selected | `liquid/lfm-2.5*` | never (excluded) | excluded by mapping |
 | Denylist — never selected | `nemotron-3.5-content-safety*` | never (excluded — safety) | excluded by mapping |

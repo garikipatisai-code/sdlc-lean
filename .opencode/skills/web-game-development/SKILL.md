@@ -123,7 +123,7 @@ src/
   input/      action mapping, buffering, device adapters
   net/        transport, snapshots, prediction, reconciliation
   content/    data-driven levels, tuning configs, asset manifest
-  ui/         DOM/ARIA menus, HUD bridge; canvas is not accessible UI
+  ui/         DOM/ARIA menus/HUD outside canvas; canvas is not accessible UI
 tests/        sim determinism, replay, balance sanity, perf budget
 ```
 

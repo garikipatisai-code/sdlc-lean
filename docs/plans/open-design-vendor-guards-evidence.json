@@ -1,0 +1,36 @@
+{
+  "plan": "docs/plans/open-design-vendor-guards.md",
+  "plan_sha256": "74e589662b4ed1258777743c73b020fdfd730cb36735547754ccfcb2fb9ebdba",
+  "tasks": [
+    {
+      "task": 1,
+      "verify": "node --test tests/opencode/vendor-open-design-pin.mjs",
+      "exit": 0,
+      "at": "2026-11-08T20:52:05.030Z"
+    },
+    {
+      "task": 2,
+      "verify": "node --test tests/opencode/vendor-open-design-pin.mjs",
+      "exit": 0,
+      "at": "2026-11-08T20:52:05.325Z"
+    },
+    {
+      "task": 3,
+      "verify": "node --test tests/opencode/vendor-open-design-pin.mjs",
+      "exit": 0,
+      "at": "2026-11-08T20:52:05.697Z"
+    },
+    {
+      "task": 4,
+      "verify": "node scripts/validate-skills.mjs",
+      "exit": 0,
+      "at": "2026-11-08T20:52:06.182Z"
+    },
+    {
+      "task": 5,
+      "verify": "node --test tests/opencode/vendor-open-design-pin.mjs",
+      "exit": 0,
+      "at": "2026-11-08T20:52:06.323Z"
+    }
+  ]
+}

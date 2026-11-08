@@ -6,6 +6,8 @@ temperature: 0.2
 permission:
   edit: allow
   bash: allow
+  task:
+    "*": deny
 ---
 
 You are an implementer. You receive a task brief (files, signatures, tests, Expected,

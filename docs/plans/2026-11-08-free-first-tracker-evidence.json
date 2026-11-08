@@ -1,0 +1,41 @@
+{
+  "status": "CLOSED",
+  "full_close_date": "2026-11-08",
+  "plan": "docs/plans/2026-11-08-free-first-tracker-progress.md",
+  "plan_sha256": "3689eadfb2c44e2b427968480e47a03a743cfb7d0d150999f2de69bfb449a2a4",
+  "residuals": [
+    "symlink fix pending from parallel task (dependency)"
+  ],
+  "tasks": [
+    {
+      "task": 1,
+      "verify": "node --test tests/opencode/test-quota-tracker.mjs",
+      "exit": 0,
+      "at": "2026-11-08T01:48:03.750Z"
+    },
+    {
+      "task": 2,
+      "verify": "node --test tests/opencode/test-quota-tracker.mjs && node --test tests/opencode/test-ux-hooks.mjs tests/opencode/test-plugin-loading.mjs",
+      "exit": 0,
+      "at": "2026-11-08T02:00:00.000Z"
+    },
+    {
+      "task": 3,
+      "verify": "node --test tests/scripts/research/test-quota-tracker.mjs && node --test tests/scripts/research/test-phase.mjs",
+      "exit": 0,
+      "at": "2026-11-08T03:00:00.000Z"
+    },
+    {
+      "task": 4,
+      "verify": "npm run verify",
+      "exit": 0,
+      "at": "2026-11-08T01:58:31.000Z"
+    },
+    {
+      "task": 5,
+      "verify": "node scripts/spec-check.mjs verify",
+      "exit": 0,
+      "at": "2026-11-08T02:00:24.000Z"
+    }
+  ]
+}

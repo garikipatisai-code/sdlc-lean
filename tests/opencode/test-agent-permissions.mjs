@@ -88,6 +88,20 @@ test('explorer.md: read-only reconnaissance (edit deny, bash ask)', () => {
   const permission = section(yaml, 'permission');
   assert.equal(entry(permission, 'edit'), 'deny', 'explorer.md: permission.edit must be deny');
   assert.equal(entry(permission, 'bash'), 'ask', 'explorer.md: permission.bash must be ask');
+  const task = map(permission, 'task');
+  assert.ok(task, 'explorer.md: permission.task dispatch map must stay present');
+  assert.equal(task['*'], 'deny', 'explorer.md: permission.task "*" must stay deny');
+});
+
+
+test('leaves (V1): task "*" deny — no delegation from workers', () => {
+  for (const leaf of ['implementer', 'explorer', 'planner', 'researcher', 'code-reviewer', 'security-reviewer']) {
+    const { yaml } = frontmatter(`.opencode/agents/${leaf}.md`);
+    const permission = section(yaml, 'permission');
+    const task = map(permission, 'task');
+    assert.ok(task, `${leaf}.md: permission.task dispatch map must be present`);
+    assert.equal(task['*'], 'deny', `${leaf}.md: permission.task "*" must be deny`);
+  }
 });
 
 test('orchestrator.md: dispatches workers but never edits', () => {
@@ -112,8 +126,9 @@ test('test-writer.md: V2 test-only edit scope', () => {
       { action: 'edit', resource: '*', effect: 'deny' },
       { action: 'edit', resource: 'tests/**', effect: 'allow' },
       { action: 'shell', resource: '*', effect: 'ask' },
+      { action: 'task', resource: '*', effect: 'deny' },
     ],
-    'test-writer.md: permissions must be edit "*" deny, then edit "tests/**" allow, then shell "*" ask',
+    'test-writer.md: permissions must be edit "*" deny, then edit "tests/**" allow, then shell "*" ask, then task "*" deny',
   );
   assert.match(
     text,

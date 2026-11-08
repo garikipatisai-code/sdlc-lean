@@ -1,0 +1,14 @@
+{
+  "repo": "nexu-io/open-design",
+  "upstream_url": "https://github.com/nexu-io/open-design",
+  "sha": "87a4f91c308170a8270458fc40fc66a86ed69aac",
+  "commit": "87a4f91c308170a8270458fc40fc66a86ed69aac",
+  "ref": "main",
+  "commit_date": "2026-11-06T08:05:05Z",
+  "license": "Apache-2.0",
+  "license_url": "https://raw.githubusercontent.com/nexu-io/open-design/main/LICENSE",
+  "license_verified": "Apache License Version 2.0, January 2004, Copyright 2026 Open Design contributors",
+  "fetched_at": "2026-11-08",
+  "refs_only": false,
+  "note": "Pinned 87a4f91c308170a8270458fc40fc66a86ed69aac; vendored (refs-only copies): token-schema.ts, check-tokens-fixture-sync.ts, extract-components-manifest.ts, contracts/components-manifest.ts (byte-identical; 1-line import adapt), contracts/components-manifest.contract.json (derived, derivedDate 2026-11-08). SHA256SUMS covers all entries; every line must recompute via sha256sum -c."
+}

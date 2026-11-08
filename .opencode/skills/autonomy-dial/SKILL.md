@@ -24,4 +24,4 @@ Reimplemented from SOTA autonomy patterns (Cursor /goal + /loop, Copilot steer, 
 
 ## Model tier note
 Light checks may ride cheap models; consequential runs use stronger — see orchestrator Model routing.
-Routing 429/provider-error follows fallback chain; exhausted chain stops and escalates — never auto-spends.
+Quota: dynamic free-first `console-openrouter/nvidia/nemotron-3.5-super-vl:free` x2 round-robin → `opencode-go` cost `0/0` re-discovered at dispatch (denylist excluded; trio `crouton/beam/iceman` = fallback examples only) → orchestrator session model fallback (cap + ask-to-extend; secrets NEVER to free); resolver `eval/lib/free-models.mjs`; 429/provider-error only; circuit `CLOSED`/`OPEN`/`HALF-OPEN` + cheap probe `GET /api/v1/models` then `max_tokens:1` (never paid); admission `settled+outstanding+next<=cap` — at cap block + ask user for extension + escalate, never auto-extend/spend; `cooldown_until` JSONL `YYYY-MM-DDTHH:mm:ss.sssZ`; per-dispatch ledger row; delegation narrow-only.

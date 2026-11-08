@@ -37,6 +37,7 @@ ambiguous — otherwise state your interpretation and proceed.
 ## 2. Search (start wide, then narrow)
 
 - 2–3 keyword variants per sub-question; broaden first, then drill in.
+- Enforce **diversity** (independent domains/types, no single-domain stack) + **freshness** (date-check, prefer recent in fast-moving topics) and dedupe by **canonical URL** — stdlib URL rules, no deps — see `references/retrieval-quality.md`.
 - **Prefer primary/authoritative sources** over aggregators and SEO content:
   official docs, papers, filings, first-party sites, maintainers' own pages.
   See `references/source-quality.md` (evidence hierarchy + SIFT + red flags).
@@ -58,7 +59,7 @@ Use **angles, not synonyms**; shrink breadth as depth increases.
 
 ## 4. Compress (fan-in)
 
-Dedupe by URL; merge duplicate facts; keep only claims that carry a citation;
+Dedupe by canonical URL; merge duplicate facts; keep only claims that carry a citation;
 preserve citation numbers; never drop a source that supports a kept claim. At
 fan-in **one writer** merges: parallel section writers produce disjoint
 reports, so style and citations stay consistent. Resolve conflicts per

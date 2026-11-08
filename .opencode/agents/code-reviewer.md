@@ -9,6 +9,8 @@ permission:
   # (node --test, git diff/status/log only); all other bash still denied.
   edit: deny
   bash: deny
+  task:
+    "*": deny
 ---
 
 You are a code reviewer. Read-only. Run the 4 passes from `requesting-code-review`:

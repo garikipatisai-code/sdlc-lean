@@ -5,6 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
+import os from 'node:os';
 import fs from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
@@ -149,7 +150,7 @@ test('transitionCircuit rejects unknown state (EVIL → not CLOSED)', () => {
 test('asset-audit rejects symlink asset at open (TOCTOU swap blocked)', () => {
   const root = path.resolve(import.meta.dirname, '../..');
   const script = path.join(root, 'scripts/asset-audit.mjs');
-  const dir = fs.mkdtempSync('/tmp/opencode/audit-toctou-');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'audit-toctou-'));
   try {
     fs.mkdirSync(path.join(dir, 'textures'), { recursive: true });
     fs.writeFileSync(path.join(dir, 'textures', 'real.png'), Buffer.alloc(1000));
@@ -187,7 +188,7 @@ test('asset-audit rejects missing/unreadable manifestDir (fail-closed, not lexic
   const root = path.resolve(import.meta.dirname, '../..');
   const script = path.join(root, 'scripts/asset-audit.mjs');
   // Missing manifestDir: dirname does not exist.
-  const base = fs.mkdtempSync('/tmp/opencode/audit-missingdir-');
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'audit-missingdir-'));
   try {
     const manifestPath = path.join(base, 'missing-dir', 'manifest.json');
     const r = spawnSync(process.execPath, [script, manifestPath], { encoding: 'utf8' });
@@ -197,7 +198,7 @@ test('asset-audit rejects missing/unreadable manifestDir (fail-closed, not lexic
     fs.rmSync(base, { recursive: true, force: true });
   }
   // Unreadable manifestDir: parent chmod 000 blocks realpath.
-  const base2 = fs.mkdtempSync('/tmp/opencode/audit-unreadable-');
+  const base2 = fs.mkdtempSync(path.join(os.tmpdir(), 'audit-unreadable-'));
   try {
     const dir = path.join(base2, 'child');
     fs.mkdirSync(path.join(dir, 'textures'), { recursive: true });

@@ -60,3 +60,9 @@
 - 2. Loop-strip stacked suffixes: `replace(/(-(free|contributor))+$/,'')` instead of single `-(free|contributor)$` strip. Both files mirrored.
 - Tests: added stacked-suffix (`muse-spark-1.3-contributor-free` → denied, incl. prefixed) + account-prefix non-interference (`gpt-oss-foo/beam-free` NOT denied; canonical `opencode-go/beam-free` stays safe) to both dynamic-fallback suites. RED confirmed (both suites: 2 new tests failed pre-fix), GREEN after.
 - Verify: same 5-file suite → exit 0, 82/82 pass (was 78; +4). `node --check` both impls OK. `npm run verify` → exit 0, 668/668 pass (was 664; +4). Non-sensitive. Allowed files only.
+
+## CI-only bugfix — `/tmp/opencode` hardcodes → `os.tmpdir()` (TDD)
+- Root cause: `tests/opencode/test-quota-tracker.mjs` called `fs.mkdtempSync('/tmp/opencode/audit-…')` (3×: lines 152, 190, 200). `/tmp/opencode` is pre-created on the dev box only → `ENOENT mkdtemp` on CI (2 test failures). Impl is correct; test env assumption is the bug.
+- Fix: `import os from 'node:os'` (node builtin only; `path` already imported) + all 3 sites → `fs.mkdtempSync(path.join(os.tmpdir(), 'audit-…'))`. `grep /tmp/opencode` in the file → no hits. No impl/assertion changes.
+- RED: local run passes (dir exists). CI reproduced by moving `/tmp/opencode` aside → `node --test tests/opencode/test-quota-tracker.mjs` exit 1, exactly 2 failures (`ENOENT … mkdtemp '/tmp/opencode/audit-toctou-XXXXXX'`, `… '/tmp/opencode/audit-missingdir-XXXXXX'`; third hardcoded site shares the second test). `fs.mkdtempSync(path.join(os.tmpdir(),'audit-'))` → OK.
+- GREEN: after fix, local `node --test tests/opencode/test-quota-tracker.mjs` → exit 0, 14/14. CI-sim (same move-aside) → exit 0, 14/14. `npm run verify` → exit 0, 668/668 pass. Non-sensitive. Allowed files only (this test + this plan entry).

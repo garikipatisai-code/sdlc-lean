@@ -1,0 +1,37 @@
+{
+  "plan": "docs/plans/readme-model-routing-docs-progress.md",
+  "spec": "docs/specs/2026-11-08-free-model-resolver.md",
+  "tasks": [
+    {
+      "task": 1,
+      "verify": "test -f docs/plans/readme-model-routing-docs-progress.md && grep -q \"Model routing\" docs/plans/readme-model-routing-docs-progress.md && echo OUTLINE_OK",
+      "exit": 0,
+      "at": "2026-11-09T20:41:54Z"
+    },
+    {
+      "task": 2,
+      "verify": "grep -q \"resolveNextFreeLink\" README.md && grep -q \"HALF-OPEN\" README.md && grep -q \"429\" README.md && echo TASK2_GREP_OK; node scripts/validate-skills.mjs (40 skills 0 failures)",
+      "exit": 0,
+      "at": "2026-11-09T20:42:50Z"
+    },
+    {
+      "task": 3,
+      "verify": "grep -q \"critic\" README.md && grep -q \"settled+outstanding\" README.md && grep -q -i \"secrets never free\" README.md && echo TASK3_GREP_OK; node scripts/validate-skills.mjs (40 skills 0 failures)",
+      "exit": 0,
+      "at": "2026-11-09T20:43:44Z"
+    },
+    {
+      "task": 4,
+      "verify": "node scripts/validate-skills.mjs (40 skills 0 failures exit 0); npm run verify (676/676 pass 0 fail); grep -q \"resolveNextFreeLink\" README.md && grep -q \"HALF-OPEN\" README.md && grep -q \"429\" README.md && grep -q \"critic\" README.md && grep -q \"settled+outstanding\" README.md && echo ALL_GREP_OK",
+      "exit": 0,
+      "at": "2026-11-09T20:44:07Z"
+    },
+    {
+      "task": 5,
+      "verify": "grep -qv \"longcat\" README.md && echo NIT1_OK (grep -q exit 1, 0 matches, longcat removed; crouton/beam/iceman examples-only kept); grep -qi \"break-glass\" README.md && echo NIT2_OK (lines 100,111 North break-glass (outage-only manual fallback, never normal routing)); node scripts/validate-skills.mjs (checked 40 skills, 0 failures exit 0)",
+      "exit": 0,
+      "at": "2026-11-09T20:46:31Z",
+      "ledger": "model=opencode-go/crouton-alpha-free account=opencode-go (cost 0/0)"
+    }
+  ]
+}

@@ -97,8 +97,34 @@ savings — complementary, not bundled.
 | Autonomy | `orchestrator` primary agent + `autonomous-loop` + `option-selection` — goal-driven loops (route → research → pick best option → execute → verify → self-correct) until acceptance criteria or an honest budget stop; Inside an authorized envelope, Auto tier is the default: machine-approve opens the gate, agent loops alone, machine-close records completion — zero keystrokes. Human /approve+hash is fallback-only (no envelope, or envelope refused/changed). Checkpoints are informational, deadlines are live-clock UTC, recovery needs explicit narrow approval, and phase state + handoff are durable |
 | Status | `/sdlc-lean` — activation proof + installed skills/agents/commands |
 | Plugin | per-session bootstrap, auto-routing, always-on safety guards |
-| Model routing | BRAIN = orchestrator session model (UNPINNED, inherits session; reviewers/planner/research-synthesis/brainstorming run on it; cap + ask-to-extend, secrets NEVER to any free endpoint); MUSCLE = free-first: 1) `super-vl:free` both `console-openrouter` accounts round-robin (429→other account, blind no polling, ledger-tracked), 2) `opencode-go` cost-0/0 re-discovered via models API at dispatch (denylist excluded; crouton/beam/iceman are fallback examples only, never hardcoded), 3) all free exhausted → orchestrator's own model (cap + ask-to-extend; secrets never free; North break-glass outage-only). Guard: `tests/opencode/test-model-routing.mjs` + pre-dispatch role→tier check; mismatch → stop + correct + ledger row (model+account). |
+| Model routing | BRAIN = orchestrator session model (UNPINNED, inherits session; reviewers/planner/research-synthesis/brainstorming run on it; cap + ask-to-extend, secrets NEVER to any free endpoint); MUSCLE = free-first: 1) `super-vl:free` both `console-openrouter` accounts round-robin (429→other account, blind no polling, ledger-tracked), 2) `opencode-go` cost-0/0 re-discovered via models API at dispatch (denylist excluded; crouton/beam/iceman are fallback examples only, never hardcoded), 3) all free exhausted → orchestrator's own model (cap + ask-to-extend; secrets never free; North break-glass (outage-only manual fallback, never normal routing)). Guard: `tests/opencode/test-model-routing.mjs` + pre-dispatch role→tier check; mismatch → stop + correct + ledger row (model+account). |
 | Eval | `npm run eval` — opt-in live harness, dry by default: 44 structural probes across 9 groups, plus a coverage map (`eval/coverage.mjs`) for every skill and command; token/cost telemetry |
+
+## Model routing
+
+BRAIN = orchestrator session model (unpin). MUSCLE = free-first, fail-closed.
+
+| Order | Source | Behavior |
+|---|---|---|
+| 1 | `super-vl:free`, both `console-openrouter` accounts, round-robin | `429` → other account; blind (no polling); ledger-tracked |
+| 2 | `opencode-go` cost-0/0, re-discovered via models API at dispatch | denylist excluded; `crouton`/`beam`/`iceman` are examples only, never hardcoded |
+| 3 | all free exhausted | orchestrator's own session model (cap + ask-to-extend); secrets never to free; North break-glass (outage-only manual fallback, never normal routing) |
+
+**Dynamic discovery:** filter cost `0/0`; require tool-call (strict); TTL 60s revalidate before dispatch; fail-closed trio (miss/deny/expiry → no paid fallback).
+
+**Denylist (excluded):** `poolside`/`laguna` (expired), `inkling` (harness-only), `liquid`/`lfm` (not-for-coding), `gpt-oss` paid family, bare `muse-spark`. Suffix normalization applied before match.
+
+**Cooldown / circuit:** JSONL row `{"type":"cooldown","model":"<pool-id>","account":"<account>","cooldown_until":"...","circuit":"OPEN"}`. States: `CLOSED` → `OPEN` (cooldown) → `HALF-OPEN` (probe). Probe = cheap `GET /api/v1/models`, then `max_tokens:1`; **never** a paid probe.
+
+**429 routing-event:** applies to `429`/provider-error only (**billing never**). **NEVER stop / NEVER fresh approval.** Pre-authorized re-dispatch via `resolveNextFreeLink(pool, failedId, {isDenied, isSecretLike, isCoolingDown})`; `null` = exhausted → stop + escalate, **never auto-spend**.
+
+**Critic gate (mandatory BRAIN):** every implementer/test-writer output → `code-reviewer` + `security-reviewer` on the orchestrator's session model **before** any completion claim; no minor/docs exception. Skipped gates = debt + retro-sweep.
+
+**Escalation ladder:** free-worker hardship (`requires_clarification`, rework>1, low confidence, 2 no-progress loops) → orchestrator re-dispatches the **SAME** task on BRAIN (cap-counted, secrets never free) → still stuck → stop + reconcile + explicit human approval. Never silently accept degraded output to save cost.
+
+**Admission (cap+ask):** `settled+outstanding+next<=cap`; at cap → block + ask extension + escalate; never auto-extend/auto-spend. Paid fallback (orchestrator's own model) is the **ONLY** step needing explicit spend approval.
+
+**Secrets boundary:** secrets NEVER to any free endpoint; customer code only to no-train endpoints; NVIDIA non-sensitive only under verified ZDR. No secret values shown.
 
 ## Human-facing output contract
 

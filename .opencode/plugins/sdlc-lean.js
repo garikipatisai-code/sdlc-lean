@@ -2023,6 +2023,47 @@ export const transitionCircuit = (current, event = {}) => {
 export const circuitTransition = transitionCircuit;
 export const nextCircuitState = transitionCircuit;
 
+// Explicit failover selector (pure, unwired, orchestrator-called only):
+// resolveNextFreeLink(pool, failedId, { isDenied, isSecretLike, isCoolingDown })
+// returns the next eligible pool id in pool order, or null. It never throws:
+// invalid pool/predicates fail open to null; a throwing predicate skips
+// that candidate. Defaults reuse isDeniedModel/isSecretLike; no cooldown
+// store exists so the cooling default is a plain false and the caller
+// injects the isCoolingDown predicate. Never auto-dispatches, never does
+// network I/O. Keep this in sync with scripts/research/phase.mjs.
+export const resolveNextFreeLink = (pool, failedId, predicates) => {
+  try {
+    if (!Array.isArray(pool)) return null;
+    const opts = predicates && typeof predicates === 'object' && !Array.isArray(predicates) ? predicates : {};
+    const isDenied = typeof opts.isDenied === 'function' ? opts.isDenied
+      : (typeof opts.isDeniedModel === 'function' ? opts.isDeniedModel
+        : (typeof opts.isDeniedQuotaModel === 'function' ? opts.isDeniedQuotaModel : isDeniedModel));
+    const isSecretLikeOpt = typeof opts.isSecretLike === 'function' ? opts.isSecretLike : isSecretLike;
+    const isCoolingDown = typeof opts.isCoolingDown === 'function' ? opts.isCoolingDown
+      : (typeof opts.isCooling === 'function' ? opts.isCooling : () => false);
+    for (const entry of pool) {
+      const id = typeof entry === 'string' ? entry
+        : (entry && typeof entry === 'object' && !Array.isArray(entry) ? (entry.id ?? entry.model ?? null) : null);
+      if (typeof id !== 'string' || id.trim() === '') continue;
+      if (id === failedId) continue;
+      let denied;
+      try { denied = isDenied(id); } catch { continue; }
+      if (denied) continue;
+      let secret;
+      try { secret = isSecretLikeOpt(id); } catch { continue; }
+      if (secret) continue;
+      let cooling;
+      try { cooling = isCoolingDown(id); } catch { continue; }
+      if (cooling) continue;
+      return id;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+};
+export const resolveNextFreeQuotaLink = resolveNextFreeLink;
+
 // Pass-through gate mirroring checkPhaseLedgerGate (no quota flow => null).
 const QUOTA_TRACKER_SCHEMA = 'sdlc-lean/quota-tracker@1';
 export const checkQuotaTrackerGate = (trackerLike, context) => {

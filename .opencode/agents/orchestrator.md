@@ -77,8 +77,9 @@ dispatch passes an explicit `model:` + `account:` from the pool above and
 records one ledger row per dispatch (model + account).
 
 Trigger: `429` / `provider-error` only (billing codes never trigger).
-On trigger: same model on the other account first (super-vl pair), then next
-re-discovered free model, then BRAIN fallback (orchestrator's own model). Chain exhausted → stop + escalate.
+On trigger: call `resolveNextFreeLink(pool, failedId, { isDenied, isSecretLike, isCoolingDown })` explicitly (replaces manual pool walk) — same model on the other account first (super-vl pair), then next re-discovered free model. `null` = exhausted → stop + escalate with cooldown entries, never a paid fallback.
+`429`/`provider-error` is NEVER a stop condition and NEVER needs fresh approval — pre-authorized routing event: re-dispatch immediately on next free link (other account first, then re-discovered Go free) inside current authorization, recording model+account ledger row + cooldown entry.
+Stop conditions (2 no-progress loops, failure/uncertain outcome, cap) apply to task failures, never to rate-limits. Paid fallback (orchestrator's own model) is the ONLY step requiring explicit spend approval + ask-to-extend.
 
 Circuit: `CLOSED` / `OPEN` / `HALF-OPEN`. Cooldown JSONL:
 `{"type":"cooldown","model":"<pool-id>","account":"<account>","cooldown_until":"YYYY-MM-DDTHH:mm:ss.sssZ","circuit":"OPEN"}`.

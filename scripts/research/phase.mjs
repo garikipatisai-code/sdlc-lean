@@ -1058,6 +1058,49 @@ export const resolveQuotaFallback = (sessionModel, account) => {
 };
 export const resolveDynamicQuotaFallback = resolveQuotaFallback;
 
+/**
+ * Explicit failover selector (pure, unwired, orchestrator-called only):
+ * mirrors plugin `resolveNextFreeLink`. Returns the next eligible pool id
+ * in pool order, or null; never throws (invalid input fails open to null;
+ * a throwing predicate skips that candidate). Defaults reuse
+ * `isDeniedQuotaModel` and the secret-value guard; no cooldown store
+ * exists so the cooling default is a plain false and the caller injects
+ * the `isCoolingDown` predicate. No auto-dispatch, no network.
+ */
+export const resolveNextFreeLink = (pool, failedId, predicates) => {
+  try {
+    if (!Array.isArray(pool)) return null;
+    const opts = predicates && typeof predicates === 'object' && !Array.isArray(predicates) ? predicates : {};
+    const isDenied = typeof opts.isDenied === 'function' ? opts.isDenied
+      : (typeof opts.isDeniedModel === 'function' ? opts.isDeniedModel
+        : (typeof opts.isDeniedQuotaModel === 'function' ? opts.isDeniedQuotaModel : isDeniedQuotaModel));
+    const isSecretLikeOpt = typeof opts.isSecretLike === 'function' ? opts.isSecretLike
+      : (v) => typeof v === 'string' && SECRET_VALUE_RES.some((re) => re.test(v));
+    const isCoolingDown = typeof opts.isCoolingDown === 'function' ? opts.isCoolingDown
+      : (typeof opts.isCooling === 'function' ? opts.isCooling : () => false);
+    for (const entry of pool) {
+      const id = typeof entry === 'string' ? entry
+        : (entry && typeof entry === 'object' && !Array.isArray(entry) ? (entry.id ?? entry.model ?? null) : null);
+      if (typeof id !== 'string' || id.trim() === '') continue;
+      if (id === failedId) continue;
+      let denied;
+      try { denied = isDenied(id); } catch { continue; }
+      if (denied) continue;
+      let secret;
+      try { secret = isSecretLikeOpt(id); } catch { continue; }
+      if (secret) continue;
+      let cooling;
+      try { cooling = isCoolingDown(id); } catch { continue; }
+      if (cooling) continue;
+      return id;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+};
+export const resolveNextFreeQuotaLink = resolveNextFreeLink;
+
 const validateQuotaModel = (value, field) => {
   if (typeof value !== 'string' || value.trim() === '') {
     reject('invalid-ledger', `${field} must be a non-empty allowlisted string`);
@@ -1100,6 +1143,80 @@ const validateCooldownNote = (note) => {
     reject('invalid-ledger', 'cooldown.circuit must be CLOSED, OPEN, or HALF-OPEN');
   }
 };
+
+/**
+ * Advance quota state on a 429/provider-error: reuse the JSONL cooldown row as
+ * a checkpoint note (validated by validateCooldownNote). Circuit is forced
+ * OPEN; half-open/probe is respected by leaving probe work to the next
+ * dispatch (no polling here). Stale free-model discovery must be revalidated
+ * (isSafeQuotaModel) before any subsequent dispatch/beginDispatch; this
+ * helper never trusts a cached discovery answer.
+ * @param {object} ledger
+ * @param {any} failedRef attempt id string or dispatch/ref object
+ * @param {{now?: any, cooldown_until?: string, cooldownMs?: number,
+ *   cooldownMinutes?: number, usage?: object}} [options]
+ * @returns {object} the same ledger
+ */
+export function advanceQuotaOn429(ledger, failedRef, options = {}) {
+  assertLedgerLoaded(ledger);
+  validateLedger(ledger);
+  const opts = isObject(options) ? options : {};
+  const ref = typeof failedRef === 'string'
+    ? { attemptId: failedRef }
+    : (isObject(failedRef) ? failedRef : {});
+  const merged = { ...ref, ...opts };
+
+  const clock = resolveNow(merged.now ?? merged.at ?? merged.startedAt
+    ?? merged.settledAt ?? merged.reconciledAt);
+
+  let dispatch = null;
+  const attemptId = merged.attemptId ?? merged.attempt ?? merged.attempt_id
+    ?? merged.dispatchId ?? merged.dispatch_id ?? merged.id;
+  if (typeof attemptId === 'string' && attemptId.trim() !== '') {
+    const found = locateDispatch(ledger, attemptId);
+    if (found) dispatch = found.record;
+  }
+
+  const model = merged.model ?? merged.failedModel ?? merged.failed_model
+    ?? dispatch?.model;
+  const account = merged.account ?? merged.failedAccount ?? merged.failed_account
+    ?? dispatch?.account;
+
+  // strict validation (throws invalid-ledger / secret on bad input)
+  validateQuotaModel(model, 'cooldown.model');
+  validateQuotaAccount(account, 'cooldown.account');
+
+  let cooldownUntil = merged.cooldown_until ?? merged.cooldownUntil
+    ?? merged.cooldown_until_utc ?? merged.cooldownUntilUtc;
+  if (typeof cooldownUntil !== 'string') {
+    let durationMs = merged.cooldownMs ?? merged.cooldown_ms
+      ?? merged.cooldownDurationMs ?? merged.cooldown_duration_ms;
+    if (typeof merged.cooldownMinutes === 'number') {
+      durationMs = merged.cooldownMinutes * 60_000;
+    }
+    if (typeof durationMs !== 'number' || !Number.isFinite(durationMs) || durationMs < 0) {
+      durationMs = 5 * 60 * 1000;
+    }
+    cooldownUntil = new Date(clock.ms + durationMs).toISOString();
+  }
+  parseUtc(cooldownUntil, 'cooldown.cooldown_until');
+
+  const usage = merged.usage !== undefined ? merged.usage : null;
+  const row = {
+    type: 'cooldown',
+    model,
+    account,
+    cooldown_until: cooldownUntil,
+    circuit: 'OPEN',
+  };
+  const note = JSON.stringify(row);
+  assertNoSecrets(note, 'cooldown.note');
+  return recordCheckpoint(ledger, {
+    now: clock.ms,
+    note,
+    usage: usage === null ? undefined : usage,
+  });
+}
 
 const HANDOFF_KEYS = ['schema', 'generatedAt', 'taskId', 'authorizationRef', 'phaseId', 'phaseStatus', 'deadlineUtc', 'observationAllowanceMs', 'limits', 'usage', 'cumulativeLimits', 'cumulativeUsage', 'completed', 'inFlight', 'uncertain', 'failed', 'reservations', 'nextAction', 'allowedActions', 'forbiddenActions', 'deviations', 'stopReason', 'stopStatus', 'phaseHistory', 'sourceIdentities'];
 const BRIEF_KEYS = ['phaseId', 'attemptId', 'actionId', 'description', 'status', 'startedAt', 'settledAt', 'reconciledAt', 'evidence', 'failure', 'retryOf', 'approval', 'model', 'account'];

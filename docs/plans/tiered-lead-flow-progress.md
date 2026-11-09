@@ -198,6 +198,11 @@ created per brief, noted honestly).
 - Verify: `node --test tests/opencode/test-agent-permissions.mjs` → exit 0; `node --test tests/opencode/test-model-routing.mjs` → exit 0.
 - Non-sensitive only.
 
+## Task 15 RED->GREEN (docs-only: resolve stop-rule vs routing-trigger conflict)
+- Edited `.opencode/agents/orchestrator.md` routing section only (perms intact `edit: deny`, `*: deny`; no model pin): `429`/`provider-error` is NEVER a stop condition and NEVER needs fresh approval — pre-authorized routing event: re-dispatch immediately on next free link (other account first, then re-discovered Go free) inside current authorization, recording model+account ledger row + cooldown entry. Stop conditions (2 no-progress loops, failure/uncertain outcome, cap) apply to task failures, never to rate-limits. Paid fallback (orchestrator's own model) is the ONLY step requiring explicit spend approval + ask-to-extend.
+- Verify: `node --test tests/opencode/test-agent-permissions.mjs` → exit 0; `node --test tests/opencode/test-model-routing.mjs` → exit 0.
+- Non-sensitive only.
+
 ## Evidence
 `docs/plans/tiered-lead-flow-evidence.json` (file + exit only, non-sensitive).
 

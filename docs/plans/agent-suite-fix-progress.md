@@ -79,3 +79,15 @@ time.
 - Task 3 DONE (docs-only guardrails): reviewers no-commands + evidence-only (D-019 unwired), researcher web sanitization (claim|source|date + assertNoSecrets), implementer ask-narrow (network/env curl/wget/env-interp + redirect outside allowlist), test-writer V1 fallback header (edit deny/bash ask/task deny fail-closed), code/security reviewers clarified read-only/no commands/no fixes. Zero plugin edits.
 - Task1 escalation cleared: T2 static-pin assertion replaced with UNPINNED assertion (test pin update, human re-approved); tests/opencode/test-agent-permissions.mjs → 10/10 pass.
 - Test pin update DONE: T2 static-pin assertion replaced with UNPINNED assertion; test-agent-permissions 10/10 pass, test-model-routing 10/10 pass, npm run verify 676/676 pass.
+
+## Commit + push (DONE)
+
+- Commit: `190ed01` — "fix(agents): UNPINNED dispatch, orchestrator bash deny, reviewer no-commands guardrails"
+  - 13 files changed, 442 insertions(+), 41 deletions(-)
+- Push: `To https://github.com/garikipatisai-code/sdlc-lean.git 740c112..190ed01 main -> main` (exit 0)
+- Status: clean (0). `git log --oneline -1` → `190ed01 ...`
+- Verify: 676/676 (prior evidence 2026-11-10T02:08:09Z, not re-run)
+- Prior hashes: 1fc02a8, 740c112
+- UTC: 2026-11-10T02:44:11Z
+- Model: opencode-go/beam-free, account opencode-go (cost 0/0)
+- Files touched (allow only): 8 agents + test-agent-permissions.mjs + 4 ledgers. No secrets. Free-only.

@@ -1,9 +1,10 @@
 ---
 description: Maps unfamiliar code fast - symbols, flows, change impact - read-only codebase reconnaissance
 mode: subagent
-model: console-openrouter/nvidia/nemotron-3.5-super-vl:free
+# UNPINNED – dispatched per orchestrator routing (BRAIN session / MUSCLE free-first)
 temperature: 0.1
 permission:
+  # V1 scalar permission; test-writer uses V2 permissions. Both enforced via tests.
   edit: deny
   bash: ask
   task:

@@ -1,0 +1,62 @@
+{
+  "plan": "docs/plans/agent-suite-audit-progress.md",
+  "spec": "docs/specs/2026-11-08-free-model-resolver.md",
+  "tasks": [
+    {
+      "task": 0,
+      "verify": "test -f docs/plans/agent-suite-audit-progress.md && grep -q \"agent-suite\" docs/plans/agent-suite-audit-progress.md && echo LEDGER_OK",
+      "exit": 0,
+      "at": "2026-11-09T23:15:17Z",
+      "notes": "Ledger created (setup only; 2 allowed files). Baseline commits 1fc02a8, 740c112; npm run verify 676/676 pass 0 fail. Model opencode-go/beam-free account opencode-go (free-pool re-discovered cost 0/0 2026-11-09: longcat-2.5-free, iceman-contributor-free, beam-free). No secrets. JSON_OK. Free-only."
+    },
+    {
+      "task": 1,
+      "verify": "grep -q \"I1\" docs/plans/agent-suite-audit-progress.md && echo MAP_LOGGED",
+      "exit": 0,
+      "at": "2026-11-09T23:59:00Z",
+      "notes": "Map DONE. Explorer ses_e3d652f4bffe8M99Bg14V6shFd mapped 8/8 agents, exit 0, read-only. Per-agent table + issues I1 static super-vl:free pins vs dynamic BRAIN/MUSCLE (orchestrator.md:102-134 vs worker line 4), I2 V1 vs V2 perms mix (test-writer.md:5-19 vs scalars), I3 reviewer bash deny vs unwired checkReviewerBash allowlist (code-reviewer.md:7-13), I4 implementer broad edit+bash allow contract-only (implementer.md:7-10), I5 orchestrator tools scope missing (orchestrator.md:5-16), D1 duplicate pool defs (orchestrator.md:62-64 vs 111-119). Anchors verified by grep/read. Prior hashes 1fc02a8, 740c112; verify 676/676 not re-run. Model opencode-go/longcat-2.5-free account opencode-go (cost 0/0 re-discovered; super-vl pair OPEN). Files touched: 2 allowed only. No secrets. Free-only."
+    },
+    {
+      "task": 2,
+      "verify": "grep -q \"D-015\" docs/plans/agent-suite-audit-progress.md && echo DEEP_LOGGED",
+      "exit": 0,
+      "at": "2026-11-09T23:25:45Z",
+      "notes": "Deep-check DONE. Deep-checker ses_e3d61dacbffercTG4VL0Zj8iT4 exit 0 read-only. Seams unwired by design: D-015 checkReviewerBash (code-reviewer.md:7-13), D-019 checkImplementerBash (implementer.md:7-10). Bootstrap 5075B/5120B headroom 45B. Zero-dep, fail-open, secrets patterns differ by design. No blockers in scope. orchestrator.md:5-16 no explicit tools/bash deny. Model opencode-go/beam-free account opencode-go (cost 0/0). Files touched: 2 allowed only. No secrets. Free-only."
+    },
+    {
+      "task": 3,
+      "verify": "grep -q \"H1\" docs/plans/agent-suite-audit-progress.md && echo FINDINGS_LOGGED",
+      "exit": 0,
+      "at": "2026-11-09T23:25:45Z",
+      "notes": "Critics DONE (audit-only, no fixes). Code-reviewer ses_e3d6171e9ffe3meYPEXlVCWwST: C1 blocking static super-vl pins vs dynamic BRAIN/MUSCLE (worker *.md:4 vs orchestrator.md:102-134); C2 blocking orchestrator missing bash/tools (orchestrator.md:5-16); C3 blocking reviewer allowlist unwired (code-reviewer.md:7-13, D-015); C4 non-blocking implementer broad (implementer.md:7-10); C5 V1 parity (test-writer.md:5-19); M1 duplicate pools (orchestrator.md:62-64 vs 111-119); M2 V1/V2 mix; M3 stale comments. Security ses_e3d60029bffeN8px48723okKth: H1 implementer RCE via unwired checkImplementerBash (implementer.md:7-10, D-019); H2 secret exfil web->implementer (implementer.md:7-10); H3 orchestrator implicit bash injection via compactionContext (orchestrator.md:5-16); H4 V1 test-writer escape (test-writer.md:5-19); L5 paid-leak cap policy-only. Clean: delegation narrowness, model validation, reviewer deny-safe. Next: await human approval for fix phase; no fixes applied. Model opencode-go/beam-free account opencode-go (cost 0/0). Files touched: 2 allowed only. No secrets. Free-only."
+    },
+    {
+      "task": 4,
+      "verify": "node scripts/validate-skills.mjs",
+      "exit": 0,
+      "at": "2026-11-10T02:04:46Z",
+      "notes": "validate-skills -> checked 40 skills, 0 failures. Model opencode-go/iceman-contributor-free account opencode-go."
+    },
+    {
+      "task": 4,
+      "verify": "npm run verify",
+      "exit": 0,
+      "at": "2026-11-10T02:04:46Z",
+      "notes": "npm run verify -> 676/676 pass, 0 fail. Model opencode-go/iceman-contributor-free account opencode-go."
+    },
+    {
+      "task": 4,
+      "verify": "grep -rn \"^model:\" .opencode/agents/ || echo NO_STATIC_PINS",
+      "exit": 0,
+      "at": "2026-11-10T02:04:46Z",
+      "notes": "Output: NO_STATIC_PINS. Model opencode-go/iceman-contributor-free account opencode-go."
+    },
+    {
+      "task": 4,
+      "verify": "grep -q \"bash: deny\" .opencode/agents/orchestrator.md && echo SCOPE_OK",
+      "exit": 0,
+      "at": "2026-11-10T02:04:46Z",
+      "notes": "Output: SCOPE_OK. Verify DONE; critics pending. Files touched: 4 allowed ledger files only. No secrets. Free-only. Model opencode-go/iceman-contributor-free account opencode-go."
+    }
+  ]
+}

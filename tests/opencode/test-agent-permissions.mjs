@@ -232,20 +232,23 @@ test('Phase C T3 seam pin: tasks 1-2 intact plus hooks unwired', async () => {
   assert.ok(!v2.includes('checkAgentPathScope') && !v2.includes('checkReviewerBash'), 'V2 hook stays unwired');
 });
 
-test('T2 pins: static model pins (free-first, account 1 = console-openrouter)', () => {
-  const MINI = 'console-openrouter/nvidia/nemotron-3.5-super-vl:free';
-  const ULTRA = 'console-openrouter/nvidia/nemotron-3.5-super-vl:free';
-  const expected = {
-    'implementer': MINI,
-    'explorer': MINI,
-    'test-writer': MINI,
-    'planner': ULTRA,
-    'code-reviewer': ULTRA,
-    'security-reviewer': ULTRA,
-    'researcher': ULTRA,
-  };
-  for (const [agent, want] of Object.entries(expected)) {
+test('T2 pins: unpinned model (dynamic routing, no static pins)', () => {
+  const BRAIN = ['researcher', 'planner', 'code-reviewer', 'security-reviewer'];
+  const MUSCLE = ['explorer', 'implementer', 'test-writer'];
+  for (const agent of [...BRAIN, ...MUSCLE]) {
     const { yaml } = frontmatter(`.opencode/agents/${agent}.md`);
-    assert.equal(top(yaml, 'model'), want, `${agent}.md: model must be ${want}`);
+    assert.equal(top(yaml, 'model'), null, `${agent}.md: model must be UNPINNED (no model:)`);
+    assert.match(yaml, /UNPINNED/, `${agent}.md: UNPINNED marker must be present`);
+  }
+  // grep -rn "^model:" .opencode/agents/ must be empty (all agents, incl. orchestrator)
+  const agentsDir = path.join(root, '.opencode', 'agents');
+  for (const f of fs.readdirSync(agentsDir)) {
+    if (!f.endsWith('.md')) continue;
+    const text = fs.readFileSync(path.join(agentsDir, f), 'utf8');
+    const fm = text.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+    assert.ok(fm, `${f}: missing frontmatter`);
+    for (const line of fm[1].split(/\r?\n/)) {
+      assert.ok(!/^model:/.test(line), `${f}: static model pin forbidden (grep ^model: must be empty)`);
+    }
   }
 });

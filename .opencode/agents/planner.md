@@ -1,9 +1,10 @@
 ---
 description: Creates implementation plans with 3-7 prioritized bite-sized tasks from an approved spec
 mode: subagent
-model: console-openrouter/nvidia/nemotron-3.5-super-vl:free
+# UNPINNED – dispatched per orchestrator routing (BRAIN session / MUSCLE free-first)
 
 permission:
+  # V1 scalar permission; test-writer uses V2 permissions. Both enforced via tests.
   edit: deny
   bash: deny
   task:

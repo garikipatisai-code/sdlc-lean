@@ -1,7 +1,8 @@
 ---
 description: Writes or extends tests for a behavior, following the repo's existing test stack and hermetic fakes
 mode: subagent
-model: console-openrouter/nvidia/nemotron-3.5-super-vl:free
+# UNPINNED – dispatched per orchestrator routing (BRAIN session / MUSCLE free-first)
+# V1 fallback header: V1 hosts ignore V2 permissions – treat as edit deny/bash ask/task deny (fail-closed).
 permissions:
   # V1 parity: V1 hosts ignore path-glob resources; runtime seam
   # checkAgentPathScope(test-writer, edit, target) enforces tests/** outside V1.

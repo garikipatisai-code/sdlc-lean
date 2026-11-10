@@ -1,9 +1,10 @@
 ---
 description: Investigates one research sub-question on the web and returns distilled, cited findings - spawn in parallel for independent sub-questions
 mode: subagent
-model: console-openrouter/nvidia/nemotron-3.5-super-vl:free
+# UNPINNED – dispatched per orchestrator routing (BRAIN session / MUSCLE free-first)
 temperature: 0.2
 permission:
+  # V1 scalar permission; test-writer uses V2 permissions. Both enforced via tests.
   edit: deny
   bash: deny
   task:

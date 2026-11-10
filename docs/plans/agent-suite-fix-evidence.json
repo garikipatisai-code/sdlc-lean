@@ -1,0 +1,97 @@
+{
+  "plan": "docs/plans/agent-suite-fix-progress.md",
+  "spec": "docs/specs/2026-11-08-free-model-resolver.md",
+  "tasks": [
+    {
+      "task": 1,
+      "verify": "grep -rn \"^model:\" .opencode/agents/ || echo NO_STATIC_PINS",
+      "exit": 0,
+      "at": "2026-11-09T23:58:04Z",
+      "notes": "C1 all-unpin DONE. RED: grep -rn '^model:' .opencode/agents/ \u2192 7 hits (all line 4). GREEN: same grep \u2192 NO_STATIC_PINS, exit 0; orchestrator.md has no model: line. Removed model: console-openrouter/nvidia/nemotron-3.5-super-vl:free from 7 workers (researcher, explorer, planner, implementer, test-writer, code-reviewer, security-reviewer) and added frontmatter comment '# UNPINNED \u2013 dispatched per orchestrator routing (BRAIN session / MUSCLE free-first)' (valid YAML). Decision: single source = dispatch-time model:+account: from orchestrator pool; removes static-vs-dynamic contradiction (audit C1/I1). BRAIN inherits session; MUSCLE free-first. Named check node --test tests/opencode/test-model-routing.mjs \u2192 10/10 pass, exit 0. ESCALATION (gated, tests out of scope): tests/opencode/test-agent-permissions.mjs:235-251 'T2 pins: static model pins' now fails 9/10 pass, 1 fail, exit 1 (actual null vs old super-vl pin); recorded, NOT edited \u2014 needs separate test-update task. Prior hashes 1fc02a8, 740c112; baseline verify 676/676 (not re-run). Model opencode-go/longcat-2.5-free account opencode-go (cost 0/0). Files touched: 7 allowed agents + 2 allowed ledger files only. No secrets. Free-only."
+    },
+    {
+      "task": 2,
+      "verify": "sed -n '1,20p' .opencode/agents/orchestrator.md; grep -q \"bash: deny\" .opencode/agents/orchestrator.md && echo SCOPE_OK; node --test tests/opencode/test-model-routing.mjs",
+      "exit": 0,
+      "at": "2026-11-09T23:59:00Z",
+      "notes": "C2 orchestrator bash deny + tools allowlist DONE. Added explicit 'bash: deny' + comment '# no direct tools; dispatch via task only' + tools allowlist comment 'todowrite allow, task 7 workers allow, all else deny' to permission block. Kept edit:deny, todowrite:allow, task narrow (7 workers allow, * deny). YAML valid. Named check node --test tests/opencode/test-model-routing.mjs -> 10/10 pass, exit 0. Task1 escalation persists: tests/opencode/test-agent-permissions.mjs:235-251 T2 static-pin assertion still fails 9/10, NOT edited (tests out of scope). Prior hashes 1fc02a8, 740c112. Files touched: orchestrator.md + 2 allowed ledger files only. No secrets. Free-only."
+    },
+    {
+      "task": 3,
+      "verify": "grep -rni \"do not run commands\\|no commands\\|sanitiz\\|V1 fallback\\|ask-narrow\" .opencode/agents/ && echo GUARDRAILS_OK; node --test tests/opencode/test-model-routing.mjs",
+      "exit": 0,
+      "at": "2026-11-10T00:01:00Z",
+      "notes": "C3+H1-H4 docs-only guardrails DONE (zero plugin edits). orchestrator.md: critic gate states reviewers run NO commands \u2013 evidence from implementer/test-writer only, unwired by design D-019 (no wiring promise); added sanitization note (researcher web untrusted, claim|source|date table only, assertNoSecrets on brief inputs). implementer.md: ask-narrow note (bash ask for network/env, no curl/wget with env interpolation, no redirect writes outside allowlist, contract until seam wired). test-writer.md: V1 fallback header (V1 hosts ignore V2 permissions \u2013 treat as edit deny/bash ask/task deny fail-closed). code-reviewer/security-reviewer: clarified read-only, no commands (do not run bash/shell), no fixes, evidence from implementer/test-writer only. GUARDRAILS_OK; test-model-routing.mjs 10/10 pass. Task1 escalation preserved (test-agent-permissions T2 static-pin assertion still fails 9/10; tests never edited). Files touched: 5 allowed agents + 2 allowed ledger files only. No secrets. Free-only. Model opencode-go/iceman-contributor-free account opencode-go."
+    },
+    {
+      "task": 4,
+      "verify": "grep -rni \"single source\\|V1.*V2\\|debt.*D-015\\|D-019\" .opencode/agents/ && echo MINOR_OK; node --test tests/opencode/test-model-routing.mjs",
+      "exit": 0,
+      "at": "2026-11-10T00:06:38Z",
+      "notes": "M1-M3 minor cleanup DONE (docs-only, zero plugin/test edits). M1: orchestrator.md duplicate 'Dynamic free pool' prose replaced with pointer 'Pool: single source = routing table below (MUSCLE tier) / POOL in sdlc-lean.js; re-discover free models at dispatch time, never hardcode. No model pins.'; 'pool above' ref updated to routing table. M2: added V1/V2 clarifying comment to researcher/explorer/planner permission blocks ('V1 scalar permission; test-writer uses V2 permissions. Both enforced via tests.'). M3: orchestrator critic gate now marks unwired seams as debt, not enforced: D-015 (checkReviewerBash read-only test allowlist) and D-019 (checkImplementerBash); no wiring promise. MINOR_OK grep exit 0; test-model-routing.mjs 10/10 pass. Task1 escalation preserved (test-agent-permissions T2 static-pin assertion still fails 9/10; tests never edited). Files touched: 4 allowed agents + 2 allowed ledger files only. No secrets. Free-only. Model opencode-go/longcat-2.5-free account opencode-go."
+    },
+    {
+      "task": 5,
+      "verify": "node --test tests/opencode/test-agent-permissions.mjs && node --test tests/opencode/test-model-routing.mjs && npm run verify",
+      "exit": 0,
+      "at": "2026-11-10T00:10:00Z",
+      "notes": "Test pin update (human re-approved, strengthening only). Replaced T2 static super-vl:free equality (lines 235-251) with UNPINNED assertion: BRAIN workers (researcher, planner, code-reviewer, security-reviewer) and MUSCLE workers (explorer, implementer, test-writer) must have NO model: (top null) + UNPINNED marker; grep -rn '^model:' .opencode/agents/ empty. Paid/bare rejection, permission checks, seam checks unchanged. test-agent-permissions 10/10 pass; test-model-routing 10/10 pass; npm run verify 676/676 pass, 0 fail. Files touched: tests/opencode/test-agent-permissions.mjs + 2 allowed ledger files only. No secrets. Free-only. Model opencode-go/beam-free account opencode-go."
+    },
+    {
+      "task": 6,
+      "verify": "node scripts/validate-skills.mjs",
+      "exit": 0,
+      "at": "2026-11-10T02:04:46Z",
+      "notes": "validate-skills -> checked 40 skills, 0 failures. Model opencode-go/iceman-contributor-free account opencode-go."
+    },
+    {
+      "task": 6,
+      "verify": "npm run verify",
+      "exit": 0,
+      "at": "2026-11-10T02:04:46Z",
+      "notes": "npm run verify -> 676/676 pass, 0 fail. Model opencode-go/iceman-contributor-free account opencode-go."
+    },
+    {
+      "task": 6,
+      "verify": "grep -rn \"^model:\" .opencode/agents/ || echo NO_STATIC_PINS",
+      "exit": 0,
+      "at": "2026-11-10T02:04:46Z",
+      "notes": "Output: NO_STATIC_PINS. Model opencode-go/iceman-contributor-free account opencode-go."
+    },
+    {
+      "task": 6,
+      "verify": "grep -q \"bash: deny\" .opencode/agents/orchestrator.md && echo SCOPE_OK",
+      "exit": 0,
+      "at": "2026-11-10T02:04:46Z",
+      "notes": "Output: SCOPE_OK. Ledger+verify DONE; critics pending. Files touched: 4 allowed ledger files only. No secrets. Free-only. Model opencode-go/iceman-contributor-free account opencode-go."
+    },
+    {
+      "task": 7,
+      "verify": "node scripts/validate-skills.mjs",
+      "exit": 0,
+      "at": "2026-11-10T02:08:09Z",
+      "notes": "Output: checked 40 skills, 0 failures. Final fresh verification. Model opencode-go/beam-free account opencode-go."
+    },
+    {
+      "task": 7,
+      "verify": "npm run verify",
+      "exit": 0,
+      "at": "2026-11-10T02:08:09Z",
+      "notes": "Output: tests 676, pass 676, fail 0 (npm run verify). Final fresh verification. Model opencode-go/beam-free account opencode-go."
+    },
+    {
+      "task": 7,
+      "verify": "node scripts/spec-check.mjs status",
+      "exit": 0,
+      "at": "2026-11-10T02:08:09Z",
+      "notes": "Output: no active spec gate. Final fresh verification. Model opencode-go/beam-free account opencode-go."
+    },
+    {
+      "task": 7,
+      "verify": "grep -rn \"^model:\" .opencode/agents/ || echo NO_STATIC_PINS",
+      "exit": 0,
+      "at": "2026-11-10T02:08:09Z",
+      "notes": "Output: NO_STATIC_PINS. Final fresh verification. Task5 verify DONE + critics DONE (ses_e3ccb46c2ffeQwb77iot7mh7lx + ses_e3ccac972fferQ4D5HGxJNa1CF both complete, no blocking). Model opencode-go/beam-free account opencode-go."
+    }
+  ]
+}

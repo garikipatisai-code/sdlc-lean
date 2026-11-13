@@ -1,0 +1,144 @@
+{
+  "plan": "docs/plans/2026-11-13-tiered-effort-progress.md",
+  "spec": "session rule (tiered reasoning-effort dispatch defaults)",
+  "hashes": [
+    "59504e8"
+  ],
+  "tasks": [
+    {
+      "task": 1,
+      "verify": "grep -q \"Reasoning-effort defaults\" .opencode/agents/orchestrator.md && echo DEFAULTS_OK && node scripts/validate-skills.mjs && node -e \"JSON.parse(require('fs').readFileSync('docs/plans/2026-11-13-tiered-effort-evidence.json','utf8'));console.log('JSON_OK')\"",
+      "exit": 0,
+      "at": "2026-11-13T23:27:16Z",
+      "notes": "Task 1 DONE (docs-only). Added \"Reasoning-effort defaults (per tier)\" block to .opencode/agents/orchestrator.md: MUSCLE medium (beam) + thinking on where valuable (super-vl); BRAIN high; longcat/iceman-free exempt (no knob, never force); never max-by-default (429 risk). Added brief-carry line: every worker dispatch records chosen effort + thinking setting \u2192 ledger row model + account + effort (+ thinking). No schema change. Verify: DEFAULTS_OK; node scripts/validate-skills.mjs -> checked 40 skills, 0 failures, exit 0; JSON parse -> JSON_OK; exit 0. Hashes 59504e8. No secrets. Free-only. Ledger: model=console-openrouter/nvidia/nemotron-3.5-super-vl:free account=console-openrouter."
+    },
+    {
+      "task": 2,
+      "verify": "grep -q \"+1\" .opencode/agents/orchestrator.md && grep -qi \"capped at max\" .opencode/agents/orchestrator.md && echo BUMP_OK && node scripts/validate-skills.mjs && node -e \"JSON.parse(require('fs').readFileSync('docs/plans/2026-11-13-tiered-effort-evidence.json','utf8'));console.log('JSON_OK')\"",
+      "exit": 0,
+      "at": "2026-11-13T23:28:09Z",
+      "notes": "Task 2 DONE (docs-only). Added escalation bump rule to \"Escalation ladder\" block in .opencode/agents/orchestrator.md: hardship or rework \u2192 reasoning effort +1 level, capped at max for that tier; BRAIN judge/reviewer pass stays `high`, never stepped down to save cost. Existing ladder/stop wording kept intact. Verify: BUMP_OK; node scripts/validate-skills.mjs -> checked 40 skills, 0 failures, exit 0; JSON parse -> JSON_OK; exit 0. Hashes 59504e8. No secrets. Free-only. Ledger: model=console-openrouter/nvidia/nemotron-3.5-super-vl:free account=console-openrouter2."
+    },
+    {
+      "task": 3,
+      "verify": "grep -q \"rework rate\" docs/audit-ledger.md && grep -q \"429 rate\" docs/audit-ledger.md && echo METERS_OK && node scripts/validate-skills.mjs && node -e \"JSON.parse(require('fs').readFileSync('docs/plans/2026-11-13-tiered-effort-evidence.json','utf8'));console.log('JSON_OK')\"",
+      "exit": 0,
+      "at": "2026-11-13T23:29:04Z",
+      "notes": "Task 3 DONE (docs-only). Added meter definitions to docs/audit-ledger.md: rework rate = reworked \u00f7 total dispatches; 429 rate = 429s \u00f7 total calls; 2-week sampling review note (per-call\u00d7rounds, no new infra). Appended debt row D-041 (manual sampling only; no dispatch/rework/429 counters in ledger schema). Verify: METERS_OK; node scripts/validate-skills.mjs exit 0; JSON parse -> JSON_OK; exit 0. Hashes 59504e8. No secrets. Free-only. Ledger: model=opencode-go/beam-free account=opencode-go (cost 0/0)."
+    },
+    {
+      "task": 4,
+      "verify": "npm run verify && node --test tests/opencode/test-tiered-reasoning.mjs && git status --short && git diff --exit-code -- tests/opencode/test-model-routing.mjs tests/opencode/test-agent-permissions.mjs tests/opencode/test-brain-judge-guarantees.mjs",
+      "exit": 0,
+      "at": "2026-11-13T23:30:29Z",
+      "notes": "Task 4 follow-up: ledger + full verify (no source/test edits). npm run verify -> tests 714, pass 714, fail 0 (705 prior + 9 new tiered). node --test tests/opencode/test-tiered-reasoning.mjs -> tests 9, pass 9, fail 0. git status --short: uncommitted effort batch + judge batch pending push (.opencode/agents/orchestrator.md, docs/audit-ledger.md, docs/debt-ledger.md, worker-self-failover-429 evidence/progress, brain-judge-guarantees progress/evidence + test, tiered-effort progress/evidence + test). git diff --exit-code protected tests -> exit 0 (test-model-routing.mjs, test-agent-permissions.mjs, test-brain-judge-guarantees.mjs untouched). Hashes 59504e8. No secrets. Free-only. Ledger: model=opencode-go/beam-free account=opencode-go (cost 0/0; test-writer effort n/a exempt)."
+    }
+  ],
+  "critics": [
+    {
+      "session": "ses_e28c00d94",
+      "kind": "code",
+      "result": "no findings",
+      "notes": "wording exact, no weakening, graders untouched, zero-dep",
+      "at": "2026-11-13T23:32:09Z"
+    },
+    {
+      "session": "ses_e28c00d93",
+      "kind": "security",
+      "result": "CLEAN",
+      "notes": "no spend/quota forcing, no leak, no meter gaming",
+      "at": "2026-11-13T23:32:09Z"
+    }
+  ],
+  "phase": "DONE clean \u2014 critics done; ready to push",
+  "verify": "npm run verify -> tests 714 pass 714 fail 0; test-tiered-reasoning -> 9/9; protected tests diff exit 0; UTC 2026-11-13T23:30:29Z; critics ses_e28c00d94 (code, no findings) + ses_e28c00d93 (security, CLEAN); grep both sessionIDs -> LOGGED",
+  "ledger": "model=opencode-go/beam-free account=opencode-go (cost 0/0; test-writer effort n/a exempt)",
+  "decision": {
+    "question": "Where to record per-dispatch effort + thinking?",
+    "criteria": [
+      "C1 visible in brief-carries checklist",
+      "C2 ledger row shape model+account+effort",
+      "C3 no schema change"
+    ],
+    "options": {
+      "O1": {
+        "scores": "Y/Y/Y",
+        "note": "bullets in Brief carries + new Reasoning-effort defaults block; ledger row documented as model + account + effort (+ thinking); guidance text only"
+      },
+      "O2": {
+        "scores": "N/N/N",
+        "note": "add column to role table \u2014 schema change, out of scope"
+      },
+      "O3": {
+        "scores": "Y/Y/N",
+        "note": "separate effort-ledger file \u2014 new file outside allowlist"
+      }
+    },
+    "pick": "O1",
+    "y_statement": "kept change to the allowed orchestrator.md only, additive guidance text, no schema change, ledger row shape documented inline",
+    "ledger": "model=console-openrouter/nvidia/nemotron-3.5-super-vl:free account=console-openrouter",
+    "free_only": true,
+    "no_secrets": true
+  },
+  "status_checks": [
+    {
+      "at": "2026-11-13T23:27:16Z",
+      "model": "console-openrouter/nvidia/nemotron-3.5-super-vl:free",
+      "account": "console-openrouter",
+      "hashes_prior": [
+        "59504e8"
+      ],
+      "commands": {
+        "defaults_grep": {
+          "cmd": "grep -q \"Reasoning-effort defaults\" .opencode/agents/orchestrator.md && echo DEFAULTS_OK",
+          "exit": 0,
+          "out": "DEFAULTS_OK"
+        },
+        "validate_skills": {
+          "cmd": "node scripts/validate-skills.mjs",
+          "exit": 0,
+          "out": "checked 40 skills, 0 failures"
+        },
+        "evidence_parse": {
+          "cmd": "node -e \"JSON.parse(require('fs').readFileSync('docs/plans/2026-11-13-tiered-effort-evidence.json','utf8'));console.log('JSON_OK')\"",
+          "exit": 0,
+          "out": "JSON_OK"
+        }
+      },
+      "ALL_GOOD": "yes",
+      "ALL_GOOD_reason": "all three checks pass; allowed files only; docs-only, free-only, no secrets."
+    },
+    {
+      "at": "2026-11-13T23:30:29Z",
+      "model": "opencode-go/beam-free",
+      "account": "opencode-go",
+      "hashes_prior": [
+        "59504e8"
+      ],
+      "commands": {
+        "npm_verify": {
+          "cmd": "npm run verify",
+          "exit": 0,
+          "out": "tests 714, pass 714, fail 0"
+        },
+        "tiered_test": {
+          "cmd": "node --test tests/opencode/test-tiered-reasoning.mjs",
+          "exit": 0,
+          "out": "tests 9, pass 9, fail 0"
+        },
+        "git_status": {
+          "cmd": "git status --short",
+          "exit": 0,
+          "out": "effort batch + judge batch pending push"
+        },
+        "protected_diff": {
+          "cmd": "git diff --exit-code -- tests/opencode/test-model-routing.mjs tests/opencode/test-agent-permissions.mjs tests/opencode/test-brain-judge-guarantees.mjs",
+          "exit": 0,
+          "out": "exit 0 untouched"
+        }
+      },
+      "ALL_GOOD": "yes",
+      "ALL_GOOD_reason": "full verify green 714/714; tiered 9/9; protected tests untouched; free-only, no secrets."
+    }
+  ]
+}

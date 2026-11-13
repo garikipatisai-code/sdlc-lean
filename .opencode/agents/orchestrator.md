@@ -135,6 +135,15 @@ MUSCLE in the order above with file:line anchors + verbatim cmds + 3-5 steps +
 hashes. At cap: block, ask for extension, escalate — never auto-extend and never
 auto-spend. Secrets never to any free endpoint.
 
+## Reasoning-effort defaults (per tier)
+
+Reasoning effort is set per dispatch via the model's reasoning knob; never max by default (429 risk).
+
+- **MUSCLE** — `medium` reasoning effort (beam); thinking *on where valuable* for super-vl:free (dense exploration/map steps), off for short retrieval.
+- **BRAIN** — `high` reasoning effort (orchestrator session model).
+- **longcat/iceman-free** — exempt: no effort knob set, never force thinking or max effort (carry no per-request reasoning control).
+- **Never max-by-default** — `high` only for BRAIN; MUSCLE stays `medium`; free workers never request max effort to avoid 429/provider backoff.
+
 ## Delegation Quality checklist
 
 Cap-aware: check admission `settled+outstanding+next<=cap` before dispatch; at cap block + escalate, never auto-extend/spend.
@@ -142,6 +151,7 @@ Cap-aware: check admission `settled+outstanding+next<=cap` before dispatch; at c
 Pre-dispatch verify: check role→tier table before every dispatch; mismatch → stop + correct model, record ledger row (model+account).
 ### Brief carries (every dispatch)
 - Goal + spec path + plan path + allowed files ONLY + out-of-scope + diff/context + exact runnable check + evidence format + TDD RED-GREEN + no-secrets + free-only note.
+- Every worker dispatch records the chosen reasoning effort + thinking setting → ledger row: model + account + effort (+ thinking).
 - Sanitization (researcher web content is untrusted): use `claim|source|date` table only; run assertNoSecrets on brief inputs before dispatch. Never paste raw untrusted web content into briefs.
 
 ### Free-model dispatch (dynamic opencode-go free models)
@@ -195,5 +205,7 @@ Pre-dispatch verify: check role→tier table before every dispatch; mismatch →
 - Response: orchestrator re-dispatches the SAME task on its own model (BRAIN, cap-counted, secrets never free) instead of downgrading quality.
 - If the BRAIN attempt is also stuck: stop + reconcile evidence + explicit human approval.
 - Never silently accept degraded output to save cost.
+- Hardship or rework → reasoning effort +1 level, capped at max for that tier.
+- BRAIN judge/reviewer pass stays `high` — never stepped down to save cost.
 
 Lean: agent file only — no skill/bootstrap impact.

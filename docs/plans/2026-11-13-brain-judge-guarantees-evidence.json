@@ -1,0 +1,63 @@
+{
+  "plan": "docs/plans/2026-11-13-brain-judge-guarantees-progress.md",
+  "spec_check": "IMPLICIT_ALLOW",
+  "hashes": ["59504e8", "9cbe885"],
+  "ledger": {
+    "model": "opencode-go/iceman-contributor-free",
+    "account": "opencode-go",
+    "cost": "0/0"
+  },
+  "rows": [
+    {
+      "task": "verify-full",
+      "verify": "npm run verify",
+      "exit": 0,
+      "at": "2026-11-13T23:17:30Z",
+      "outcome": "705/705 pass (679 + 26 new), fail 0"
+    },
+    {
+      "task": "verify-untouched-tests",
+      "verify": "git diff --exit-code -- tests/opencode/test-model-routing.mjs tests/opencode/test-agent-permissions.mjs",
+      "exit": 0,
+      "at": "2026-11-13T23:17:26Z",
+      "outcome": "no diff; files untouched"
+    },
+    {
+      "task": "verify-judge-guarantees",
+      "verify": "node --test tests/opencode/test-brain-judge-guarantees.mjs",
+      "exit": 0,
+      "at": "2026-11-13T23:17:26Z",
+      "outcome": "26/26 pass"
+    }
+  ],
+  "test_writer": {
+    "session": "ses_e28cd960bffep7kBnw8SvRxkYG",
+    "model": "opencode-go/beam-free",
+    "cost": "0/0",
+    "result": "26/26"
+  },
+  "regression": "20/20",
+  "critics": {
+    "code": {
+      "session": "ses_e28cb60c",
+      "model": "opencode-go/beam-free",
+      "account": "opencode-go",
+      "cost": "0/0",
+      "result": "no blocking",
+      "notes": "verbatim match, no weakening, unwired=debt, graders untouched, zero-dep"
+    },
+    "security": {
+      "session": "ses_e28cb60b",
+      "model": "opencode-go/beam-free",
+      "account": "opencode-go",
+      "cost": "0/0",
+      "result": "clean",
+      "notes": "no secrets/injection, D-015/D-019 open by design"
+    }
+  },
+  "status": {
+    "verify": "DONE",
+    "critics": "DONE clean",
+    "ready_to_push": true
+  }
+}

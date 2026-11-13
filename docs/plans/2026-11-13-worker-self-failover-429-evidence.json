@@ -63,5 +63,45 @@
   ],
   "phase": "ready to close/push",
   "verify": "679/679, 3/3, 8/8, NO_STATIC_PINS, GATE_OK 19:33:24Z",
-  "ledger": "model=opencode-go/beam-free account=opencode-go"
+  "ledger": "model=opencode-go/beam-free account=opencode-go",
+  "decision": {
+    "question": "stop 5-10 same-model harness attempts on 429 while orchestrator progresses?",
+    "criteria": ["C1 kills same-model spin", "C2 zero harness change", "C3 no worker-intelligence assumption"],
+    "options": {
+      "O1": {"scores": "N/Y/Y", "note": "spin continues (~1.5min), loser (does nothing about complaint)"},
+      "O2": {"scores": "N/Y/Y", "note": "brief self-switch shipped onWorkerQuotaError; helper runs in worker code AFTER harness returns terminal 429; harness 10-retry spin below worker code unaffected; winner for post-terminal switch (already shipped, 3/3 + 679 green)"},
+      "O3": {"scores": "Y/N/Y", "note": "v2 session.retry hook override; only path that can short-circuit harness spin (researcher: anomalyco/opencode#58128 2026-10-22, single-source unverified); needs implementation + V1/V2 compat + validation; follow-up proposal, NOT decided today"},
+      "O4": {"scores": "N/Y/Y", "note": "immediate orchestrator re-dispatch + cooldown + non-blocking (current); does not stop spinning run, covers it (beam covered longcat); zero change, works today"}
+    },
+    "pick": "O4 wins today (only zero-change cover that works, citing explorer 509-file zero-hit + researcher no-knob); O2 retained as shipped complement; O3 follow-up needs plan+approval+validation",
+    "y_statement": "facing harness-hardcoded retry, chose orchestrator cover to keep progress unblocked, accepting redundant spin as priced-in waste; O1 lost (ignores complaint), O2 lost alone (cannot touch sub-worker harness spin), O3 lost today (unverified + implementation risk)",
+    "retract": "no public config knob per cited docs/maintainer; only programmatic v2 hook (unverified single-source)",
+    "ledger": "model=opencode-go/beam-free account=opencode-go",
+    "free_only": true,
+    "no_secrets": true
+  },
+  "status_checks": [
+    {
+      "at": "2026-11-13T23:05:55Z",
+      "model": "opencode-go/iceman-contributor-free",
+      "account": "opencode-go",
+      "cost": "0/0",
+      "hashes_prior": ["59504e8", "9cbe885"],
+      "commands": {
+        "verify": {"cmd": "npm run verify", "exit": 0, "tests": 679, "pass": 679, "fail": 0, "lint": "pass"},
+        "git_status_short": {"cmd": "git status --short", "exit": 0, "out": [" M docs/plans/2026-11-13-worker-self-failover-429-evidence.json", " M docs/plans/2026-11-13-worker-self-failover-429-progress.md"]},
+        "git_log": {"cmd": "git log --oneline -3", "exit": 0, "out": ["59504e8 feat(routing): worker self-failover on 429 + stale-pool guard", "9cbe885 fix(routing): BRAIN inherits session, gate paid fallback on admission+approval", "99f84f1 docs(ledger): agent-suite audit+fix evidence 190ed01"]},
+        "git_status_sb": {"cmd": "git status -sb", "exit": 0, "out": "## main...origin/main (no ahead/behind)", "modified": 2},
+        "global_diff": {"cmd": "diff -rq .opencode/agents ~/.config/opencode/agents | head -20", "exit": 0, "out_head": ["Files .opencode/agents/code-reviewer.md and /home/appusai/.config/opencode/agents/code-reviewer.md differ", "Files .opencode/agents/explorer.md and /home/appusai/.config/opencode/agents/explorer.md differ", "Files .opencode/agents/implementer.md and /home/appusai/.config/opencode/agents/implementer.md differ", "Files .opencode/agents/orchestrator.md and /home/appusai/.config/opencode/agents/orchestrator.md differ", "Files .opencode/agents/planner.md and /home/appusai/.config/opencode/agents/planner.md differ", "Files .opencode/agents/researcher.md and /home/appusai/.config/opencode/agents/researcher.md differ", "Files .opencode/agents/security-reviewer.md and /home/appusai/.config/opencode/agents/security-reviewer.md differ", "Files .opencode/agents/test-writer.md and /home/appusai/.config/opencode/agents/test-writer.md differ"]},
+        "global_helper": {"cmd": "grep -c onWorkerQuotaError ~/.config/opencode/plugins/sdlc-lean.js", "exit": 1, "count": 0},
+        "local_helper": {"cmd": "grep -c onWorkerQuotaError .opencode/plugins/sdlc-lean.js", "exit": 0, "count": 1},
+        "global_routing": {"cmd": "grep -q \"orchestrator session model\" ~/.config/opencode/agents/orchestrator.md && echo GLOBAL_ROUTING_OK || echo GLOBAL_STALE", "exit": 0, "out": "GLOBAL_ROUTING_OK"},
+        "global_ls": {"cmd": "ls ~/.config/opencode/agents/ | head -12", "exit": 0, "out": ["code-reviewer.md", "explorer.md", "implementer.md", "orchestrator.md", "planner.md", "researcher.md", "security-reviewer.md", "test-writer.md"]}
+      },
+      "ALL_GOOD": "no",
+      "ALL_GOOD_reason": "verify green (679/679 exit 0) and branch in sync with origin/main, but tree not clean (2 modified allowed files).",
+      "GLOBAL_CURRENT": "no",
+      "GLOBAL_CURRENT_reason": "agent diffs present (non-zero), global plugin onWorkerQuotaError count 0 vs local 1; routing marker present (GLOBAL_ROUTING_OK)."
+    }
+  ]
 }

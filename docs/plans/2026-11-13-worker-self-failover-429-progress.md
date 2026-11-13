@@ -71,4 +71,45 @@ Task 2 decision: reuse the existing cooldown seam — `advanceQuotaOn429` writes
 
 - ses_e29eee2f1ffemtbtlp5n44obOt (longcat Task 4 verify) terminal: state error, "Rate limit exceeded. Please try again later." Superseded by ses_e29e50418 beam PASS (single Task 4 row 18:11:15Z). No retry (work complete via failover). No duplicate evidence rows. Longcat cooldown OPEN.
 - Verify basis unchanged: 679/679, 3/3, 8/8, NO_STATIC_PINS, GATE_OK 19:33:24Z. Critics clean.
-- Ledger: model=opencode-go/beam-free account=opencode-go. Free-only; no secrets.
+- Ledger: model=opencode-go/beam-free account=opencode-go.
+
+## Decision — option-selection (worker-failover 429 harness retry; ledger only, no source edits)
+
+Q: stop 5-10 same-model harness attempts on 429 while orchestrator progresses?
+
+Criteria: C1 kills same-model spin / C2 zero harness change / C3 no worker-intelligence assumption.
+
+| Option | C1 | C2 | C3 | Notes |
+|---|---|---|---|---|
+| O1 do nothing | N | Y | Y | spin continues (~1.5min), loser (does nothing about complaint) |
+| O2 brief self-switch (shipped onWorkerQuotaError) | N | Y | Y | helper runs in worker code AFTER harness returns terminal 429; harness 10-retry spin below worker code unaffected; winner for post-terminal switch (already shipped, 3/3 + 679 green) |
+| O3 v2 session.retry hook override | Y | N | Y | only path that can short-circuit harness spin (researcher: anomalyco/opencode#58128 2026-10-22, single-source unverified); needs implementation + V1/V2 compat + validation; follow-up proposal, NOT decided today |
+| O4 immediate orchestrator re-dispatch + cooldown + non-blocking (current) | N | Y | Y | does not stop spinning run, covers it (beam covered longcat); zero change, works today |
+
+Pick: O4 wins today (only zero-change cover that works, citing explorer 509-file zero-hit + researcher no-knob); O2 retained as shipped complement; O3 follow-up needs plan+approval+validation. Y-statement: facing harness-hardcoded retry, chose orchestrator cover to keep progress unblocked, accepting redundant spin as priced-in waste; O1 lost (ignores complaint), O2 lost alone (cannot touch sub-worker harness spin), O3 lost today (unverified + implementation risk).
+
+Retract prior "not configurable" absolute: corrected to "no public config knob per cited docs/maintainer; only programmatic v2 hook (unverified single-source)".
+
+Ledger: model=opencode-go/beam-free account=opencode-go. Free-only; no secrets. Free-only; no secrets.
+
+## Status check — 2026-11-13T23:05:55Z (verify-only)
+
+- UTC: `2026-11-13T23:05:55Z`
+- Ledger: model=opencode-go/iceman-contributor-free account=opencode-go (cost 0/0)
+- Hashes prior: 59504e8,9cbe885
+
+| Check | Command(s) | Exit | Outcome (exact/key lines) |
+|---|---|---:|---|
+| verify | `npm run verify 2>&1` | 0 | lint+test pass; `ℹ tests 679` `ℹ pass 679` `ℹ fail 0` (end of run) |
+| git status | `git status --short` | 0 | ` M docs/plans/2026-11-13-worker-self-failover-429-evidence.json`<br>` M docs/plans/2026-11-13-worker-self-failover-429-progress.md` |
+| git log | `git log --oneline -3` | 0 | `59504e8 feat(routing): worker self-failover on 429 + stale-pool guard`<br>`9cbe885 fix(routing): BRAIN inherits session, gate paid fallback on admission+approval`<br>`99f84f1 docs(ledger): agent-suite audit+fix evidence 190ed01` |
+| ahead/behind | `git status -sb` | 0 | `## main...origin/main` (no ahead/behind; pushed/in sync) + same 2 modified files |
+| global diff | `diff -rq .opencode/agents ~/.config/opencode/agents \| head -20` | 0 | diffs: code-reviewer,explorer,implementer,orchestrator,planner,researcher,security-reviewer,test-writer + `Only in .opencode/agents: 'planner.md'...` artifact in diff output |
+| global helper | `grep -c "onWorkerQuotaError" ~/.config/opencode/plugins/sdlc-lean.js` | 1 | `0` |
+| local helper | `grep -c "onWorkerQuotaError" .opencode/plugins/sdlc-lean.js` | 0 | `1` |
+| global routing | `grep -q "orchestrator session model" ~/.config/opencode/agents/orchestrator.md && echo GLOBAL_ROUTING_OK \|\| echo GLOBAL_STALE` | 0 | `GLOBAL_ROUTING_OK` |
+| global agents ls | `ls ~/.config/opencode/agents/ \| head -12` | 0 | code-reviewer.md, explorer.md, implementer.md, orchestrator.md, planner.md, researcher.md, security-reviewer.md, test-writer.md |
+
+**Conclusion**
+- `ALL_GOOD=no` (verify green + pushed/in-sync, but tree not clean: 2 modified allowed plan/evidence files)
+- `GLOBAL_CURRENT=no` (agents diff not zero; global plugin missing `onWorkerQuotaError` count 0 vs local 1; routing marker present)

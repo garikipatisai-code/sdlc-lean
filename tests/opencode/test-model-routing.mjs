@@ -23,7 +23,7 @@ const BRAIN_ROLES = [
 
 const MUSCLE_ROLES = ['explorer (maps)', 'implementer', 'test-writer'];
 
-const FREE_IDS = ['crouton', 'beam-free', 'iceman', 'super-vl-free', 'super-vl:free'];
+const FREE_IDS = ['crouton', 'beam-free', 'iceman', 'super-vl-free', 'super-vl:free', 'muse-spark', 'muse-spark-1.3', 'muse-spark-1.3-contributor'];
 
 test('orchestrator.md: unpinned (no model: in frontmatter)', () => {
   const fm = doc.match(/^---\r?\n([\s\S]*?)\r?\n---/);
@@ -89,7 +89,7 @@ test('researcher/planner/reviewer never on crouton/beam/iceman/super-vl-free', (
   for (const role of ['researcher (synthesis)', 'planner', 'code-reviewer', 'security-reviewer']) {
     const row = lines.find((l) => l.trim().startsWith(`| ${role} |`));
     assert.ok(row, `${role} row present`);
-    for (const bad of ['crouton', 'beam-free', 'iceman', 'super-vl-free', 'super-vl:free']) {
+    for (const bad of ['crouton', 'beam-free', 'iceman', 'super-vl-free', 'super-vl:free', 'muse-spark', 'muse-spark-1.3', 'muse-spark-1.3-contributor']) {
       assert.ok(
         !row.toLowerCase().includes(bad),
         `${role} must not be dispatched on ${bad}`,

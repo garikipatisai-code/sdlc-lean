@@ -67,8 +67,8 @@ Pool: single source = routing table below (MUSCLE tier) / `POOL` in
 `sdlc-lean.js`; re-discover free models at dispatch time, never hardcode.
 No model pins.
 
-Fallback: orchestrator's own session model (UNPINNED, inherits session — whatever you chose) when free exhausted (cap + ask-to-extend; secrets never free).
-Blocked models: reject `opencode-go/muse-spark-1.3` without contributor and paid `openai/gpt-oss-120b`.
+Fallback: orchestrator's own session model (UNPINNED, inherits session — whatever you chose) when free exhausted — only after :87 admission passes + explicit spend approval + ask-to-extend (fresh approval); never auto-paid (cap + ask-to-extend; secrets never free).
+Blocked models (FREE-pool / MUSCLE selection only): deny `opencode-go/muse-spark` family — bare `muse-spark-1.3`, `muse-spark-1.3-contributor`, and any suffixed variant — from free-pool/MUSCLE selection. Never a contributor or paid free-pool fallback. BRAIN roles are always allowed on whichever model the orchestrator session runs (UNPINNED, cap-counted, secrets never free, never free pool). Paid fallback = session model only, explicit spend approval + ask-to-extend (fresh approval, NOT covered by :79). No provider model hardcoded as required BRAIN ID.
 
 Orchestrator stays UNPINNED (inherits the session model); every worker
 dispatch passes an explicit `model:` + `account:` from the pool (routing table
@@ -76,8 +76,8 @@ below) and records one ledger row per dispatch (model + account).
 
 Trigger: `429` / `provider-error` only (billing codes never trigger).
 On trigger: call `resolveNextFreeLink(pool, failedId, { isDenied, isSecretLike, isCoolingDown })` explicitly (replaces manual pool walk) — same model on the other account first (super-vl pair), then next re-discovered free model. `null` = exhausted → stop + escalate with cooldown entries, never a paid fallback.
-`429`/`provider-error` is NEVER a stop condition and NEVER needs fresh approval — pre-authorized routing event: re-dispatch immediately on next free link (other account first, then re-discovered Go free) inside current authorization, recording model+account ledger row + cooldown entry.
-Stop conditions (2 no-progress loops, failure/uncertain outcome, cap) apply to task failures, never to rate-limits. Paid fallback (orchestrator's own model) is the ONLY step requiring explicit spend approval + ask-to-extend.
+`429`/`provider-error` is NEVER a stop condition and NEVER needs fresh approval — but ONLY for next-free-link re-dispatch (super-vl other account → re-discovered Go free) inside current authorization, recording model+account ledger row + cooldown entry. This no-fresh-approval scope does NOT extend to any paid/session-model step, which ALWAYS needs fresh approval.
+Stop conditions (2 no-progress loops, failure/uncertain outcome, cap) apply to task failures, never to rate-limits. Paid/session fallback (orchestrator's own model) is the ONLY step requiring explicit spend approval + ask-to-extend — and only after admission passes (see :87); exhaustion with no approval → stop + escalate, never auto-paid.
 
 Circuit: `CLOSED` / `OPEN` / `HALF-OPEN`. Cooldown JSONL:
 `{"type":"cooldown","model":"<pool-id>","account":"<account>","cooldown_until":"YYYY-MM-DDTHH:mm:ss.sssZ","circuit":"OPEN"}`.
@@ -85,7 +85,7 @@ Cheap probe only: `GET /api/v1/models`, then tiny completion `max_tokens:1`;
 never a paid probe; probe result moves `OPEN` → `HALF-OPEN` → `CLOSED`.
 
 Admission: `settled+outstanding+next<=cap`. At cap: block, ask the user for
-an extension, escalate — never auto-extend and never auto-spend.
+an extension, escalate — never auto-extend and never auto-spend. Session-model (paid) fallback is permitted ONLY when admission passes AND explicit spend approval + ask-to-extend (fresh approval) are granted; exhaustion with no approval → stop + escalate, never auto-paid.
 
 Delegation is narrow-only (allowed worker subagents only, no scope spread).
 Privacy: secrets NEVER to any free endpoint; customer code only to no-train
@@ -115,8 +115,7 @@ Tiers (dispatch-time `model:` + `account:`; no hardcoded spend; cap = ask-to-ext
      `beam-free` / `iceman-contributor-free` — NOT a frozen requirement;
      free list may change anytime, always re-discover, never hardcode
      dispatch to trio.
-  3. All free exhausted → orchestrator's own model (BRAIN fallback only;
-     cap + ask-to-extend; secrets NEVER to any free endpoint). North is
+  3. All free exhausted → orchestrator's own model (BRAIN fallback only; cap + ask-to-extend) only after :87 admission passes + explicit spend approval + ask-to-extend (fresh, NOT covered by :79); exhaustion with no approval → stop + escalate with cooldown entries, never auto-paid. Secrets NEVER to any free endpoint. North is
      break-glass outage-only, never normal routing.
 
 | Role | Tier | Model | Brief requirement |

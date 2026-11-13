@@ -1842,6 +1842,7 @@ export const POOL = Object.freeze([
   'opencode-go/iceman-contributor-free',
 ]);
 export const FALLBACK = null; // dynamic via resolveFallback(sessionModel, account); no hardcoded model
+export const QUOTA_FALLBACK = FALLBACK; // alias kept in sync with scripts/research/phase.mjs (null, no hardcoded model)
 export const ACCOUNTS = Object.freeze(['console-openrouter', 'console-openrouter2', 'opencode-go']);
 // Denylist normalization (HIGH audit): strip :variant and trailing
 // -free/-contributor before the exact base compare so suffixed paid IDs
@@ -2027,10 +2028,10 @@ export const nextCircuitState = transitionCircuit;
 // resolveNextFreeLink(pool, failedId, { isDenied, isSecretLike, isCoolingDown })
 // returns the next eligible pool id in pool order, or null. It never throws:
 // invalid pool/predicates fail open to null; a throwing predicate skips
-// that candidate. Defaults reuse isDeniedModel/isSecretLike; no cooldown
-// store exists so the cooling default is a plain false and the caller
-// injects the isCoolingDown predicate. Never auto-dispatches, never does
-// network I/O. Keep this in sync with scripts/research/phase.mjs.
+// that candidate. Defaults reuse isDeniedModel/isSecretLike/isSafeModel; no
+// cooldown store exists so the cooling default is a plain false and the
+// caller injects the isCoolingDown predicate. Never auto-dispatches, never
+// does network I/O. Keep this in sync with scripts/research/phase.mjs.
 export const resolveNextFreeLink = (pool, failedId, predicates) => {
   try {
     if (!Array.isArray(pool)) return null;
@@ -2039,6 +2040,9 @@ export const resolveNextFreeLink = (pool, failedId, predicates) => {
       : (typeof opts.isDeniedModel === 'function' ? opts.isDeniedModel
         : (typeof opts.isDeniedQuotaModel === 'function' ? opts.isDeniedQuotaModel : isDeniedModel));
     const isSecretLikeOpt = typeof opts.isSecretLike === 'function' ? opts.isSecretLike : isSecretLike;
+    const isSafe = typeof opts.isSafe === 'function' ? opts.isSafe
+      : (typeof opts.isSafeModel === 'function' ? opts.isSafeModel
+        : (typeof opts.isSafeQuotaModel === 'function' ? opts.isSafeQuotaModel : isSafeModel));
     const isCoolingDown = typeof opts.isCoolingDown === 'function' ? opts.isCoolingDown
       : (typeof opts.isCooling === 'function' ? opts.isCooling : () => false);
     for (const entry of pool) {
@@ -2052,6 +2056,9 @@ export const resolveNextFreeLink = (pool, failedId, predicates) => {
       let secret;
       try { secret = isSecretLikeOpt(id); } catch { continue; }
       if (secret) continue;
+      let safe;
+      try { safe = isSafe(id); } catch { continue; }
+      if (!safe) continue;
       let cooling;
       try { cooling = isCoolingDown(id); } catch { continue; }
       if (cooling) continue;
@@ -2063,6 +2070,48 @@ export const resolveNextFreeLink = (pool, failedId, predicates) => {
   }
 };
 export const resolveNextFreeQuotaLink = resolveNextFreeLink;
+
+// --- Worker self-failover on quota error (explicit helper, no hooks) -----
+// Fail-open quota-aware failover: on 429/provider-error (classifyQuotaError)
+// walk the pool in order via resolveNextFreeLink, skipping the failed id and
+// any denied/secret-like/cooled-down candidate; paid/denied/secret skipped.
+// Return the next free link, or {nextLink:null, cooledUntil, escalated:true}
+// on exhaustion (strict-ISO cooledUntil). Non-quota errors → fail-open shape
+// (nextLink null, escalated false, no cooldown, no spend). Invalid pool or
+// predicates never throw. Orchestrator-called only; never wired into hooks.
+const DEFAULT_COOLDOWN_MS = 5 * 60 * 1000;
+
+export const onWorkerQuotaError = (pool, failedId, opts = {}) => {
+  try {
+    const options = opts && typeof opts === 'object' && !Array.isArray(opts) ? opts : {};
+    const err = options.err !== undefined ? options.err
+      : (options.error !== undefined ? options.error : options);
+    if (!classifyQuotaError(err)) {
+      return { nextLink: null, cooledUntil: null, escalated: false };
+    }
+    if (!Array.isArray(pool)) {
+      return { nextLink: null, cooledUntil: null, escalated: false };
+    }
+    const next = resolveNextFreeLink(pool, failedId, {
+      isDenied: options.isDenied,
+      isSecretLike: options.isSecretLike,
+      isCoolingDown: options.isCoolingDown,
+    });
+    if (typeof next === 'string' && next.trim() !== '') {
+      return { nextLink: next, cooledUntil: null, escalated: false };
+    }
+    const ttl = typeof options.cooldownMs === 'number' && Number.isFinite(options.cooldownMs)
+      ? options.cooldownMs
+      : DEFAULT_COOLDOWN_MS;
+    return {
+      nextLink: null,
+      cooledUntil: new Date(Date.now() + ttl).toISOString(),
+      escalated: true,
+    };
+  } catch (err) {
+    return { nextLink: null, cooledUntil: null, escalated: false };
+  }
+};
 
 // Pass-through gate mirroring checkPhaseLedgerGate (no quota flow => null).
 const QUOTA_TRACKER_SCHEMA = 'sdlc-lean/quota-tracker@1';

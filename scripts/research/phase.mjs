@@ -1063,9 +1063,10 @@ export const resolveDynamicQuotaFallback = resolveQuotaFallback;
  * mirrors plugin `resolveNextFreeLink`. Returns the next eligible pool id
  * in pool order, or null; never throws (invalid input fails open to null;
  * a throwing predicate skips that candidate). Defaults reuse
- * `isDeniedQuotaModel` and the secret-value guard; no cooldown store
- * exists so the cooling default is a plain false and the caller injects
- * the `isCoolingDown` predicate. No auto-dispatch, no network.
+ * `isDeniedQuotaModel`, the secret-value guard, and `isSafeQuotaModel`
+ * revalidation; no cooldown store exists so the cooling default is a plain
+ * false and the caller injects the `isCoolingDown` predicate. No
+ * auto-dispatch, no network.
  */
 export const resolveNextFreeLink = (pool, failedId, predicates) => {
   try {
@@ -1076,6 +1077,9 @@ export const resolveNextFreeLink = (pool, failedId, predicates) => {
         : (typeof opts.isDeniedQuotaModel === 'function' ? opts.isDeniedQuotaModel : isDeniedQuotaModel));
     const isSecretLikeOpt = typeof opts.isSecretLike === 'function' ? opts.isSecretLike
       : (v) => typeof v === 'string' && SECRET_VALUE_RES.some((re) => re.test(v));
+    const isSafe = typeof opts.isSafe === 'function' ? opts.isSafe
+      : (typeof opts.isSafeModel === 'function' ? opts.isSafeModel
+        : (typeof opts.isSafeQuotaModel === 'function' ? opts.isSafeQuotaModel : isSafeQuotaModel));
     const isCoolingDown = typeof opts.isCoolingDown === 'function' ? opts.isCoolingDown
       : (typeof opts.isCooling === 'function' ? opts.isCooling : () => false);
     for (const entry of pool) {
@@ -1089,6 +1093,9 @@ export const resolveNextFreeLink = (pool, failedId, predicates) => {
       let secret;
       try { secret = isSecretLikeOpt(id); } catch { continue; }
       if (secret) continue;
+      let safe;
+      try { safe = isSafe(id); } catch { continue; }
+      if (!safe) continue;
       let cooling;
       try { cooling = isCoolingDown(id); } catch { continue; }
       if (cooling) continue;

@@ -10,21 +10,21 @@
       "verify": "grep -q \"Reasoning-effort defaults\" .opencode/agents/orchestrator.md && echo DEFAULTS_OK && node scripts/validate-skills.mjs && node -e \"JSON.parse(require('fs').readFileSync('docs/plans/2026-11-13-tiered-effort-evidence.json','utf8'));console.log('JSON_OK')\"",
       "exit": 0,
       "at": "2026-11-13T23:27:16Z",
-      "notes": "Task 1 DONE (docs-only). Added \"Reasoning-effort defaults (per tier)\" block to .opencode/agents/orchestrator.md: MUSCLE medium (beam) + thinking on where valuable (super-vl); BRAIN high; longcat/iceman-free exempt (no knob, never force); never max-by-default (429 risk). Added brief-carry line: every worker dispatch records chosen effort + thinking setting \u2192 ledger row model + account + effort (+ thinking). No schema change. Verify: DEFAULTS_OK; node scripts/validate-skills.mjs -> checked 40 skills, 0 failures, exit 0; JSON parse -> JSON_OK; exit 0. Hashes 59504e8. No secrets. Free-only. Ledger: model=console-openrouter/nvidia/nemotron-3.5-super-vl:free account=console-openrouter."
+      "notes": "Task 1 DONE (docs-only). Added \"Reasoning-effort defaults (per tier)\" block to .opencode/agents/orchestrator.md: MUSCLE medium (beam) + thinking on where valuable (super-vl); BRAIN high; longcat/iceman-free exempt (no knob, never force); never max-by-default (429 risk). Added brief-carry line: every worker dispatch records chosen effort + thinking setting → ledger row model + account + effort (+ thinking). No schema change. Verify: DEFAULTS_OK; node scripts/validate-skills.mjs -> checked 40 skills, 0 failures, exit 0; JSON parse -> JSON_OK; exit 0. Hashes 59504e8. No secrets. Free-only. Ledger: model=console-openrouter/nvidia/nemotron-3.5-super-vl:free account=console-openrouter."
     },
     {
       "task": 2,
       "verify": "grep -q \"+1\" .opencode/agents/orchestrator.md && grep -qi \"capped at max\" .opencode/agents/orchestrator.md && echo BUMP_OK && node scripts/validate-skills.mjs && node -e \"JSON.parse(require('fs').readFileSync('docs/plans/2026-11-13-tiered-effort-evidence.json','utf8'));console.log('JSON_OK')\"",
       "exit": 0,
       "at": "2026-11-13T23:28:09Z",
-      "notes": "Task 2 DONE (docs-only). Added escalation bump rule to \"Escalation ladder\" block in .opencode/agents/orchestrator.md: hardship or rework \u2192 reasoning effort +1 level, capped at max for that tier; BRAIN judge/reviewer pass stays `high`, never stepped down to save cost. Existing ladder/stop wording kept intact. Verify: BUMP_OK; node scripts/validate-skills.mjs -> checked 40 skills, 0 failures, exit 0; JSON parse -> JSON_OK; exit 0. Hashes 59504e8. No secrets. Free-only. Ledger: model=console-openrouter/nvidia/nemotron-3.5-super-vl:free account=console-openrouter2."
+      "notes": "Task 2 DONE (docs-only). Added escalation bump rule to \"Escalation ladder\" block in .opencode/agents/orchestrator.md: hardship or rework → reasoning effort +1 level, capped at max for that tier; BRAIN judge/reviewer pass stays `high`, never stepped down to save cost. Existing ladder/stop wording kept intact. Verify: BUMP_OK; node scripts/validate-skills.mjs -> checked 40 skills, 0 failures, exit 0; JSON parse -> JSON_OK; exit 0. Hashes 59504e8. No secrets. Free-only. Ledger: model=console-openrouter/nvidia/nemotron-3.5-super-vl:free account=console-openrouter2."
     },
     {
       "task": 3,
       "verify": "grep -q \"rework rate\" docs/audit-ledger.md && grep -q \"429 rate\" docs/audit-ledger.md && echo METERS_OK && node scripts/validate-skills.mjs && node -e \"JSON.parse(require('fs').readFileSync('docs/plans/2026-11-13-tiered-effort-evidence.json','utf8'));console.log('JSON_OK')\"",
       "exit": 0,
       "at": "2026-11-13T23:29:04Z",
-      "notes": "Task 3 DONE (docs-only). Added meter definitions to docs/audit-ledger.md: rework rate = reworked \u00f7 total dispatches; 429 rate = 429s \u00f7 total calls; 2-week sampling review note (per-call\u00d7rounds, no new infra). Appended debt row D-041 (manual sampling only; no dispatch/rework/429 counters in ledger schema). Verify: METERS_OK; node scripts/validate-skills.mjs exit 0; JSON parse -> JSON_OK; exit 0. Hashes 59504e8. No secrets. Free-only. Ledger: model=opencode-go/beam-free account=opencode-go (cost 0/0)."
+      "notes": "Task 3 DONE (docs-only). Added meter definitions to docs/audit-ledger.md: rework rate = reworked ÷ total dispatches; 429 rate = 429s ÷ total calls; 2-week sampling review note (per-call×rounds, no new infra). Appended debt row D-041 (manual sampling only; no dispatch/rework/429 counters in ledger schema). Verify: METERS_OK; node scripts/validate-skills.mjs exit 0; JSON parse -> JSON_OK; exit 0. Hashes 59504e8. No secrets. Free-only. Ledger: model=opencode-go/beam-free account=opencode-go (cost 0/0)."
     },
     {
       "task": 4,
@@ -50,7 +50,7 @@
       "at": "2026-11-13T23:32:09Z"
     }
   ],
-  "phase": "DONE clean \u2014 critics done; ready to push",
+  "phase": "DONE clean — critics done; ready to push",
   "verify": "npm run verify -> tests 714 pass 714 fail 0; test-tiered-reasoning -> 9/9; protected tests diff exit 0; UTC 2026-11-13T23:30:29Z; critics ses_e28c00d94 (code, no findings) + ses_e28c00d93 (security, CLEAN); grep both sessionIDs -> LOGGED",
   "ledger": "model=opencode-go/beam-free account=opencode-go (cost 0/0; test-writer effort n/a exempt)",
   "decision": {
@@ -67,11 +67,11 @@
       },
       "O2": {
         "scores": "N/N/N",
-        "note": "add column to role table \u2014 schema change, out of scope"
+        "note": "add column to role table — schema change, out of scope"
       },
       "O3": {
         "scores": "Y/Y/N",
-        "note": "separate effort-ledger file \u2014 new file outside allowlist"
+        "note": "separate effort-ledger file — new file outside allowlist"
       }
     },
     "pick": "O1",
@@ -139,6 +139,24 @@
       },
       "ALL_GOOD": "yes",
       "ALL_GOOD_reason": "full verify green 714/714; tiered 9/9; protected tests untouched; free-only, no secrets."
+    },
+    {
+      "at": "2026-11-13T23:33:00Z",
+      "model": "opencode-go/beam-free",
+      "account": "opencode-go",
+      "action": "remove stray filesystem entry in .opencode/agents/",
+      "stray_inode": 3582887,
+      "planner_md_sha256_before": "c046530f1ccb569323a358444afe430fecaebbe9cdb29be12e67c9828828e851",
+      "planner_md_sha256_after": "c046530f1ccb569323a358444afe430fecaebbe9cdb29be12e67c9828828e851",
+      "commands": {
+        "find_inum_delete": "find .opencode/agents -maxdepth 1 -inum 3582887 -exec rm -rf {} + (exit 0)",
+        "ls_b_after": "code-reviewer.md explorer.md implementer.md orchestrator.md planner.md researcher.md security-reviewer.md test-writer.md (8 only)",
+        "sha_match": "before==after c046530f1ccb569323a358444afe430fecaebbe9cdb29be12e67c9828828e851",
+        "git_status": "clean (no changes)",
+        "tiered_test": "node --test tests/opencode/test-tiered-reasoning.mjs -> tests 9, pass 9, fail 0, exit 0"
+      },
+      "ALL_GOOD": "yes",
+      "ALL_GOOD_reason": "stray removed by inode; real planner.md untouched (sha match); 8 agents remain; git clean; tiered test 9/9; free-only, no secrets."
     }
   ]
 }

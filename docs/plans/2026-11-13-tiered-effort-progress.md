@@ -51,3 +51,10 @@ Guidance text only in `.opencode/agents/orchestrator.md` (no schema change):
 - Worker-self-failover ledger edits: `docs/plans/2026-11-13-worker-self-failover-429-progress.md`, `docs/plans/2026-11-13-worker-self-failover-429-evidence.json`.
 
 Ledger: model=opencode-go/beam-free account=opencode-go (cost 0/0). Free-only; no secrets.
+
+## Stray-entry removal (2026-11-13)
+
+- Removed pre-existing stray filesystem entry in `.opencode/agents/` (directory named `planner.md\ncontent">\n---\n...`, inode 3582887, contained empty `nvidia/` subdir). Deleted by inode only: `find .opencode/agents -maxdepth 1 -inum 3582887 -exec rm -rf {} +` (exit 0).
+- Real `.opencode/agents/planner.md` untouched: sha256 before==after = `c046530f1ccb569323a358444afe430fecaebbe9cdb29be12e67c9828828e851`.
+- Result: 8 agents remain; `git status --short` clean; `node --test tests/opencode/test-tiered-reasoning.mjs` → 9/9 pass, exit 0.
+- Ledger: model=opencode-go/beam-free account=opencode-go (cost 0/0). Free-only; no secrets.

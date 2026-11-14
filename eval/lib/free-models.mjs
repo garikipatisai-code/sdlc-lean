@@ -7,7 +7,11 @@
 // all-zero, it is not denylisted, it is not secret-like, and (when required)
 // it advertises tool-call capability. Anything empty/corrupt/throwing falls
 // back to a copy of the default trio.
-
+// CROSS-PIN (P0 Task3, QUOTA_VOCAB_PIN@1): FALLBACK_TRIO == POOL tail in
+// .opencode/plugins/sdlc-lean.js (opencode-go 3-tail; crouton-alpha-free,
+// beam-free, iceman-contributor-free) and QUOTA_POOL in
+// scripts/research/phase.mjs. No shared import (zero-dep/V1+V2 compat).
+export const QUOTA_VOCAB_PIN = '1';
 export const FALLBACK_TRIO = Object.freeze([
   'opencode-go/crouton-alpha-free',
   'opencode-go/beam-free',

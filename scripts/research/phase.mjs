@@ -24,12 +24,16 @@ const UTC_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 // Quota-aware routing vocabulary (Task 3 ledger integration; frozen allowlists).
 // VOCAB MIRROR: this QUOTA_POOL/QUOTA_FALLBACK/QUOTA_ALLOWED_ACCOUNTS/QUOTA_DENYLIST/QUOTA_CIRCUIT_STATES
 // vocabulary is duplicated in .opencode/plugins/sdlc-lean.js
-// (POOL/FALLBACK/ACCOUNTS/DENYLIST/CIRCUIT_STATES).
+// (POOL/FALLBACK/ACCOUNTS/DENYLIST/CIRCUIT_STATES)
+// and eval/lib/free-models.mjs (FALLBACK_TRIO == POOL tail, opencode-go 3-tail).
 // Keep both in sync on edits (intentional duplication: V1/V2 compat + drift
 // risk accepted over shared-module coupling). Tests pin both copies.
+// CROSS-PIN (P0 Task3, QUOTA_VOCAB_PIN@1): QUOTA_POOL == POOL; QUOTA_DENYLIST == DENYLIST
+// (muse-spark-1.3 in sync); FALLBACK_TRIO == POOL tail. No shared import (zero-dep).
 // Secret handling here is stricter than the plugin isSecretLike token-shape
 // heuristic (SECRET_VALUE_RES + isSecretKey). Patterns intentionally differ
 // (best-effort, not a guarantee); do not merge.
+export const QUOTA_VOCAB_PIN = '1';
 export const QUOTA_POOL = Object.freeze([
   'console-openrouter/nvidia/nemotron-3.5-super-vl:free',
   'console-openrouter2/nvidia/nemotron-3.5-super-vl:free',
@@ -1039,6 +1043,8 @@ export const resolveQuotaFallback = (sessionModel, account) => {
     acct = model.sessionAccount ?? model.account ?? model.session_account ?? acct;
     model = model.sessionModel ?? model.model ?? model.session_model;
   }
+  // Fail-open pass-through: unobservable/absent/empty session model yields
+  // null — the caller decides what to dispatch; no fallback model is endorsed.
   if (typeof model !== 'string' || model.trim() === '') return null;
   if (!isSafeQuotaModel(model)) {
     reject('invalid-ledger', `fallback model is not an allowlisted model: ${model}`);

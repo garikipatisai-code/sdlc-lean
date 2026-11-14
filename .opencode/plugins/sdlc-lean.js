@@ -1828,12 +1828,16 @@ export const recordHostEvidence = async (event, root) => {
 // helpers; pass-through by default.
 // VOCAB MIRROR: this POOL/FALLBACK/ACCOUNTS/DENYLIST/CIRCUIT_STATES vocabulary
 // is duplicated in scripts/research/phase.mjs
-// (QUOTA_POOL/QUOTA_FALLBACK/QUOTA_ALLOWED_ACCOUNTS/QUOTA_DENYLIST/QUOTA_CIRCUIT_STATES).
+// (QUOTA_POOL/QUOTA_FALLBACK/QUOTA_ALLOWED_ACCOUNTS/QUOTA_DENYLIST/QUOTA_CIRCUIT_STATES)
+// and eval/lib/free-models.mjs (FALLBACK_TRIO == POOL tail, opencode-go 3-tail).
 // Keep both in sync on edits (intentional duplication: V1/V2 compat + drift
 // risk accepted over shared-module coupling). Tests pin both copies.
+// CROSS-PIN (P0 Task3, QUOTA_VOCAB_PIN@1): POOL tail == FALLBACK_TRIO;
+// DENYLIST muse-spark-1.3 must match QUOTA_DENYLIST; no shared import (zero-dep).
 // isSecretLike here is a token-shape heuristic only; phase.mjs uses the
 // stricter SECRET_VALUE_RES + isSecretKey key-name guard. Patterns intentionally
 // differ (best-effort, not a guarantee); do not merge.
+export const QUOTA_VOCAB_PIN = '1';
 export const POOL = Object.freeze([
   'console-openrouter/nvidia/nemotron-3.5-super-vl:free',
   'console-openrouter2/nvidia/nemotron-3.5-super-vl:free',
@@ -1920,6 +1924,8 @@ export const resolveFallback = (sessionModel, account) => {
     acct = model.sessionAccount ?? model.account ?? model.session_account ?? acct;
     model = model.sessionModel ?? model.model ?? model.session_model;
   }
+  // Fail-open pass-through: unobservable/absent/empty session model yields
+  // null — the caller decides what to dispatch; no fallback model is endorsed.
   if (typeof model !== 'string' || model.trim() === '') return null;
   if (!isSafeModel(model)) {
     throw new Error(`[sdlc-lean] quota tracker: fallback model not-allowed/unknown-model: ${model}`);
@@ -1942,6 +1948,10 @@ export const resolveDynamicFallback = resolveFallback;
 // Fail-closed strict: only finite numbers admitted. null/boolean/object/array/
 // undefined/string/NaN/Infinity are rejected (Number(null)=0 / Number(true)=1
 // coercions would otherwise admit).
+// Caller cap-check: the orchestrator/dispatcher must gate on
+// admits({ settled, outstanding, next, cap }) before sending; resolveFallback
+// never enforces the cap — it only fails open (null pass-through) or closed
+// (throw on unsafe model / account mismatch / unknown account).
 export const admits = (input) => {
   const o = input && typeof input === 'object' && !Array.isArray(input) ? input : null;
   if (!o) return false;

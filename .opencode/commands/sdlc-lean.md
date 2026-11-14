@@ -6,6 +6,8 @@ Deterministic check (read-only, change nothing):
 
 !`echo "last activation: $(cat "${XDG_STATE_HOME:-$HOME/.local/state}/sdlc-lean/status.json" 2>/dev/null || echo none)"; echo "project skills: $(find .opencode/skills -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)"; echo "global skills: $(find $HOME/.config/opencode/skills -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)"; echo "agents: $(find .opencode/agents $HOME/.config/opencode/agents -name '*.md' 2>/dev/null | wc -l)"; echo "commands: $(find .opencode/commands $HOME/.config/opencode/commands -name '*.md' 2>/dev/null | wc -l)"; echo "plugin: $(find .opencode/plugins $HOME/.config/opencode/plugins -name sdlc-lean.js 2>/dev/null | tr '\n' ' ')"`
 
+Precedence: project `.opencode/*` takes precedence over global `~/.config/opencode/*` when names collide — use project for repo-scoped skills/agents/commands, global (`npm run install:global`) for machine-wide availability across all repos.
+
 Report in at most 5 lines: whether the last activation was recorded (timestamp +
 session + skill count) — this proves the plugin injected; whether the plugin is
 installed (project or global); and the skill/agent/command counts. Then the

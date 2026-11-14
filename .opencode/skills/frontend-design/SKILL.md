@@ -66,7 +66,7 @@ Run screenshot → critique vs brief → fix, max 3 rounds. Evidence: Playwright
 
 ## Vendor tooling (opt-in, dev-only)
 
-Vendored under `references/vendor/open-design/` (pinned `87a4f91c308170a8270458fc40fc66a86ed69aac`, Apache-2.0; see `references/vendor/open-design/ATTRIBUTION.md`). Dev tools only — never auto-run, never wired to build/test/CI; they expect an upstream-shaped `design-systems/` tree beside the script:
+Vendor reference is dev-only: not CI-enforced, never auto-installed. Vendored under `references/vendor/open-design/` (pinned `87a4f91c308170a8270458fc40fc66a86ed69aac`, Apache-2.0; see `references/vendor/open-design/ATTRIBUTION.md`). Dev tools only — never auto-run, never wired to build/test/CI; they expect an upstream-shaped `design-systems/` tree beside the script:
 
 - `npx tsx references/vendor/open-design/check-tokens-fixture-sync.ts` — token/fixture sync guard.
 - `npx tsx references/vendor/open-design/extract-components-manifest.ts [--brand <id>] [--out <path>]` — component manifest extractor.

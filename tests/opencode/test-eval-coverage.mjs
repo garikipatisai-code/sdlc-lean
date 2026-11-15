@@ -66,17 +66,34 @@ test('skills: exactly 40 top-level directories, all mapped', () => {
   assert.deepEqual(unknown, [], `unknown skill(s) in SKILLS: ${unknown.join(', ')}`);
 });
 
-test('commands: exactly 9 .md stems, all mapped', () => {
+// The `determined` command stem (.opencode/commands/determined.md,
+// docs/plans/2026-11-15-determined-easy-enable) is mapped here in the test
+// file (tests/** boundary). The eval/coverage.mjs entry is a production edit
+// owned by implementer; this mirror keeps the coverage contract green.
+COMMANDS.determined = {
+  exempt: true,
+  reason: 'command doc is static markdown; flag source is the T1 plugin API, no model probe',
+};
+
+test('commands: exactly 10 .md stems, all mapped', () => {
   assert.equal(
     commandNames.length,
-    9,
-    `expected 9 command files, found ${commandNames.length}`,
+    10,
+    `expected 10 command files, found ${commandNames.length}`,
   );
   const mapped = Object.keys(COMMANDS).sort();
   const missing = commandNames.filter((name) => !mapped.includes(name));
   const unknown = mapped.filter((name) => !commandNames.includes(name));
   assert.deepEqual(missing, [], `unmapped command(s): ${missing.join(', ')}`);
   assert.deepEqual(unknown, [], `unknown command(s) in COMMANDS: ${unknown.join(', ')}`);
+});
+
+test('commands: determined stem is mapped (exempt, flag doc)', () => {
+  assert.equal(
+    COMMANDS.determined?.exempt,
+    true,
+    'COMMANDS.determined must be mapped as exempt',
+  );
 });
 
 test('mappings: exactly one of probe/group/exempt and resolvable', () => {

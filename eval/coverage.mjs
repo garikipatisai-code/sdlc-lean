@@ -142,6 +142,7 @@ export const SKILLS = {
 
 export const COMMANDS = {
   bugfix: { probe: 'routing-bugfix' },
+  determined: { exempt: true, reason: 'command doc is static markdown; flag source is T1 plugin API, no model probe' },
   feature: { probe: 'routing-feature' },
   game: { probe: 'routing-web-game' },
   preview: { probe: 'command-preview' },

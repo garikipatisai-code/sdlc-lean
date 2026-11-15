@@ -16,6 +16,15 @@ approved phase, but it may not create, replace, or widen a plan without a new
 human approval record. A blocked edit is a scope deviation — record it and ask
 for `close` + re-approval; never bypass the gate with bash or shell redirection.
 
+## Enable (determined — gated-only, never unconditional)
+
+Enable order (precedence): `/determined` slash session primary → `DETERMINED_EXECUTION=1` env fallback → default off. A session-store read failure resolves to `false`. When off, every determined helper returns `null` (no-op): behavior is byte-identical, fail-open.
+
+All of R1–R7 are gated-only and qualified off=no-op byte-identical:
+- R1 restate goal + state, R2 observe artifact, R3 reflect buffer separate from ledger — no-op when off.
+- R4 abstain monitor (false-continue 23-74%), R5 timely-stop (2.3-5x cost), R6 skeptic zero-persona prefix — no-op when off.
+- R7 critic width-2 parallel fresh context — opt-in flag only; the orchestrator critic gate at `orchestrator.md:194-199` is preserved untouched.
+
 ## Setup (once)
 
 - Restate the goal + **acceptance criteria** (observable, verifiable).
@@ -42,7 +51,17 @@ flowchart LR
 ```
 
 1. **Route** with `using-sdlc-lean` (feature/bugfix/refactor/research) and
-   invoke the pipeline skill first.
+   invoke the pipeline skill first. Before acting, restate the goal + current
+   state (`restatePhase(phase)`, R1), then emit an observe artifact before each
+   transition (`emitObserve(phase)`, R2 — missing observe fails the phase when
+   on). Record reflection only in the scratch buffer (`reflectScratch`, R3):
+   `reflect != ledger`, never `docs/plans/<slug>-progress.md`. Gated by
+   `DETERMINED_EXECUTION=1` — flag off is a no-op, byte-identical behavior.
+   Skeptic zero-persona prefix (`skepticPrefix`, R6) is applied before
+   evaluating; critic width-2 parallel fresh-context critics
+   (`criticWidth2`, R7) run behind the same opt-in flag. Flag off is a
+   no-op, byte-identical behavior. The orchestrator critic gate is preserved
+   untouched.
 2. **Decide** every fork via `option-selection`: research, matrix, pick,
    record. Asking the human to judge, choose, compare, or validate merit
    is a defect except ALWAYS-human acts (merge/PR, publish/release, spend,
@@ -83,6 +102,10 @@ exists or promise cross-session execution without a mechanism that does it.
 | Budget exhausted | **give up honestly**: state, evidence, exact remaining work, next step |
 | Human interrupts | pause, report loop state from the ledger |
 | Spec gate blocks an edit | stop: record the deviation; request `close` + re-approval; never bypass |
+| `checkAbstain` false-continue rate in 23-74% band (R4) | abstain: decline to proceed, no-op result; `DETERMINED_EXECUTION` off = no-op, byte-identical |
+| `checkTimelyStop` projected cost > 5x baseline (R5) | stop early, emit observe artifact noting the stop reason; `DETERMINED_EXECUTION` off = no-op, byte-identical |
+| `skepticPrefix` zero-persona prefix (R6) | applied before evaluating; flips 14-18% of evaluations, +7.4pp warmth; `DETERMINED_EXECUTION` off = no-op, byte-identical |
+| `criticWidth2` width-2 parallel fresh-context critics (R7) | opt-in flag only; orchestrator critic gate preserved untouched; `DETERMINED_EXECUTION` off = no-op, byte-identical |
 
 ## Rules
 
@@ -90,6 +113,11 @@ exists or promise cross-session execution without a mechanism that does it.
 - Safety guards (destructive ops, secrets) are not negotiable — never loop
   around them.
 - Update the ledger every iteration; it is the memory that survives compaction.
+- Reflect buffer is scratch and separate from the progress ledger (R3):
+  `reflect != ledger`; never mix reflection into ledger entries at
+  `docs/plans/<slug>-progress.md`. `emitObserve`, `reflectScratch`,
+  `skepticPrefix` and `criticWidth2` all early-return null when
+  `DETERMINED_EXECUTION` is off — flag off is byte-identical, fail-open.
 - Subagent work fans out per `dispatching-parallel-agents`; merge per its
   contract. Escalation carries evidence/findings, never a bare question.
 

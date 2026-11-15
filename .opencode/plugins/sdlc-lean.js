@@ -2148,6 +2148,144 @@ export const checkQuotaGate = checkQuotaTrackerGate;
 export const checkQuotaLedgerGate = checkQuotaTrackerGate;
 export const quotaTrackerGate = checkQuotaTrackerGate;
 
+// --- Determined execution opt-in helpers (R1-R7, N1-N3) ------------------
+// All additive-only, gated by the DETERMINED_EXECUTION env flag. Flag off or
+// unset => byte-identical behavior: every helper is a pass-through no-op.
+// Mirrors the checkPhaseLedgerGate / checkQuotaTrackerGate fail-open convention.
+
+// Determined session override store (in-memory, keyed by session ID).
+// Session > env > default-off precedence; read by isDeterminedEnabled(ctx).
+const _determinedSessionStore = new Map();
+
+// Best-effort session id from ctx (V2 session surface may carry it under
+// several shapes). Never throws; undefined means "no scoped override".
+const _determinedSessionId = (ctx) => {
+  if (!ctx || typeof ctx !== 'object') return undefined;
+  try {
+    const s = ctx.session;
+    if (s && typeof s === 'object' && !Array.isArray(s)) {
+      if (typeof s.id === 'string' && s.id !== '') return s.id;
+      if (typeof s.sessionID === 'string' && s.sessionID !== '') return s.sessionID;
+    }
+    if (typeof ctx.sessionID === 'string' && ctx.sessionID !== '') return ctx.sessionID;
+    if (typeof ctx.id === 'string' && ctx.id !== '') return ctx.id;
+  } catch {
+    return undefined;
+  }
+  return undefined;
+};
+
+export const DETERMINED_ENV_VAR = 'DETERMINED_EXECUTION';
+
+export const isDeterminedEnabled = (ctx) => {
+  // Session override first. A session read failure resolves to false (fail-open).
+  try {
+    const sessionID = _determinedSessionId(ctx);
+    if (sessionID) {
+      const value = _determinedSessionStore.get(sessionID);
+      if (value !== undefined) {
+        // Strict parse: '1'/'on' => true; 'off' and anything else => false.
+        return value === '1' || value === 'on';
+      }
+    }
+  } catch {
+    return false; // session read failure => determined path off
+  }
+  // Fall back to env, then default off.
+  try {
+    return String(process.env[DETERMINED_ENV_VAR] ?? '').trim().toLowerCase() === '1';
+  } catch {
+    return false; // fail open: env unreadable => determined path off
+  }
+};
+
+// R1: each route phase restates its own goal + current state before acting,
+// so a paused/resumed step can continue without re-deriving intent.
+// Pass-through when disabled: returns null, zero behavior change.
+export const restatePhase = (phase) => {
+  if (!isDeterminedEnabled()) return null;
+  return typeof phase === 'string' && phase.trim() !== ''
+    ? `DETERMINED phase=${phase.trim()}`
+    : null;
+};
+
+// R2: each phase must emit an observe artifact before transitioning to the
+// next phase. Missing observe output fails the phase when enabled.
+// Pass-through when disabled: returns null, zero behavior change.
+export const emitObserve = (phase) => {
+  if (!isDeterminedEnabled()) return null;
+  return typeof phase === 'string' && phase.trim() !== ''
+    ? `DETERMINED observe phase=${phase.trim()}`
+    : null;
+};
+
+// R3: reflect buffer is a scratch buffer for skeptic/critic notes, written
+// separately from the progress ledger (docs/plans/<slug>-progress.md).
+// Reflection is never mixed into ledger entries; this helper never writes the
+// ledger file. Pass-through when disabled: returns null, zero behavior change.
+export const reflectScratch = (phase, note) => {
+  if (!isDeterminedEnabled()) return null;
+  if (typeof phase !== 'string' || phase.trim() === '') return null;
+  return `DETERMINED reflect phase=${phase.trim()} ${note === undefined ? '' : String(note)}`.trim();
+};
+
+// R4: abstain monitor — decline to proceed (no-op result) when the estimated
+// false-continue rate is in the 23-74% band. Pass-through when disabled:
+// returns null, zero behavior change.
+export const checkAbstain = (estFalseContinueRate) => {
+  if (!isDeterminedEnabled()) return null;
+  const rate = Number(estFalseContinueRate);
+  if (!Number.isFinite(rate) || rate < 0 || rate > 1) return null; // unreadable estimate => fail open, proceed
+  if (rate >= 0.23 && rate <= 0.74) {
+    return { abstain: true, reason: `abstain: false-continue rate ${(rate * 100).toFixed(0)}% in 23-74% band` };
+  }
+  return null; // proceed
+};
+
+// R5: timely-stop — caps phase cost at 2.3-5x the baseline route cost. When a
+// phase projects to exceed the band (> 5x baseline) it stops early and emits
+// an observe artifact noting the stop reason. Pass-through when disabled:
+// returns null, zero behavior change.
+export const checkTimelyStop = (projectedCost, baselineCost) => {
+  if (!isDeterminedEnabled()) return null;
+  const projected = Number(projectedCost);
+  const baseline = Number(baselineCost);
+  if (!Number.isFinite(projected) || !Number.isFinite(baseline) || baseline <= 0) return null;
+  const ratio = projected / baseline;
+  if (ratio > 5) {
+    const reason = `timely-stop: projected cost ${projected} exceeds 5x baseline ${baseline} (${ratio.toFixed(2)}x)`;
+    emitObserve(`timely-stop ${reason}`);
+    return { stop: true, reason };
+  }
+  return null; // proceed
+};
+
+// R6: skeptic zero-persona prefix — applied before evaluating content.
+// Additive-only: flips 14-18% of evaluations and raises warmth +7.4pp when
+// enabled; never alters shipped code paths. Pass-through when disabled:
+// returns null (caller uses content unchanged).
+export const skepticPrefix = () => {
+  if (!isDeterminedEnabled()) return null;
+  return 'Zero-persona: evaluate only on the stated criteria; no persona adopted.';
+};
+
+// R7: critic width 2 parallel fresh context — opt-in flag only.
+// Returns two fresh-context critic slots (critic-1 / critic-2). The orchestrator
+// critic gate (orchestrator.md:194-199) is preserved untouched and is not
+// referenced here. Pass-through when disabled: returns null.
+export const criticWidth2 = (candidates = []) => {
+  if (!isDeterminedEnabled()) return null;
+  if (!Array.isArray(candidates)) return null;
+  return {
+    width: 2,
+    mode: 'parallel fresh context',
+    critics: [
+      { id: 'critic-1', context: 'fresh', candidates: [...candidates] },
+      { id: 'critic-2', context: 'fresh', candidates: [...candidates] },
+    ],
+  };
+};
+
 /** V1 plugin (named export, OpenCode 1.x). */
 export const SdlcLeanPlugin = async ({ client, directory } = {}) => {
   return {

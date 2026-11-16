@@ -172,6 +172,110 @@ export const listSkills = () => {
   return out;
 };
 
+// --- Generic MCP capability registry (fail-open silent-skip) -----------------
+// Sync-only, never throws, no spawn/install, zero-dep, V1+V2 compatible.
+// Miss/invalid/throwing-detector all fail open: has=false, get=null.
+const _capabilities = new Map();
+
+const _capDetector = (adapter) => {
+  // Object-only by design: adapters are { detect|isAvailable } objects.
+  try {
+    if (adapter && typeof adapter === 'object') {
+      if (typeof adapter.detect === 'function') return adapter.detect;
+      if (typeof adapter.isAvailable === 'function') return adapter.isAvailable;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+};
+
+export const registerCapability = (name, adapter) => {
+  try {
+    if (typeof name !== 'string' || name.trim() === '') return;
+    if (adapter === null || adapter === undefined) return;
+    const key = name.trim();
+    _capabilities.set(key, adapter);
+  } catch {
+    // silent-skip: registration never breaks activation
+  }
+};
+
+export const hasCapability = (name) => {
+  try {
+    if (typeof name !== 'string' || name.trim() === '') return false;
+    const key = name.trim();
+    if (!_capabilities.has(key)) return false;
+    const adapter = _capabilities.get(key);
+    const det = _capDetector(adapter);
+    if (det) {
+      try {
+        return !!det.call(adapter);
+      } catch {
+        return false;
+      }
+    }
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+export const getCapability = (name) => {
+  try {
+    if (typeof name !== 'string' || name.trim() === '') return null;
+    const key = name.trim();
+    if (!_capabilities.has(key)) return null;
+    const adapter = _capabilities.get(key);
+    const det = _capDetector(adapter);
+    if (det) {
+      try {
+        if (!det.call(adapter)) return null;
+      } catch {
+        return null;
+      }
+    }
+    return adapter ?? null;
+  } catch {
+    return null;
+  }
+};
+
+export const clearCapabilities = () => {
+  try {
+    _capabilities.clear();
+  } catch {
+    // silent-skip
+  }
+};
+
+// --- Startup auto-detect (Task 1 follow-up, fail-open) ----------------------
+// Best-effort existence check only (statSync, no spawn/install), zero-dep,
+// never throws/blocks. V1+V2 call this at activation for parity.
+export const DEFAULT_MCP_PATH = path.join(os.homedir(), '.local', 'bin', 'notebooklm-mcp');
+
+export const autoDetectCapabilities = (binPath = DEFAULT_MCP_PATH) => {
+  try {
+    if (typeof binPath !== 'string') return false;
+    let p = binPath.trim();
+    if (!p) return false;
+    if (p === '~') p = os.homedir();
+    else if (p.startsWith('~/')) p = path.join(os.homedir(), p.slice(2));
+    let st;
+    try {
+      st = fs.statSync(p);
+    } catch {
+      try { _capabilities.delete('mcp:notebooklm'); } catch { /* silent-skip */ }
+      return false;
+    }
+    if (!st || typeof st.isFile !== 'function' || !st.isFile()) return false;
+    registerCapability('mcp:notebooklm', { name: 'mcp:notebooklm', bin: p });
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 // --- Activation signal -------------------------------------------------------
 // Deterministic proof the suite is live:
 //  1. a status file (always, version-independent) the /sdlc-lean command reads;
@@ -756,7 +860,8 @@ export const checkImplementerBash = (agentId, command) => {
   throw new Error(`[sdlc-lean] implementer bash refused: "${cmd}" (allowlist: test, verify, git-read only)`);
 };
 
-// Aliases for plausible caller names.
+// V1/V2 caller-name aliases (kept intentionally: distinct surfaces use
+// distinct names; not deduplicated so existing imports never break).
 export const checkBashGate = checkSpecGate;
 export const checkBashWriteTargets = parseBashWriteTargets;
 export const bashWriteTargets = parseBashWriteTargets;
@@ -2290,6 +2395,7 @@ export const criticWidth2 = (candidates = []) => {
 export const SdlcLeanPlugin = async ({ client, directory } = {}) => {
   return {
     config: async (config) => {
+      try { autoDetectCapabilities(); } catch { /* fail-open: never block activation */ }
       if (Array.isArray(config.skills)) return; // V2 shape — setup() handles it
       config.skills = config.skills || {};
       config.skills.paths = config.skills.paths || [];
@@ -2338,6 +2444,7 @@ async function setup(ctx) {
   if (!ctx || !ctx.skill || typeof ctx.skill.transform !== 'function' || !ctx.session || typeof ctx.session.hook !== 'function') {
     return; // V1-shaped ctx — named export serves V1
   }
+  try { autoDetectCapabilities(); } catch { /* fail-open: never block activation */ }
   try {
     const skills = listSkills();
     await ctx.skill.transform((draft) => {

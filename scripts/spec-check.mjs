@@ -1895,10 +1895,8 @@ export const main = (argv = process.argv.slice(2), io = {}) => {
           const previewText = applyApprovalFill(original, sanitizeApprovedBy(undefined), new Date().toISOString());
           const preview = parsePlanText(previewText);
           assertRegularFile(root, preview.spec, 'spec');
-          // An approved plan must carry a task table (close needs one); an
-          // approved-but-table-less plan is a deadlock, so refuse here with an
-          // actionable amend hint instead of creating an uncloseable gate.
-          parsePlanTasks(previewText);
+          // No task-table gate here: fillApprovalFrontmatter/buildGate and
+          // the plugin autofill never require one (close enforces it).
         }
         fillApprovalFrontmatter(planAbs, undefined, root);
         const gate = buildGate(root, planPath);

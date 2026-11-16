@@ -623,28 +623,23 @@ export const setupTui = async (context) => {
       if (!isDraft) {
         if (preexisting) {
           let current = null;
-          let currentValid = false;
           try {
             current = cli.readGate(liveRoot);
-            cli.validateGate(liveRoot, current);
-            currentValid = true;
           } catch {
-            currentValid = false;
+            current = null;
           }
-          if (currentValid) {
-            const oldPlan = typeof current?.plan === 'string' ? current.plan : 'unknown plan';
-            const oldHash = typeof current?.plan_sha256 === 'string' ? current.plan_sha256 : 'unknown hash';
-            const overwrite = await context.dialog.confirm({
-              title: 'Overwrite active spec gate',
-              message: [
-                `gate active for ${oldPlan} (sha256 ${oldHash}).`,
-                `Approve ${displayPlan} instead? Confirm again to overwrite,`,
-                'or run spec-check close first.',
-              ].join('\n'),
-            });
-            if (!overwrite) {
-              throw refuse(`active gate for ${oldPlan} kept; run spec-check close before approving ${displayPlan}`);
-            }
+          const oldPlan = typeof current?.plan === 'string' ? current.plan : 'unknown plan';
+          const oldHash = typeof current?.plan_sha256 === 'string' ? current.plan_sha256 : 'unknown hash';
+          const overwrite = await context.dialog.confirm({
+            title: 'Overwrite active spec gate',
+            message: [
+              `gate active for ${oldPlan} (sha256 ${oldHash}).`,
+              `Approve ${displayPlan} instead? Confirm again to overwrite,`,
+              'or run spec-check close first.',
+            ].join('\n'),
+          });
+          if (!overwrite) {
+            throw refuse(`active gate for ${oldPlan} kept; run spec-check close before approving ${displayPlan}`);
           }
         }
 
@@ -689,28 +684,23 @@ export const setupTui = async (context) => {
       // and unlinks only a self-written marker with matching content.
       if (preexisting) {
         let current = null;
-        let currentValid = false;
         try {
           current = cli.readGate(liveRoot);
-          cli.validateGate(liveRoot, current);
-          currentValid = true;
         } catch {
-          currentValid = false;
+          current = null;
         }
-        if (currentValid) {
-          const oldPlan = typeof current?.plan === 'string' ? current.plan : 'unknown plan';
-          const oldHash = typeof current?.plan_sha256 === 'string' ? current.plan_sha256 : 'unknown hash';
-          const overwrite = await context.dialog.confirm({
-            title: 'Overwrite active spec gate',
-            message: [
-              `gate active for ${oldPlan} (sha256 ${oldHash}).`,
-              `Approve ${displayPlan} instead? Confirm again to overwrite,`,
-              'or run spec-check close first.',
-            ].join('\n'),
-          });
-          if (!overwrite) {
-            throw refuse(`active gate for ${oldPlan} kept; run spec-check close before approving ${displayPlan}`);
-          }
+        const oldPlan = typeof current?.plan === 'string' ? current.plan : 'unknown plan';
+        const oldHash = typeof current?.plan_sha256 === 'string' ? current.plan_sha256 : 'unknown hash';
+        const overwrite = await context.dialog.confirm({
+          title: 'Overwrite active spec gate',
+          message: [
+            `gate active for ${oldPlan} (sha256 ${oldHash}).`,
+            `Approve ${displayPlan} instead? Confirm again to overwrite,`,
+            'or run spec-check close first.',
+          ].join('\n'),
+        });
+        if (!overwrite) {
+          throw refuse(`active gate for ${oldPlan} kept; run spec-check close before approving ${displayPlan}`);
         }
       }
       let flipped = false;

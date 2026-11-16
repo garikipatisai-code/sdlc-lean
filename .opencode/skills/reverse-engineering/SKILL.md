@@ -18,6 +18,14 @@ If the upstream `reverse-engineer-anything` skill is also installed, follow it o
 
 ## Connect — ladder, stop at the first that holds
 
+**Tool Detection.** Detect optional MCP tools only through the generic registry
+contract (`hasCapability(name)` / `getCapability(name)`); a missing capability
+silent-skips to the next rung — never hardcall a server-qualified tool name.
+Auto-detect at activation is best-effort try/catch with existence-check-before-spawn:
+startup statSync-only probe of portable DEFAULT_MCP_PATH (homedir-resolved);
+populated registry means ready, empty/missing means fail-open to the next rung.
+Applies to V1+V2; bootstrap stays <5KB.
+
 1. REA MCP tools present in the session → use them; inspect `binary_session` availability before concluding a tool is absent.
 2. Else `rea` CLI installed → use it (`rea analyze …`, `rea inspect-*`).
 3. Else `npx -y rea-agents@6.4.0` → package acquisition needs approval first.
@@ -69,6 +77,14 @@ Full ladder and failure modes in `references/reconstruction-validation.md`.
 - `security-audit` on binaries or packages → REA evidence feeds `reviewing-security`; no finding without a traced path.
 - `feature` cloning behavior from a shipped app → `trace_application_feature` → reconstruction under the S-tier gates.
 - Behavior questions needing external context → this skill supplies artifact truth; `deep-research` supplies the rest.
+
+## Known debt (full-suite pre-existing — do-NOT-fix here, never edit graders)
+
+- approve-autofill 9/9 green (was TTY failure; closed Tasks 1-3).
+- skill-contracts green, autonomous-loop 158/160 lines (was 178; closed Tasks 1-3).
+- tiered-reasoning escalation 9/9 green (closed Tasks 1-3).
+- Remaining full-suite: 440/444 — 2 autonomy-default-posture + 2 tui-brain approve-overwrite (pre-existing, out of scope here).
+- Leanness note: duplicate normalize assert kept lean; do not expand.
 
 ## References
 

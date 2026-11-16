@@ -249,7 +249,7 @@ Pre-dispatch verify: check role→tier table before every dispatch; mismatch →
 - Response: orchestrator re-dispatches the SAME task on its own model (BRAIN, cap-counted, secrets never free) instead of downgrading quality.
 - If the BRAIN attempt is also stuck: stop + reconcile evidence + explicit human approval.
 - Never silently accept degraded output to save cost.
-- Hardship or rework → reasoning effort +1 level, capped at `high` for MUSCLE.
+- Hardship or rework → reasoning effort +1 level, capped at max for that tier.
 - BRAIN judge/reviewer pass stays `high` — never stepped down to save cost.
 - Escalated asks use the 6-field brief template (C2 above); never duplicate its fields here.
 

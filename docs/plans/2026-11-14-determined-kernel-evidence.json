@@ -44,5 +44,6 @@
     "security": "ACCEPT",
     "code": "ACCEPT"
   },
-  "summary": "Implementer evidence: exit 0 x4 (Tasks 1-4 all pass on approved plan). Plan is read-only, status: approved / approved_by: appusai per .sdlc/spec-gate.json (plan_sha256 16ea20437159...). Critics ACCEPT x2. No close/approve run; plan/spec/evidence scope honored."
+  "summary": "Implementer evidence: exit 0 x4 (Tasks 1-4 all pass on approved plan). Plan is read-only, status: approved / approved_by: appusai per .sdlc/spec-gate.json (plan_sha256 16ea20437159...). Critics ACCEPT x2. No close/approve run; plan/spec/evidence scope honored.",
+  "_superseded_note": "SUPERSEDED-preserved-as-is: T1 draft-expectation stale vs approved file (status: approved / approved_by: appusai); code landed e7e1ba7 superseded by 6561c38; gate refs historical-only. Original rows untouched."
 }

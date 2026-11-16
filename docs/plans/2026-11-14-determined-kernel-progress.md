@@ -1,3 +1,5 @@
+> SUPERSEDED — preserved-as-is (historical ledger; code landed e7e1ba7 superseded by 6561c38, gate refs historical-only).
+> Do not rewrite rows; see evidence.json _superseded_note.
 # Progress — Determined execution kernel (2026-11-14-determined-kernel)
 
 Plan: `docs/plans/2026-11-14-determined-kernel.md` (sha `16ea20437159…`, approved)

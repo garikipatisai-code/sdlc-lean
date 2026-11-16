@@ -1,3 +1,5 @@
+> SUPERSEDED — preserved-as-is (historical ledger; T1/T5 draft-expectation stale vs approved file, gate refs historical-only).
+> Do not rewrite rows; see evidence.json _superseded_note.
 # Progress ledger — Determined execution kernel impl
 
 Plan: `docs/plans/2026-11-14-determined-kernel-impl.md` (sha `7549ca58dfda…`)

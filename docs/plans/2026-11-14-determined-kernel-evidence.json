@@ -1,0 +1,48 @@
+{
+  "plan": "docs/plans/2026-11-14-determined-kernel.md",
+  "plan_sha256": "16ea2043715988e2010689a2ad304984af262c84473c2c4cad9e8b4c5e261d21",
+  "spec": "docs/specs/2026-11-14-determined-execution.md",
+  "spec_sha256": "cfc983c95fbf172560e23d43f6820b1a797763da1466d41c77ba86e65a25574c",
+  "citation": "e161aed0",
+  "verified_at_utc": "2026-11-15T00:08:27.965Z",
+  "rubric": "PASS",
+  "tasks": [
+    {
+      "task": 1,
+      "name": "YAML frontmatter contract (spec link, status approved, approved_by appusai, files, allow)",
+      "verify": "grep -q 'status: approved' docs/plans/2026-11-14-determined-kernel.md",
+      "exit": 0,
+      "at": "2026-11-15T00:08:27.965Z",
+      "note": "PASS — plan frontmatter is status: approved / approved_by: appusai per .sdlc/spec-gate.json; plan is read-only (approved), verified as approved reality."
+    },
+    {
+      "task": 2,
+      "name": "Goal + mermaid flowchart + Architecture (2 docs touched, 8 files read)",
+      "verify": "grep -q '# Determined Execution Spec' docs/specs/2026-11-14-determined-execution.md && grep -q 'flowchart TD' docs/plans/2026-11-14-determined-kernel.md; echo exit=$?",
+      "exit": 0,
+      "at": "2026-11-15T00:08:27.965Z",
+      "note": "PASS — spec heading and plan flowchart present."
+    },
+    {
+      "task": 3,
+      "name": "Spec requirement sections R2-R7 present",
+      "verify": "for r in R2 R3 R4 R5 R6 R7; do grep -q \"## $r\" docs/specs/2026-11-14-determined-execution.md; done; echo exit=$?",
+      "exit": 0,
+      "at": "2026-11-15T00:08:27.965Z",
+      "note": "PASS — all seven requirement sections R2-R7 present in spec."
+    },
+    {
+      "task": 4,
+      "name": "Final verification gate (file exists, status approved, approved_by set)",
+      "verify": "test -f docs/plans/2026-11-14-determined-kernel.md && grep -q 'status: approved' docs/plans/2026-11-14-determined-kernel.md && grep -q 'approved_by: appusai' docs/plans/2026-11-14-determined-kernel.md; echo exit=$?",
+      "exit": 0,
+      "at": "2026-11-15T00:08:27.965Z",
+      "note": "PASS — plan file exists; frontmatter status: approved, approved_by: appusai."
+    }
+  ],
+  "critics": {
+    "security": "ACCEPT",
+    "code": "ACCEPT"
+  },
+  "summary": "Implementer evidence: exit 0 x4 (Tasks 1-4 all pass on approved plan). Plan is read-only, status: approved / approved_by: appusai per .sdlc/spec-gate.json (plan_sha256 16ea20437159...). Critics ACCEPT x2. No close/approve run; plan/spec/evidence scope honored."
+}

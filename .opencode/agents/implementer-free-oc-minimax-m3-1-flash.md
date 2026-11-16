@@ -1,7 +1,7 @@
 ---
 description: Executes one plan task with TDD, self-review, and evidence reporting (free oc-minimax-m3-1-flash on opencode, silent-skip on 429/cooldown)
 mode: subagent
-model: opencode/minimax-m3.1-flash-free
+model: opencode/minimax-m3.1-flash-free#high
 temperature: 0.2
 permission:
   edit: allow

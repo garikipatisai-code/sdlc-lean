@@ -1,7 +1,7 @@
 ---
 description: Executes one plan task with TDD, self-review, and evidence reporting (free oc-nemotron-super-vl on opencode, silent-skip on 429/cooldown)
 mode: subagent
-model: opencode/nemotron-3.5-super-vl-free
+model: opencode/nemotron-3.5-super-vl-free#high
 temperature: 0.2
 permission:
   edit: allow

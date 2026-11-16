@@ -1,7 +1,7 @@
 ---
 description: Executes one plan task with TDD, self-review, and evidence reporting (free oc-deepseek-v4-1-flash on opencode, silent-skip on 429/cooldown)
 mode: subagent
-model: opencode/deepseek-v4.1-flash-free
+model: opencode/deepseek-v4.1-flash-free#high
 temperature: 0.2
 permission:
   edit: allow

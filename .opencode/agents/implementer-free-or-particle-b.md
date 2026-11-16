@@ -1,7 +1,7 @@
 ---
 description: Executes one plan task with TDD, self-review, and evidence reporting (free or-particle-b on console-openrouter2, silent-skip on 429/cooldown)
 mode: subagent
-model: console-openrouter2/particle-ai/particle-1:free
+model: console-openrouter2/particle-ai/particle-1:free#high
 temperature: 0.2
 permission:
   edit: allow

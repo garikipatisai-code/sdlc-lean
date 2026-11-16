@@ -1,7 +1,7 @@
 ---
 description: Executes one plan task with TDD, self-review, and evidence reporting (free oc-beam on opencode, silent-skip on 429/cooldown)
 mode: subagent
-model: opencode/beam-free
+model: opencode/beam-free#high
 temperature: 0.2
 permission:
   edit: allow

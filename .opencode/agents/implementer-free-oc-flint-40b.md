@@ -1,7 +1,7 @@
 ---
 description: Executes one plan task with TDD, self-review, and evidence reporting (free oc-flint-40b on opencode, silent-skip on 429/cooldown)
 mode: subagent
-model: opencode/flint-40b-free
+model: opencode/flint-40b-free#high
 temperature: 0.2
 permission:
   edit: allow

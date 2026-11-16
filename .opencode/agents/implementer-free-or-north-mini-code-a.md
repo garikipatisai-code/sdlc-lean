@@ -1,7 +1,7 @@
 ---
 description: Executes one plan task with TDD, self-review, and evidence reporting (free or-north-mini-code-a on console-openrouter, silent-skip on 429/cooldown)
 mode: subagent
-model: console-openrouter/cohere/north-mini-code:free
+model: console-openrouter/cohere/north-mini-code:free#thinking
 temperature: 0.2
 permission:
   edit: allow

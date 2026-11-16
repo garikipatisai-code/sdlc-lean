@@ -1,7 +1,7 @@
 ---
 description: Executes one plan task with TDD, self-review, and evidence reporting (free or-super-vl-b on console-openrouter2, silent-skip on 429/cooldown)
 mode: subagent
-model: console-openrouter2/nvidia/nemotron-3.5-super-vl:free
+model: console-openrouter2/nvidia/nemotron-3.5-super-vl:free#thinking
 temperature: 0.2
 permission:
   edit: allow

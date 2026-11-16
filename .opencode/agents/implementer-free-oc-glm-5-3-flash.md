@@ -1,7 +1,7 @@
 ---
 description: Executes one plan task with TDD, self-review, and evidence reporting (free oc-glm-5-3-flash on opencode, silent-skip on 429/cooldown)
 mode: subagent
-model: opencode/glm-5.3-flash-free
+model: opencode/glm-5.3-flash-free#high
 temperature: 0.2
 permission:
   edit: allow

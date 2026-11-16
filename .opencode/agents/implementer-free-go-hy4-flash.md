@@ -1,7 +1,7 @@
 ---
 description: Executes one plan task with TDD, self-review, and evidence reporting (free go-hy4-flash on opencode-go, silent-skip on 429/cooldown)
 mode: subagent
-model: opencode-go/hy4-flash-free
+model: opencode-go/hy4-flash-free#high
 temperature: 0.2
 permission:
   edit: allow

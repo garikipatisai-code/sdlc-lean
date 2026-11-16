@@ -119,8 +119,8 @@ Admission: `settled+outstanding+next<=cap`. At cap: block, ask the user for
 an extension, escalate — never auto-extend and never auto-spend. Session-model (paid) fallback is permitted ONLY when admission passes AND explicit spend approval + ask-to-extend (fresh approval) are granted; exhaustion with no approval → stop + escalate, never auto-paid.
 
 Delegation is narrow-only (allowed worker subagents only, no scope spread).
-Privacy: secrets NEVER to any free endpoint; customer code only to no-train
-endpoints; NVIDIA → non-sensitive only under verified ZDR.
+Privacy: secrets NEVER to any free endpoint; non-secret code may use any
+endpoint incl. training (non-ZDR ok).
 
 Denylist (never select): `poolside/laguna` (expired), `inkling` (harness-only),
 `liquid/lfm` (not-for-coding), content-safety no-tools models. Prior

@@ -124,7 +124,7 @@ BRAIN = orchestrator session model (unpin). MUSCLE = free-first, fail-closed.
 
 **Admission (cap+ask):** `settled+outstanding+next<=cap`; at cap → block + ask extension + escalate; never auto-extend/auto-spend. Paid fallback (orchestrator's own model) is the **ONLY** step needing explicit spend approval.
 
-**Secrets boundary:** secrets NEVER to any free endpoint; customer code only to no-train endpoints; NVIDIA non-sensitive only under verified ZDR. No secret values shown.
+**Secrets boundary:** secrets NEVER to any free endpoint; non-secret code may use any endpoint incl. training (non-ZDR ok). No secret values shown.
 
 ## Human-facing output contract
 

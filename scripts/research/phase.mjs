@@ -1016,14 +1016,257 @@ export const isDeniedQuotaModel = (id) => {
 };
 
 export const isSafeQuotaModel = (id) => {
-  if (typeof id !== 'string' || !id) return false;
-  if (isDeniedQuotaModel(id)) return false;
-  if (QUOTA_POOL.includes(id)) return true;
-  if (!isQualifiedQuotaModelId(id)) return false;
-  const prefix = id.slice(0, id.indexOf('/'));
-  if (!QUOTA_ALLOWED_ACCOUNTS.includes(prefix)) return false;
-  return true;
+  try {
+    if (id && typeof id === 'object' && !Array.isArray(id)) return isFreeQuotaCapable(id);
+    if (typeof id !== 'string' || !id) return false;
+    try { if (SECRET_VALUE_RES.some((re) => re.test(id))) return false; } catch { return false; }
+    if (isDeniedQuotaModel(id)) return false;
+    if (QUOTA_POOL.includes(id)) return true;
+    if (!isQualifiedQuotaModelId(id)) return false;
+    const prefix = id.slice(0, id.indexOf('/'));
+    if (!QUOTA_ALLOWED_ACCOUNTS.includes(prefix)) return false;
+    return true;
+  } catch {
+    return false;
+  }
 };
+
+// --- Free-pool autodetect (capability predicate, additive, mirrors plugin) ---
+// Admission: price===0 + tools + text-output + not-expired. Suffixless ids
+// admit (no :free/-free requirement). Secrets never free. Zero-dep, sync,
+// never throws (fail-open false on bad input). Supports stub
+// {id,price,tools,text,expired} (+secret marker) and spec
+// {id,price,tools,textOutput,expiresAt},{now}. Secret guard uses phase
+// SECRET_VALUE_RES (stricter than plugin isSecretLike); patterns
+// intentionally differ (best-effort, not a guarantee); do not merge.
+export const LONGCAT_DAILY_CAP = 100;
+export const OR_FREE_DAILY_CAP = 50;
+export const OR_FREE_DAILY_CAP_WITH_CREDITS = 1000;
+export const OR_FREE_MINUTE_CAP = 20;
+export const QUOTA_LONGCAT_DAILY_CAP = LONGCAT_DAILY_CAP;
+export const QUOTA_OR_FREE_DAILY_CAP = OR_FREE_DAILY_CAP;
+export const QUOTA_OR_FREE_DAILY_CAP_WITH_CREDITS = OR_FREE_DAILY_CAP_WITH_CREDITS;
+export const QUOTA_OR_FREE_MINUTE_CAP = OR_FREE_MINUTE_CAP;
+
+export const isFreeQuotaCapable = (model, nowOrOpts) => {
+  try {
+    if (!model || typeof model !== 'object' || Array.isArray(model)) return false;
+    const id = model.id ?? model.model ?? model.name;
+    if (typeof id !== 'string' || id.trim() === '') return false;
+    try { if (SECRET_VALUE_RES.some((re) => re.test(id))) return false; } catch { return false; }
+    if (model.secret === true) return false;
+    const price = model.price ?? model.cost ?? model.promptPrice;
+    if (typeof price !== 'number' || !Number.isFinite(price) || price !== 0) return false;
+    const tools = model.tools ?? model.hasTools ?? model.supportsTools;
+    const toolsOk = tools === true || (Array.isArray(tools) && tools.length > 0);
+    if (!toolsOk) return false;
+    const text = model.text ?? model.textOutput ?? model.outputText ?? model.supportsText;
+    const textOk = text === true || (Array.isArray(text) && text.indexOf('text') !== -1);
+    if (!textOk) return false;
+    if (model.expired) return false;
+    const expiresAt = model.expiresAt ?? model.expires_at ?? model.expiry;
+    if (typeof expiresAt === 'boolean' || expiresAt === undefined || expiresAt === null || expiresAt === '') {
+      return true;
+    }
+    let nowMs = Date.now();
+    try {
+      if (typeof nowOrOpts === 'number' && Number.isFinite(nowOrOpts)) nowMs = nowOrOpts;
+      else if (nowOrOpts && typeof nowOrOpts === 'object' && !Array.isArray(nowOrOpts)) {
+        const n = nowOrOpts.now ?? nowOrOpts.at ?? nowOrOpts.time;
+        if (typeof n === 'number' && Number.isFinite(n)) nowMs = n;
+      }
+    } catch { /* keep Date.now */ }
+    let expMs = NaN;
+    if (typeof expiresAt === 'number' && Number.isFinite(expiresAt)) expMs = expiresAt;
+    else if (typeof expiresAt === 'string' && expiresAt.trim() !== '') {
+      const t = Date.parse(expiresAt);
+      if (!Number.isNaN(t)) expMs = t;
+    } else if (expiresAt instanceof Date) {
+      const t = expiresAt.getTime();
+      if (!Number.isNaN(t)) expMs = t;
+    }
+    if (!Number.isFinite(expMs)) return false;
+    if (expMs <= nowMs) return false;
+    return true;
+  } catch {
+    return false;
+  }
+};
+export const isFreeCapable = isFreeQuotaCapable;
+
+export const buildFreeQuotaPool = (models, nowOrOpts) => {
+  try {
+    if (!Array.isArray(models)) return [];
+    const out = [];
+    for (const m of models) {
+      try { if (isFreeQuotaCapable(m, nowOrOpts)) out.push(m); } catch { /* skip */ }
+    }
+    return out;
+  } catch {
+    return [];
+  }
+};
+export const buildFreePool = buildFreeQuotaPool;
+
+export const nextFreeQuotaLink = (pool, state) => {
+  try {
+    if (!Array.isArray(pool) || pool.length === 0) return null;
+    const st = state && typeof state === 'object' && !Array.isArray(state) ? state : null;
+    let idx = 0;
+    if (st) {
+      const n = st.index ?? st.i ?? st.cursor;
+      if (typeof n === 'number' && Number.isFinite(n)) idx = Math.floor(n);
+    }
+    const len = pool.length;
+    const start = ((idx % len) + len) % len;
+    const cool = st ? (st.cooldown ?? st.cool ?? st.cooling ?? null) : null;
+    const isCool = (cid) => {
+      try {
+        if (!cool) return false;
+        if (cool instanceof Set) return cool.has(cid);
+        if (Array.isArray(cool)) return cool.indexOf(cid) !== -1;
+        return false;
+      } catch {
+        return false;
+      }
+    };
+    const idOf = (e) => {
+      if (typeof e === 'string') return e;
+      if (e && typeof e === 'object' && !Array.isArray(e)) {
+        const v = e.id ?? e.model ?? e.name;
+        return typeof v === 'string' ? v : null;
+      }
+      return null;
+    };
+    for (let k = 0; k < len; k++) {
+      const j = (start + k) % len;
+      const entry = pool[j];
+      const cid = idOf(entry);
+      if (typeof cid !== 'string' || cid === '') continue;
+      if (isCool(cid)) continue;
+      if (st) { try { st.index = (j + 1) % len; } catch { /* no-op */ } }
+      return entry;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+};
+export const nextFreeLink = nextFreeQuotaLink;
+
+// Per-source caps (check-before-dispatch, fail-open on unobservable) --------
+// opencode-go (incl LongCat100) → LONGCAT_DAILY_CAP; console-openrouter* →
+// OR_FREE_DAILY_CAP (50) or OR_FREE_DAILY_CAP_WITH_CREDITS (1000) with
+// { withCredits:true }; OR minute window → OR_FREE_MINUTE_CAP. Unknown
+// source/id → null (unobservable → fail-open allow). Never throws.
+export const capForFreeQuotaModel = (idOrModel, opts) => {
+  try {
+    const o = opts && typeof opts === 'object' && !Array.isArray(opts) ? opts : {};
+    const raw = typeof idOrModel === 'string' ? idOrModel
+      : (idOrModel && typeof idOrModel === 'object' && !Array.isArray(idOrModel)
+        ? (idOrModel.id ?? idOrModel.model ?? idOrModel.name) : null);
+    if (typeof raw !== 'string' || raw.trim() === '') return null;
+    const id = raw.trim();
+    const slash = id.indexOf('/');
+    if (slash <= 0) return null;
+    const prefix = id.slice(0, slash);
+    const minute = o.window === 'minute' || o.minute === true || o.perMinute === true;
+    if (prefix === 'opencode-go') {
+      if (minute) return null;
+      return LONGCAT_DAILY_CAP;
+    }
+    if (prefix === 'console-openrouter' || prefix === 'console-openrouter2') {
+      if (minute) return OR_FREE_MINUTE_CAP;
+      if (o.withCredits === true || o.hasCredits === true || o.credits === true) return OR_FREE_DAILY_CAP_WITH_CREDITS;
+      return OR_FREE_DAILY_CAP;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+};
+export const capForFreeModel = capForFreeQuotaModel;
+export const capForFreeSource = capForFreeQuotaModel;
+export const capForModel = capForFreeQuotaModel;
+
+// Fail-closed strict: only finite numbers admitted. Never throws.
+export const admitsQuota = (input) => {
+  const o = input && typeof input === 'object' && !Array.isArray(input) ? input : null;
+  if (!o) return false;
+  const settled = o.settled;
+  const outstanding = o.outstanding;
+  const next = o.next;
+  const cap = o.cap;
+  if (typeof settled !== 'number' || typeof outstanding !== 'number' || typeof next !== 'number' || typeof cap !== 'number') {
+    return false;
+  }
+  if (!Number.isFinite(settled) || !Number.isFinite(outstanding) || !Number.isFinite(next) || !Number.isFinite(cap)) {
+    return false;
+  }
+  return settled + outstanding + next <= cap;
+};
+export const admits = admitsQuota;
+
+// Check-before-dispatch against the per-source cap. Fail-open true on
+// unobservable (missing usage, unknown source cap, non-finite). Otherwise
+// delegates to admitsQuota({ settled, outstanding, next, cap }). Never throws.
+export const admitsForFreeQuotaModel = (idOrModel, usage, opts) => {
+  try {
+    const u = usage && typeof usage === 'object' && !Array.isArray(usage) ? usage : null;
+    if (!u) return true;
+    const o = opts && typeof opts === 'object' && !Array.isArray(opts) ? opts : {};
+    let cap = null;
+    if (typeof o.cap === 'number' && Number.isFinite(o.cap)) cap = o.cap;
+    else cap = capForFreeQuotaModel(idOrModel, o);
+    if (typeof cap !== 'number' || !Number.isFinite(cap)) return true;
+    const { settled, outstanding, next } = u;
+    if (typeof settled !== 'number' || typeof outstanding !== 'number' || typeof next !== 'number') return true;
+    if (!Number.isFinite(settled) || !Number.isFinite(outstanding) || !Number.isFinite(next)) return true;
+    return admitsQuota({ settled, outstanding, next, cap });
+  } catch {
+    return true;
+  }
+};
+export const admitsForFreeModel = admitsForFreeQuotaModel;
+export const admitsForFreeSource = admitsForFreeQuotaModel;
+export const admitsWithCap = admitsForFreeQuotaModel;
+
+// Unified free pool: frozen QUOTA_POOL ids first, then live capability-admitted
+// ids (buildFreeQuotaPool) deduped, order-preserving. Live may hold capability
+// objects (isFreeQuotaCapable) and/or string ids (isSafeQuotaModel string-path,
+// old graders pin it). Returns string ids only so round-robin/429/cooldown/BRAIN
+// wiring is unchanged. Never throws; empty live → [...QUOTA_POOL].
+export const buildUnifiedFreeQuotaPool = (liveModels, nowOrOpts) => {
+  try {
+    const out = [...QUOTA_POOL];
+    const seen = new Set(out);
+    const live = Array.isArray(liveModels) ? liveModels : [];
+    let admittedObjects = [];
+    try { admittedObjects = buildFreeQuotaPool(live, nowOrOpts); } catch { admittedObjects = []; }
+    for (const m of admittedObjects) {
+      try {
+        const v = m && typeof m === 'object' && !Array.isArray(m) ? (m.id ?? m.model ?? m.name) : null;
+        if (typeof v !== 'string' || v.trim() === '' || seen.has(v)) continue;
+        seen.add(v);
+        out.push(v);
+      } catch { /* skip */ }
+    }
+    for (const e of live) {
+      try {
+        if (typeof e !== 'string' || e.trim() === '' || seen.has(e)) continue;
+        if (!isSafeQuotaModel(e)) continue;
+        seen.add(e);
+        out.push(e);
+      } catch { /* skip */ }
+    }
+    return out;
+  } catch {
+    try { return [...QUOTA_POOL]; } catch { return []; }
+  }
+};
+export const buildUnifiedFreePool = buildUnifiedFreeQuotaPool;
+export const buildUnifiedPool = buildUnifiedFreeQuotaPool;
+export const unifiedFreePool = buildUnifiedFreeQuotaPool;
 
 const isAllowedQuotaModel = (id) => isSafeQuotaModel(id);
 const isAllowedQuotaAccount = (id) => typeof id === 'string' && QUOTA_ALLOWED_ACCOUNTS.includes(id);
@@ -1071,8 +1314,15 @@ export const resolveDynamicQuotaFallback = resolveQuotaFallback;
  * a throwing predicate skips that candidate). Defaults reuse
  * `isDeniedQuotaModel`, the secret-value guard, and `isSafeQuotaModel`
  * revalidation; no cooldown store exists so the cooling default is a plain
- * false and the caller injects the `isCoolingDown` predicate. No
- * auto-dispatch, no network.
+ * false and the caller injects the `isCoolingDown` predicate. Capability-
+ * driven: object entries must also pass `isFreeQuotaCapable` (live
+ * admission); string entries keep the `isSafeQuotaModel` string-path (old
+ * graders pin it). Per-source caps are check-before-dispatch and fail-open:
+ * opts.usage (map id→{settled, outstanding, next} or single usage for the
+ * candidate) consults LONGCAT/OR caps via `capForFreeQuotaModel`;
+ * unobservable/unknown cap allows. Optional opts.isCapped/isOverCap
+ * predicate filters capped candidates; a throwing cap predicate allows
+ * (fail-open). No auto-dispatch, no network.
  */
 export const resolveNextFreeLink = (pool, failedId, predicates) => {
   try {
@@ -1088,9 +1338,16 @@ export const resolveNextFreeLink = (pool, failedId, predicates) => {
         : (typeof opts.isSafeQuotaModel === 'function' ? opts.isSafeQuotaModel : isSafeQuotaModel));
     const isCoolingDown = typeof opts.isCoolingDown === 'function' ? opts.isCoolingDown
       : (typeof opts.isCooling === 'function' ? opts.isCooling : () => false);
+    const isOverCap = typeof opts.isOverCap === 'function' ? opts.isOverCap
+      : (typeof opts.isCapped === 'function' ? opts.isCapped
+        : (typeof opts.isCappedOut === 'function' ? opts.isCappedOut : null));
+    const usageOpt = Object.prototype.hasOwnProperty.call(opts, 'usage') ? opts.usage : undefined;
+    const capOpts = opts && typeof opts.capOpts === 'object' && !Array.isArray(opts.capOpts) ? opts.capOpts
+      : (opts && typeof opts.capOptions === 'object' && !Array.isArray(opts.capOptions) ? opts.capOptions : opts);
     for (const entry of pool) {
+      const isObj = entry && typeof entry === 'object' && !Array.isArray(entry);
       const id = typeof entry === 'string' ? entry
-        : (entry && typeof entry === 'object' && !Array.isArray(entry) ? (entry.id ?? entry.model ?? null) : null);
+        : (isObj ? (entry.id ?? entry.model ?? entry.name ?? null) : null);
       if (typeof id !== 'string' || id.trim() === '') continue;
       if (id === failedId) continue;
       let denied;
@@ -1099,12 +1356,42 @@ export const resolveNextFreeLink = (pool, failedId, predicates) => {
       let secret;
       try { secret = isSecretLikeOpt(id); } catch { continue; }
       if (secret) continue;
+      // Capability-driven: live object entries must pass isFreeQuotaCapable.
+      // String path unchanged (isSafeQuotaModel delegation preserved).
+      if (isObj) {
+        let capable = false;
+        try { capable = isFreeQuotaCapable(entry, opts.now ?? opts.nowMs ?? undefined); } catch { continue; }
+        if (!capable) continue;
+      }
       let safe;
       try { safe = isSafe(id); } catch { continue; }
       if (!safe) continue;
       let cooling;
       try { cooling = isCoolingDown(id); } catch { continue; }
       if (cooling) continue;
+      // Per-source cap check (check-before-dispatch, fail-open on unobservable).
+      if (typeof isOverCap === 'function') {
+        let capped = false;
+        try { capped = isOverCap(id, entry); } catch { capped = false; }
+        if (capped) continue;
+      } else if (usageOpt !== undefined) {
+        try {
+          let u = null;
+          if (usageOpt && typeof usageOpt === 'object' && !Array.isArray(usageOpt)) {
+            if (typeof usageOpt.settled === 'number' || typeof usageOpt.used === 'number') {
+              const settled = typeof usageOpt.settled === 'number' ? usageOpt.settled
+                : (typeof usageOpt.used === 'number' ? usageOpt.used : undefined);
+              u = { settled, outstanding: usageOpt.outstanding, next: usageOpt.next };
+              if (typeof u.settled !== 'number' || typeof u.outstanding !== 'number' || typeof u.next !== 'number') u = null;
+            } else if (Object.prototype.hasOwnProperty.call(usageOpt, id)) {
+              u = usageOpt[id];
+            }
+          }
+          if (u && typeof u === 'object' && !Array.isArray(u)) {
+            if (!admitsForFreeQuotaModel(id, u, capOpts)) continue;
+          }
+        } catch { /* fail-open: allow */ }
+      }
       return id;
     }
     return null;
@@ -1571,3 +1858,200 @@ export async function readHandoff(file) {
   assertNoSecrets(parsed);
   return validateHandoff(parsed);
 }
+
+// --- SDK live-discovery mirrors (GET-only, hermetic, fail-open) --------------
+// Mirror parity with .opencode/plugins/sdlc-lean.js (pure, injected fetchFn,
+// never throws: bad input yields [] / fallback object; no key provisioning).
+// Quota-named primaries; plain plugin-name aliases for parity. Secret guard
+// uses phase SECRET_VALUE_RES (stricter than plugin isSecretLike; patterns
+// intentionally differ, best-effort, do not merge). Carried debt replicated
+// as-is (no encodeURIComponent on endpoints join, '0'-string price checks,
+// fetch default); do NOT fix here. Ledger/dispatch/phase logic untouched.
+const _quotaLiveIsZero = (v) => v === 0 || v === '0';
+
+const _quotaLiveIsSecretLike = (value) => {
+  try {
+    return typeof value === 'string' && SECRET_VALUE_RES.some((re) => re.test(value));
+  } catch {
+    return false;
+  }
+};
+
+const _quotaLiveJson = async (fetchFn, url) => {
+  if (typeof fetchFn !== 'function') return null;
+  const res = await fetchFn(url);
+  if (!res || typeof res.json !== 'function') return null;
+  return res.json();
+};
+
+export const fetchQuotaModelsDev = async (fetchFn = fetch) => {
+  try {
+    const data = await _quotaLiveJson(fetchFn, 'https://models.dev/api.json');
+    if (!data || typeof data !== 'object' || Array.isArray(data)) {
+      if (!Array.isArray(data)) return [];
+    }
+    const entries = Array.isArray(data)
+      ? data
+      : Array.isArray(data.data)
+        ? data.data
+        : Object.entries(data).map(([id, v]) => ({ id, ...(v && typeof v === 'object' ? v : {}) }));
+    const out = [];
+    for (const e of entries) {
+      try {
+        if (!e || typeof e !== 'object') continue;
+        const id = e.id ?? e.model ?? e.name;
+        if (typeof id !== 'string' || id.trim() === '') continue;
+        if (_quotaLiveIsSecretLike(id)) continue;
+        const cost = e.cost && typeof e.cost === 'object' ? e.cost : {};
+        const rawIn = cost.input ?? cost.prompt ?? e.promptCost ?? e.price;
+        const rawOut = cost.output ?? cost.completion ?? e.completionCost;
+        const toNum = (v) => (typeof v === 'number' ? v : (typeof v === 'string' && v.trim() !== '' && !Number.isNaN(Number(v)) ? Number(v) : NaN));
+        const promptCost = toNum(rawIn);
+        const completionCost = toNum(rawOut);
+        if (promptCost !== 0 || completionCost !== 0) continue;
+        const caps = e.capabilities && typeof e.capabilities === 'object' ? e.capabilities : null;
+        const tools = caps ? caps.tools : (e.tools ?? e.hasTools);
+        if (tools !== true) continue;
+        out.push({ id, promptCost: 0, completionCost: 0, tools: true });
+      } catch { /* skip entry */ }
+    }
+    return out;
+  } catch {
+    return [];
+  }
+};
+export const fetchModelsDev = fetchQuotaModelsDev;
+
+export const fetchQuotaConsoleModels = async (fetchFn = fetch) => {
+  try {
+    const data = await _quotaLiveJson(fetchFn, 'https://api.opencode.ai/inference/v1/models');
+    const list = data && typeof data === 'object' && Array.isArray(data.data) ? data.data : (Array.isArray(data) ? data : []);
+    if (!Array.isArray(list)) return [];
+    const out = [];
+    for (const e of list) {
+      try {
+        const id = e && typeof e === 'object' ? (e.id ?? e.model ?? e.name) : null;
+        if (typeof id !== 'string' || id.trim() === '') continue;
+        if (_quotaLiveIsSecretLike(id)) continue;
+        out.push({ id, source: 'console' });
+      } catch { /* skip */ }
+    }
+    return out;
+  } catch {
+    return [];
+  }
+};
+export const fetchConsoleModels = fetchQuotaConsoleModels;
+
+export const fetchQuotaOpenRouterModels = async (fetchFn = fetch) => {
+  try {
+    const data = await _quotaLiveJson(fetchFn, 'https://openrouter.ai/api/v1/models');
+    const list = data && typeof data === 'object' && Array.isArray(data.data) ? data.data : (Array.isArray(data) ? data : []);
+    if (!Array.isArray(list)) return [];
+    const out = [];
+    for (const e of list) {
+      try {
+        if (!e || typeof e !== 'object') continue;
+        const id = e.id ?? e.model ?? e.name;
+        if (typeof id !== 'string' || id.trim() === '') continue;
+        if (_quotaLiveIsSecretLike(id)) continue;
+        const minP = e.min_price ?? e.minPrice;
+        if (minP === -1 || minP === '-1') continue;
+        const params = e.supported_parameters ?? e.supportedParameters ?? e.parameters;
+        if (!Array.isArray(params) || params.indexOf('tools') === -1) continue;
+        const pricing = e.pricing && typeof e.pricing === 'object' ? e.pricing : {};
+        const prompt = pricing.prompt ?? pricing.promptPrice ?? e.price ?? e.cost;
+        if (!_quotaLiveIsZero(prompt)) continue;
+        out.push({ id, source: 'openrouter' });
+      } catch { /* skip */ }
+    }
+    return out;
+  } catch {
+    return [];
+  }
+};
+export const fetchOpenRouterModels = fetchQuotaOpenRouterModels;
+
+export const fetchQuotaModelEndpoints = async (fetchFn, modelId) => {
+  try {
+    if (typeof fetchFn !== 'function') return [];
+    if (typeof modelId !== 'string' || modelId.trim() === '') return [];
+    const data = await _quotaLiveJson(fetchFn, `https://openrouter.ai/api/v1/models/${modelId}/endpoints`);
+    if (!data || typeof data !== 'object') return [];
+    const container = data.data && typeof data.data === 'object' && !Array.isArray(data.data) ? data.data : data;
+    const list = Array.isArray(container.endpoints) ? container.endpoints : (Array.isArray(container) ? container : []);
+    if (!Array.isArray(list)) return [];
+    const out = [];
+    for (const e of list) {
+      try {
+        if (!e || typeof e !== 'object') continue;
+        const endpoint = e.name ?? e.endpoint ?? e.id;
+        if (typeof endpoint !== 'string' || endpoint.trim() === '') continue;
+        out.push({ endpoint, price: typeof e.price === 'number' ? e.price : (e.price === '0' ? '0' : (e.price ?? 0)) });
+      } catch { /* skip */ }
+    }
+    return out;
+  } catch {
+    return [];
+  }
+};
+export const fetchModelEndpoints = fetchQuotaModelEndpoints;
+
+export const getQuotaORKeyQuota = async (fetchFn = fetch) => {
+  try {
+    const data = await _quotaLiveJson(fetchFn, 'https://openrouter.ai/api/v1/key');
+    const d = data && typeof data === 'object' && data.data && typeof data.data === 'object' && !Array.isArray(data.data) ? data.data : (data && typeof data === 'object' ? data : null);
+    if (!d) return { limit: 0, used: 0, remaining: 0, resetWindow: null };
+    const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+    const limit = num(d.limit ?? d.cap);
+    const used = num(d.used ?? d.usage);
+    const remaining = num(d.remaining ?? d.left);
+    const rw = d.resetWindow ?? d.reset_window ?? d.window ?? null;
+    return { limit, used, remaining, resetWindow: typeof rw === 'string' ? rw : null };
+  } catch {
+    return { limit: 0, used: 0, remaining: 0, resetWindow: null };
+  }
+};
+export const getORKeyQuota = getQuotaORKeyQuota;
+
+export const mapQuotaResponseAccounting = (response) => {
+  try {
+    const u = response && typeof response === 'object' && !Array.isArray(response) ? response.usage : null;
+    if (!u || typeof u !== 'object' || Array.isArray(u)) return { fallback: 'activity-csv' };
+    if (u.cost === undefined && u.billing_source === undefined && u.billingSource === undefined && u.allowance === undefined) return { fallback: 'activity-csv' };
+    return {
+      cost: u.cost ?? 0,
+      billingSource: u.billing_source ?? u.billingSource ?? null,
+      allowance: u.allowance ?? null,
+    };
+  } catch {
+    return { fallback: 'activity-csv' };
+  }
+};
+export const mapResponseAccounting = mapQuotaResponseAccounting;
+
+export const buildLiveQuotaPool = (input) => {
+  try {
+    const src = input && typeof input === 'object' && !Array.isArray(input) ? input : null;
+    if (!src) return [];
+    const lists = [src.modelsDev, src.consoleModels, src.openRouterModels];
+    const out = [];
+    const seen = new Set();
+    for (const list of lists) {
+      if (!Array.isArray(list)) continue;
+      for (const e of list) {
+        try {
+          const id = typeof e === 'string' ? e : (e && typeof e === 'object' && !Array.isArray(e) ? (e.id ?? e.model ?? e.name) : null);
+          if (typeof id !== 'string' || id.trim() === '' || seen.has(id)) continue;
+          if (_quotaLiveIsSecretLike(id)) continue;
+          seen.add(id);
+          out.push(typeof e === 'string' ? { id } : { ...e, id });
+        } catch { /* skip */ }
+      }
+    }
+    return out;
+  } catch {
+    return [];
+  }
+};
+export const buildLivePool = buildLiveQuotaPool;

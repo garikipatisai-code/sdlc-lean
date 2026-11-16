@@ -103,6 +103,12 @@ test('resolveNextFreeLink skips file-cooled id; null when all cooled (exhaustion
   assert.equal(p.resolveNextFreeLink(pool, MODEL_A, { stateDir: dir }), null);
 });
 
+test('recordCooldownOnFailure escalates to true on 429 (null-exhaustion signal)', async (t) => {
+  const root = makeRoot(t);
+  const res = p.recordCooldownOnFailure({ error: { status: 429 }, model: MODEL_A, account: ACCOUNT, effort: 'medium' }, root);
+  assert.equal(res.escalated, true);
+});
+
 test('corrupt file fail-open: read [] + cooling false + selector allows', async (t) => {
   const dir = makeStateDir(t);
   fs.writeFileSync(p.cooldownPath(dir), 'not-json\n{{{bad\n');
@@ -126,6 +132,16 @@ test('cap enforcement: no append past 500 rows', async (t) => {
   fs.writeFileSync(p.cooldownPath(dir), seed);
   assert.equal(p.appendCooldown(dir, { model: MODEL_B, account: ACCOUNT, cooldown_until: futureIso() }), false);
   assert.equal(readJsonl(p.cooldownPath(dir)).length, 500);
+});
+
+test('ledger cap enforcement: no append past 500 rows', async (t) => {
+  const dir = makeStateDir(t);
+  const seed = Array.from({ length: 500 }, (_, i) => JSON.stringify({
+    type: 'ledger', model: MODEL_A, account: ACCOUNT, effort: 'medium', outcome: 'dispatch', at: `2026-01-01T00:00:${String(i % 60).padStart(2, '0')}.000Z`,
+  })).join('\n') + '\n';
+  fs.writeFileSync(p.dispatchLedgerPath(dir), seed);
+  assert.equal(p.appendLedger(dir, { model: MODEL_B, account: ACCOUNT, effort: 'high' }), false);
+  assert.equal(readJsonl(p.dispatchLedgerPath(dir)).length, 500);
 });
 
 test('ledger append schema: model+account+effort/thinking/outcome, no prompts/outputs', async (t) => {
@@ -202,6 +218,7 @@ test('hook: 429 + provider-error handled true and write both files; billing hand
   const res3 = p.recordCooldownOnFailure({ error: { status: 402 }, model: MODEL_A, account: ACCOUNT }, root3);
   assert.deepEqual(res3, { handled: false });
   assert.equal(fs.existsSync(p.cooldownPath(path.join(root3, '.sdlc'))), false);
+  assert.equal(fs.existsSync(p.dispatchLedgerPath(path.join(root3, '.sdlc'))), false);
 });
 
 test('modes 0600/0700 on both files; hash-only rows (no raw command/output)', async (t) => {
@@ -237,4 +254,16 @@ test('symlink-safe: symlinked cooldown file refused without outside writes', asy
   assert.equal(p.appendCooldown(dir, { model: MODEL_A, account: ACCOUNT, cooldown_until: futureIso() }), false);
   assert.deepEqual(p.readCooldowns(dir), []);
   assert.equal(fs.readFileSync(outside, 'utf8'), 'untouched', 'symlink target must not be followed');
+});
+
+test('ledger symlink-safe: symlinked dispatch ledger refused without outside writes', async (t) => {
+  const dir = makeStateDir(t);
+  const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sdlc-cooldown-outside-'));
+  t.after(() => fs.rmSync(outsideDir, { recursive: true, force: true }));
+  const outside = path.join(outsideDir, 'outside-ledger.jsonl');
+  fs.writeFileSync(outside, '');
+  fs.symlinkSync(outside, p.dispatchLedgerPath(dir));
+  assert.equal(p.appendLedger(dir, { model: MODEL_A, account: ACCOUNT, effort: 'medium' }), false);
+  assert.deepEqual(readJsonl(p.dispatchLedgerPath(dir)), []);
+  assert.equal(fs.readFileSync(outside, 'utf8'), '', 'symlink target must not be followed');
 });

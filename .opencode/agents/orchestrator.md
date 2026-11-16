@@ -77,6 +77,20 @@ Rules of engagement:
 - Persist a durable handoff before any forced session boundary; never claim a
   background process or cross-session mechanism that does not exist.
 
+<a id="ceo-brief-c2"></a>
+## C2 — CEO briefs routed by reversibility
+
+Wording rule: every CEO-facing ask carries the 6-field plain-language brief
+template defined once in `autonomous-loop` SKILL.md — sections reference it,
+never duplicate it. No repo paths, hashes, or database picks; plain language
+only.
+
+Route by reversibility (C2):
+- Silent — can be undone: ship silently, no brief, no interrupt.
+- Batch — low value, can be undone: accumulate; one batched brief per cycle.
+- Interrupt — high risk or cannot be undone: stop, route to the CEO; the
+  brief blocks the action until approval.
+
 <a id="model-routing"></a>
 ## Model routing (dynamic free-first pool, quota-aware)
 
@@ -157,6 +171,7 @@ auto-spend. Secrets never to any free endpoint.
 ## Reasoning-effort defaults (per tier)
 
 Reasoning effort is set per dispatch via the model's reasoning knob; never max by default (429 risk).
+Hardship/rework escalates +1 effort capped at `high` (MUSCLE max); medium remains the default; never max-by-default.
 
 - **MUSCLE** — `medium` reasoning effort (beam); thinking *on where valuable* for super-vl:free (dense exploration/map steps), off for short retrieval.
 - **BRAIN** — `high` reasoning effort (orchestrator session model).
@@ -184,8 +199,9 @@ Pre-dispatch verify: check role→tier table before every dispatch; mismatch →
 - Run checks, paste outputs, list files touched.
 
 <a id="ask-back"></a>
-### Ask-back (bounded, return-loop only)
-- No live child→parent ping (`question`→user; parent→child via `sessionID`). Workers STOP, return `{"status":"requires_clarification","needs":[≤3 exact questions, each with options if enumerable (else free text) + stated default + skip allowed],"tried":[...]}`. Example shape: `{"q":"Which DB?","options":["postgres","sqlite"],"default":"postgres","skip":true}`.
+### Ask-back (vision gaps only, return-loop only)
+- No tech ask-back (which database/tool, repo location, revision hash). CEO vision questions only: "What should we avoid?" and "How will you recognize success?" Max 2 plain-language questions per turn, each with options if enumerable plus a stated recommendation and safe default. Worker fan-out: researcher/explorer + citations required for vision answers.
+- Workers STOP, return `{"status":"requires_clarification","needs":[≤2 exact questions, each with options if enumerable (else free text) + recommendation + safe default + skip allowed],"tried":[...]}`. Example shape: `{"q":"What should we avoid?","recommendation":"...","safeDefault":"...","skip":true}`.
 - Orchestrator (parent) answers within 1 follow-up on same `sessionID`, or re-briefs enriched. Answers count against cap.
 - 2nd ask still unclear → fall through to Stop conditions (2 no-progress loops → strategy change).
 - Secrets never in questions; needs-info rate tracked. Consistent with Stop conditions + never-guess.
@@ -224,6 +240,7 @@ Pre-dispatch verify: check role→tier table before every dispatch; mismatch →
   explicit, narrowly scoped approval.
 - At cap → block + ask for an extension; never auto-extend and never auto-spend.
 - Secrets never to any free endpoint.
+- CEO asks use the 6-field brief template (C2 above); never duplicate its fields here.
 
 <a id="escalation-ladder"></a>
 ### Escalation ladder (hardship → brain pitches in)
@@ -232,7 +249,12 @@ Pre-dispatch verify: check role→tier table before every dispatch; mismatch →
 - Response: orchestrator re-dispatches the SAME task on its own model (BRAIN, cap-counted, secrets never free) instead of downgrading quality.
 - If the BRAIN attempt is also stuck: stop + reconcile evidence + explicit human approval.
 - Never silently accept degraded output to save cost.
-- Hardship or rework → reasoning effort +1 level, capped at max for that tier.
+- Hardship or rework → reasoning effort +1 level, capped at `high` for MUSCLE.
 - BRAIN judge/reviewer pass stays `high` — never stepped down to save cost.
+- Escalated asks use the 6-field brief template (C2 above); never duplicate its fields here.
+
+## C4 — Vision spec source-of-truth guard
+
+The human version of the goal/vision in the approved brief is the source of truth. AI output is a draft only — never auto-save it over the human version. Wording only; no behavior change.
 
 Lean: agent file only — no skill/bootstrap impact.

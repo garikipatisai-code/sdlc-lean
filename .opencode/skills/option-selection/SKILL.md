@@ -21,7 +21,8 @@ installed dep).
    fan-out on any uncertainty): trivial → zero research, pick boring; standard
    → 1 researcher, 3–5 searches; architectural → 2–4 parallel researchers.
 4. **Matrix**: binary criteria × options; every cell yes/no with a fetched
-   citation [n] to a page you fetched and read. No weighted scores, no 1–10 ratings.
+   citation [n] to a page you fetched and read — each citation carries
+claim | source | date. No weighted scores, no 1–10 ratings.
 5. **Pairwise swap**: exactly two options → run the matrix twice with the
    order swapped; keep the winner only if both orders agree, else say
    "insufficient data".
@@ -33,4 +34,5 @@ installed dep).
 
 - Tie-break: less code, no new dependency, native platform.
 - Insufficient evidence → say "insufficient data", do not pad.
+- Refusal over guess: never guess a pick; when evidence is insufficient, refuse and say "insufficient data".
 - Never auto-install unknown code — trust tiers from `acquiring-capabilities`.

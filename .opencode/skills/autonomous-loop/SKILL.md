@@ -25,6 +25,24 @@ All of R1–R7 are gated-only and qualified off=no-op byte-identical:
 - R4 abstain monitor (false-continue 23-74%), R5 timely-stop (2.3-5x cost), R6 skeptic zero-persona prefix — no-op when off.
 - R7 critic width-2 parallel fresh context — opt-in flag only; the orchestrator critic gate at `orchestrator.md:194-199` is preserved untouched.
 
+## CEO brief template (6 fields, plain language)
+
+Every CEO-facing ask uses exactly this template, defined here once and
+referenced by the orchestrator sections (never duplicated):
+
+1. **Decision** — what is being asked, in one sentence.
+2. **Recommendation** — what we should do and why.
+3. **Evidence** — what the observation shows.
+4. **Risk** — what could go wrong if we act, and if we do not.
+5. **Why now** — why this cannot wait for the next cycle.
+6. **Effect / default** — what changes if approved; what happens if nothing
+   changes.
+
+No repo paths, hashes, or database picks; plain language only. The C2 route
+lives in the orchestrator: silent when it can be undone, batch when low value
+and can be undone, interrupt when high risk or cannot be undone — the brief
+blocks the action until CEO approval.
+
 ## Setup (once)
 
 - Restate the goal + **acceptance criteria** (observable, verifiable).
@@ -113,9 +131,11 @@ exists or promise cross-session execution without a mechanism that does it.
 - Safety guards (destructive ops, secrets) are not negotiable — never loop
   around them.
 - Update the ledger every iteration; it is the memory that survives compaction.
-- Reflect buffer is scratch and separate from the progress ledger (R3):
-  `reflect != ledger`; never mix reflection into ledger entries at
-  `docs/plans/<slug>-progress.md`. `emitObserve`, `reflectScratch`,
+- Reflect vs ledger: reflection is scratch only (`reflectScratch`, R3), never
+  the progress ledger — record-without-relitigating, never mix reflection into
+  `docs/plans/<slug>-progress.md`.
+- Audit trace on every decision: request, decision, auth, diff, outcome — all
+  5 fields recorded, without relitigating prior decisions. `emitObserve`, `reflectScratch`,
   `skepticPrefix` and `criticWidth2` all early-return null when
   `DETERMINED_EXECUTION` is off — flag off is byte-identical, fail-open.
 - Subagent work fans out per `dispatching-parallel-agents`; merge per its

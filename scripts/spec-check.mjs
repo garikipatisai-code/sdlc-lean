@@ -295,7 +295,7 @@ export const parsePlanTasks = (text) => {
   const lines = text.split(/\r?\n/);
   const start = lines.findIndex((line) => line.trim().startsWith('|') && isTaskHeader(splitRow(line.trim())));
   if (start === -1) {
-    fail('missing-task-table', 'plan has no task table with #, Task, and Verify columns');
+    fail('missing-task-table', 'plan has no task table with #, Task, and Verify columns; run `spec-check amend <plan.md>` to insert a minimal table');
   }
 
   const header = splitRow(lines[start].trim());
@@ -325,7 +325,7 @@ export const parsePlanTasks = (text) => {
     if (!verify) fail('invalid-plan-task', `task ${n} has an empty Verify command`);
     tasks.push({ task: n, verify });
   }
-  if (tasks.length === 0) fail('missing-task-table', 'task table has no task rows');
+  if (tasks.length === 0) fail('missing-task-table', 'task table has no task rows; run `spec-check amend <plan.md>` to insert a minimal table');
   return tasks;
 };
 
@@ -361,7 +361,12 @@ export const isAllowed = (gate, rel) => {
   // The approved plan, the spec, and the gate marker are immutable while the
   // gate is active. Listing them in `files` must not make them editable.
   if (rel === gate.plan || rel === gate.spec || rel === MARKER_REL) return false;
-  const patterns = [progressFor(gate.plan), ...IMPLICIT_ALLOW, ...(gate.allow || []), ...(gate.files || [])];
+  // Derived control-state is always writable: the progress ledger and the
+  // evidence file are bound to the plan but are never plan/spec/marker
+  // content (their names always differ), so they are exempt from scope
+  // matching and never depend on files/allow.
+  if (rel === progressFor(gate.plan) || rel === evidenceFor(gate.plan)) return true;
+  const patterns = [...IMPLICIT_ALLOW, ...(gate.allow || []), ...(gate.files || [])];
   return patterns.some((pattern) => matchPattern(pattern, rel));
 };
 
@@ -700,8 +705,16 @@ export const validateCloseEvidence = (root = process.cwd(), opts = {}) => {
   if (!gate) return null;
   const valid = validateGate(root, gate, { skipDrift: Boolean(opts.skipDrift) });
 
-  const evidence = evidenceFor(valid.plan);
+  const exploratory = Boolean(opts.exploratory);
+  if (exploratory && !(opts.reason && String(opts.reason).trim())) {
+    fail('invalid-args', 'close --exploratory requires --reason <text>');
+  }
+
+  const evidence = opts.evidence
+    ? assertSafeRel(normalizeRel(root, opts.evidence), 'evidence')
+    : evidenceFor(valid.plan);
   const evidenceAbs = assertRegularFile(root, evidence, 'evidence');
+  assertContainedReal(root, evidenceAbs, evidence);
   let parsed;
   try {
     parsed = JSON.parse(fs.readFileSync(evidenceAbs, 'utf8'));
@@ -717,13 +730,30 @@ export const validateCloseEvidence = (root = process.cwd(), opts = {}) => {
   if (parsed.plan_sha256 !== valid.plan_sha256) {
     fail('evidence-hash-mismatch', `${evidence} plan_sha256 does not match the active gate; re-run the tasks and rewrite the evidence`);
   }
-  if (!Array.isArray(parsed.tasks)) {
-    fail('invalid-evidence', `${evidence} tasks must be an array`);
+  // Key compat: accept `tasks` or legacy `evidence` array key; reject both/mixed.
+  const hasTasks = 'tasks' in parsed;
+  const hasEvidence = 'evidence' in parsed;
+  let rows;
+  if (hasTasks && hasEvidence) {
+    fail('invalid-evidence', `${evidence} must list rows under "tasks" or legacy "evidence", not both`);
+  }
+  if (hasTasks) {
+    if (!Array.isArray(parsed.tasks)) {
+      fail('invalid-evidence', `${evidence} tasks must be an array`);
+    }
+    rows = parsed.tasks;
+  } else if (hasEvidence) {
+    if (!Array.isArray(parsed.evidence)) {
+      fail('invalid-evidence', `${evidence} evidence must be an array`);
+    }
+    rows = parsed.evidence;
+  } else {
+    fail('invalid-evidence', `${evidence} must list evidence rows under "tasks" or legacy "evidence"`);
   }
 
   const planTasks = parsePlanTasks(fs.readFileSync(path.resolve(root, valid.plan), 'utf8'));
   const byTask = new Map();
-  for (const row of parsed.tasks) {
+  for (const row of rows) {
     if (!row || typeof row !== 'object' || Array.isArray(row)) {
       fail('invalid-evidence', `${evidence} tasks must contain objects`);
     }
@@ -741,7 +771,10 @@ export const validateCloseEvidence = (root = process.cwd(), opts = {}) => {
     if (typeof row.verify !== 'string' || row.verify.trim() !== task.verify) {
       fail('verify-mismatch', `${evidence} task ${task.task} verify is not the plan's Verify command; expected "${task.verify}"`);
     }
-    if (typeof row.exit !== 'number' || row.exit !== 0) {
+    if (typeof row.exit !== 'number') {
+      fail('invalid-evidence', `${evidence} task ${task.task} exit must be a number`);
+    }
+    if (!exploratory && row.exit !== 0) {
       fail('task-failed', `${evidence} task ${task.task} exit is ${row.exit}, expected 0`);
     }
     assertUtc(row.at, `evidence task ${task.task} at`);
@@ -752,14 +785,50 @@ export const validateCloseEvidence = (root = process.cwd(), opts = {}) => {
   }
 
   const sha256 = hashFile(evidenceAbs);
-  return { valid, evidence, evidenceAbs, sha256 };
+  return { valid, evidence, evidenceAbs, sha256, rows };
 };
 
 export const closeGate = (root = process.cwd(), opts = {}) => {
   const ready = validateCloseEvidence(root, opts);
   if (!ready) return null;
+  if (opts.exploratory) {
+    const hasRed = ready.rows.some((row) => typeof row.exit === 'number' && row.exit !== 0);
+    if (hasRed) {
+      // Ledger first: exactly one exploratory note, then unlink the marker.
+      // Any refusal above throws before either mutation, so the marker survives.
+      const at = new Date().toISOString();
+      const safePlan = String(ready.valid.plan).replace(/\r?\n/g, ' ').replace(/\|/g, '\\|').trim();
+      const safeReason = String(opts.reason ?? '').replace(/\r?\n/g, ' ').replace(/\|/g, '\\|').trim();
+      appendAuditLedgerRow(root, `| ${at} | Human | ${safePlan} | exploratory | ${safeReason} |`);
+    }
+  }
   fs.unlinkSync(gatePath(root));
   return { evidence: ready.evidence, sha256: ready.sha256 };
+};
+
+/** Append exactly one row to the audit ledger (docs/audit-ledger.md), creating
+ * it if missing. A symlinked or non-file ledger refuses; every refusal throws
+ * before any append so the gate marker is never removed on a failed audit
+ * write. UTC row timestamps are the caller's responsibility.
+ */
+export const appendAuditLedgerRow = (root, row) => {
+  const ledgerAbs = path.resolve(root, AUDIT_LEDGER_REL);
+  let st;
+  try { st = fs.lstatSync(ledgerAbs); } catch (err) {
+    if (err.code !== 'ENOENT') fail('invalid-ledger', `cannot stat ${AUDIT_LEDGER_REL}: ${err.message}`);
+    st = null;
+  }
+  if (st) {
+    if (st.isSymbolicLink()) fail('symlink', `${AUDIT_LEDGER_REL} must not be a symlink`);
+    if (!st.isFile()) fail('invalid-ledger', `${AUDIT_LEDGER_REL} is not a regular file`);
+  }
+  let text = '';
+  if (st) {
+    try { text = fs.readFileSync(ledgerAbs, 'utf8'); }
+    catch (err) { fail('invalid-ledger', `cannot read ${AUDIT_LEDGER_REL}: ${err.message}`); }
+  }
+  const prefix = text === '' || text.endsWith('\n') ? '' : '\n';
+  fs.appendFileSync(ledgerAbs, `${prefix}${row}\n`);
 };
 
 // --- Machine-close (auto-tier) ------------------------------------------------
@@ -1215,11 +1284,11 @@ export const validateCriticsSessions = (verdicts, requiredSessions) => {
     .filter((x) => x !== '');
   const unique = new Set(sessionIds);
   if (sessionIds.length > 0 && unique.size !== sessionIds.length) {
-    throw new Error('machine-close refused: duplicate session IDs in critics (no self-review)');
+    fail('critic-reject', 'machine-close refused: duplicate session IDs in critics (no self-review)');
   }
   for (const req of (requiredSessions || [])) {
     if (req.trim() !== '' && !sessionIds.includes(req.trim())) {
-      throw new Error(`machine-close refused: required session "${req.trim()}" not found in critics`);
+      fail('invalid-critics', `machine-close refused: required session "${req.trim()}" not found in critics`);
     }
   }
 };
@@ -1327,18 +1396,16 @@ export const closeMachineGate = (root = process.cwd(), opts = {}) => {
     skipAppend = true;
   }
 
-  const ready = validateCloseEvidence(root, { skipDrift: true });
+  const ready = validateCloseEvidence(root, { skipDrift: true, evidence: opts.evidence });
   if (!ready) {
     fail('inactive', 'machine-close refused: no active spec gate (evidence criterion: green rows bound to the active plan)');
   }
 
-  let evidenceRows = [];
-  try {
-    const evidenceDoc = JSON.parse(fs.readFileSync(ready.evidenceAbs, 'utf8'));
-    if (Array.isArray(evidenceDoc.tasks)) evidenceRows = evidenceDoc.tasks;
-  } catch (err) {
-    fail('invalid-evidence', `${ready.evidence} tasks must be an array`);
-  }
+  // Reuse the validated rows from validateCloseEvidence (ready.rows) so both
+  // the `tasks` key and the legacy `evidence` key are subject to the same
+  // new-behavior / expected-outcome check. Re-parsing only `tasks` here let a
+  // legacy `evidence` row marked newBehavior bypass missing-expected-outcomes (RH-1).
+  const evidenceRows = ready.rows;
   let expectedOutcomes = null;
   const envelopeOpt = typeof opts.envelope === 'string' ? opts.envelope.trim() : '';
   if (Array.isArray(opts.expectedOutcomes)) {
@@ -1420,6 +1487,7 @@ export const approveMachineGate = (root = process.cwd(), opts = {}) => {
   // double-gate (no second row, no rewrite). Every refusal throws before any
   // marker/ledger mutation.
   let recoverMarker = null;
+  let supersede = false;
   if (active) {
     let planRelProbe = null;
     let envRelProbe = null;
@@ -1445,9 +1513,17 @@ export const approveMachineGate = (root = process.cwd(), opts = {}) => {
       } catch { /* ledger unreadable -> refuse double-gate */ }
     }
     if (!recoverable) {
-      fail('double-gate', 'machine-approve refused: a spec gate is already active (prior gate must machine-close first; no double-gate)');
+      if (opts.supersede) {
+        // Drift re-check of the active gate before it is replaced: any drift
+        // throws here and the marker is kept.
+        validateGate(root, active);
+        supersede = true;
+      } else {
+        fail('double-gate', 'machine-approve refused: a spec gate is already active (prior gate must machine-close first; no double-gate)');
+      }
+    } else {
+      recoverMarker = active;
     }
-    recoverMarker = active;
   }
 
   const planOpt = typeof opts.plan === 'string' ? opts.plan.trim() : '';
@@ -1523,6 +1599,18 @@ export const approveMachineGate = (root = process.cwd(), opts = {}) => {
     const prefix = freshLedger === '' || freshLedger.endsWith('\n') ? '' : '\n';
     fs.appendFileSync(auth.ledgerAbs, `${prefix}${row}\n`);
     return { plan: planRel, envelope: env.rel, gate: recoverMarker, at };
+  }
+  if (supersede) {
+    // Supersede-reapprove: drift re-check passed above; append exactly one
+    // superseded audit row then overwrite the marker. The exclusive `wx`
+    // create below stays reserved for non-supersede approvals (concurrent
+    // create = EEXIST = double-gate).
+    const at = new Date().toISOString();
+    const safePrev = String(active.plan).replace(/\r?\n/g, ' ').replace(/\|/g, '\\|').trim();
+    const safeNext = planRel.replace(/\r?\n/g, ' ').replace(/\|/g, '\\|').trim();
+    appendAuditLedgerRow(root, `| ${at} | Auto | ${safePrev} | superseded | ${safeNext} |`);
+    writeGate(root, gate);
+    return { plan: planRel, envelope: env.rel, gate, at, superseded: true };
   }
   // Pre-write re-check (TOCTOU): refuse `double-gate` if a gate appeared
   // after the entry check. Exclusive marker create (approve-local, MA-1):
@@ -1620,19 +1708,44 @@ const USAGE = `Usage: node scripts/spec-check.mjs <command> [options]
 
 Commands:
   approve <plan.md>   Validate (autofilling status/approved_by/approved_at after TTY check) and write .sdlc/spec-gate.json
+  approve <plan.md> --supersede
+                      Supersede-reapprove: requires an active valid gate +
+                      drift re-check of the active gate (plan/spec/CLI hashes) +
+                      one superseded audit-ledger row, then replaces the gate.
+                      Refuses double-gate without this flag; refuses on drift
+                      and keeps the marker.
   approve <plan.md> --machine --envelope <file>
                       Machine-approve: requires no active gate +
                       every plan files/allow entry inside the envelope paths +
                       plan references the envelope + activation audit row appended
+                      (--supersede replaces an active gate under the same drift
+                      re-check + audit-row rule).
   status              Show the active gate (or "none")
   verify [--require-active]   Re-hash plan/spec/CLI; exit 1 on drift, 2 if no gate when required
   close               Validate <plan>-evidence.json and remove the active gate
-  close --machine --check "<command>" --critics <verdicts-file> --reversal <sha> [--envelope <file>]
-                      Machine-close: requires ALL of named check exit 0 +
-                      every critic verdict ACCEPT + green evidence rows +
-                      reversal SHA in git log + no grader-path changes +
-                      each new-behavior evidence row matches a pre-declared
-                      expected outcome + one audit-ledger row appended
+  close --exploratory --reason <text>
+                      Honest RED close: allows non-zero exit rows when every
+                      Verify matches and all plan tasks are covered; appends one
+                      audit-ledger note. Green path is byte-identical.
+  close --machine --plan <evidence> --check "<command>" --critics <verdicts-file> --reversal <sha> [--envelope <file>]
+                      Machine-close: --plan is the evidence file path (defaults
+                      to <plan>-evidence.json from the active gate); requires ALL
+                      of named check exit 0 + every critic verdict ACCEPT +
+                      green evidence rows + reversal SHA in git log + no
+                      grader-path changes + each new-behavior evidence row
+                      matches a pre-declared expected outcome + one
+                      audit-ledger row appended
+  abandon --reason <text>
+                      Audited abandon: appends exactly one abandoned row to
+                      docs/audit-ledger.md (UTC timestamp) and unlinks the
+                      active gate. Refusals (missing --reason, unreadable
+                      marker) leave the marker. No gate = no-op.
+  amend <plan.md>     Insert a minimal task table (#, Task, Verify) when the
+                      plan has none, then validate via parsePlanText +
+                      buildGate preview and write only the plan file. An
+                      existing table is validated, never silently dropped or
+                      rewritten; malformed rows (dup numbers, empty Verify)
+                      still refuse.
   check <path...>     Exit 0 if every path is in scope, 1 if any is blocked
   envelope check <file>  Validate an auto-tier envelope template (relative paths, reversal, no external effects, budgets)
 
@@ -1645,6 +1758,12 @@ Options:
   --envelope <file>   machine-approve: required; machine-close: envelope file carrying the pre-declared
                       "Expected outcomes" list (required when evidence has
                       new-behavior rows)
+  --plan <path>       plan/evidence path alias for approve/close only;
+                      approve: plan path (alternative to the positional plan);
+                      close: evidence file path (defaults to <plan>-evidence.json
+                      from the active gate); status: informational only, ignored
+  --reason <text>     abandon: required reason for the audited abandon ledger row;
+                      close --exploratory: required reason permitting non-zero exit rows
   -h, --help          Show this help
 `;
 
@@ -1685,6 +1804,22 @@ export const main = (argv = process.argv.slice(2), io = {}) => {
         return 1;
       }
       args.envelope = argv[++i];
+    } else if (argv[i] === '--plan') {
+      if (!argv[i + 1]) {
+        console.error('[spec-check] invalid-args: --plan needs a plan path');
+        return 1;
+      }
+      args.plan = argv[++i];
+    } else if (argv[i] === '--exploratory') {
+      args.exploratory = true;
+    } else if (argv[i] === '--reason') {
+      if (!argv[i + 1]) {
+        console.error('[spec-check] invalid-args: --reason needs a reason');
+        return 1;
+      }
+      args.reason = argv[++i];
+    } else if (argv[i] === '--supersede') {
+      args.supersede = true;
     } else if (argv[i] === '-h' || argv[i] === '--help') {
       args.help = true;
     } else {
@@ -1705,13 +1840,15 @@ export const main = (argv = process.argv.slice(2), io = {}) => {
   try {
     if (command === 'approve') {
       if (args.machine) {
-        if (!positional) fail('invalid-args', 'approve needs a plan path');
-        const approved = approveMachineGate(root, { plan: positional, envelope: args.envelope });
-        console.log(`active spec gate (machine): ${approved.plan} -> ${approved.gate.spec} (${approved.gate.files.length} files, sha256 ${approved.gate.plan_sha256.slice(0, 12)})`);
+        const planPath = positional || args.plan;
+        if (!planPath) fail('invalid-args', 'approve needs a plan path');
+        const approved = approveMachineGate(root, { plan: planPath, envelope: args.envelope, supersede: args.supersede });
+        console.log(`active spec gate (machine): ${approved.plan} -> ${approved.gate.spec} (${approved.gate.files.length} files, sha256 ${approved.gate.plan_sha256.slice(0, 12)})${approved.superseded ? ' [superseded]' : ''}`);
         return 0;
       }
       humanApproval({ stdinTTY, stdoutTTY });
-      if (!positional) fail('invalid-args', 'approve needs a plan path');
+      const planPath = positional || args.plan;
+      if (!planPath) fail('invalid-args', 'approve needs a plan path');
       // Pre-write active-gate guard (mirrors the plugin double-gate): a valid
       // active gate is kept and the human must close first — before any plan
       // or marker write. An invalid/stale marker falls through (overwrite),
@@ -1722,17 +1859,31 @@ export const main = (argv = process.argv.slice(2), io = {}) => {
       } catch {
         existing = null;
       }
+      let existingValid = false;
       if (existing) {
         try {
+          // Drift re-check of the active gate (plan/spec/CLI hashes): any
+          // drift throws here and the marker is kept. This is the pre-flight
+          // for both double-gate refusal and --supersede replacement.
           validateGate(root, existing);
-          const oldPlan = typeof existing.plan === 'string' ? existing.plan : 'unknown plan';
-          const oldHash = typeof existing.plan_sha256 === 'string' ? existing.plan_sha256 : 'unknown hash';
-          fail('double-gate', `approve refused: active gate for ${oldPlan} (sha256 ${oldHash}) kept; run spec-check close before approving ${positional} (no double-gate: prior gate must close first)`);
+          existingValid = true;
         } catch (err) {
           if (err instanceof SpecCheckError && err.code === 'double-gate') throw err;
+          if (args.supersede) throw err; // supersede drift re-check refused: marker kept
+          // invalid/stale marker: fall through (overwrite), mirroring the
+          // plugin's valid-only refusal.
         }
       }
-      const planRel = assertSafeRel(normalizeRel(root, positional), 'plan');
+      if (existingValid) {
+        if (!args.supersede) {
+          const oldPlan = typeof existing.plan === 'string' ? existing.plan : 'unknown plan';
+          const oldHash = typeof existing.plan_sha256 === 'string' ? existing.plan_sha256 : 'unknown hash';
+          fail('double-gate', `approve refused: active gate for ${oldPlan} (sha256 ${oldHash}) kept; run spec-check close before approving ${planPath} (no double-gate: prior gate must close first)`);
+        }
+        // --supersede: drift re-check passed above. The gate is replaced below
+        // after the new plan validates, with exactly one audit-ledger row.
+      }
+      const planRel = assertSafeRel(normalizeRel(root, planPath), 'plan');
       if (!planRel.endsWith('.md')) fail('invalid-plan', 'plan must be a Markdown file');
       const planAbs = path.resolve(root, planRel);
       let original = null;
@@ -1744,9 +1895,25 @@ export const main = (argv = process.argv.slice(2), io = {}) => {
           const previewText = applyApprovalFill(original, sanitizeApprovedBy(undefined), new Date().toISOString());
           const preview = parsePlanText(previewText);
           assertRegularFile(root, preview.spec, 'spec');
+          // An approved plan must carry a task table (close needs one); an
+          // approved-but-table-less plan is a deadlock, so refuse here with an
+          // actionable amend hint instead of creating an uncloseable gate.
+          parsePlanTasks(previewText);
         }
         fillApprovalFrontmatter(planAbs, undefined, root);
-        const gate = buildGate(root, positional);
+        const gate = buildGate(root, planPath);
+        if (existingValid && args.supersede) {
+          // Supersede-reapprove: drift re-check passed above, append exactly
+          // one superseded audit row, then overwrite the marker (atomic
+          // close+approve). The prior gate hash is recorded in the ledger row.
+          const at = new Date().toISOString();
+          const safePrev = String(existing.plan).replace(/\r?\n/g, ' ').replace(/\|/g, '\\|').trim();
+          const safeNext = planRel.replace(/\r?\n/g, ' ').replace(/\|/g, '\\|').trim();
+          appendAuditLedgerRow(root, `| ${at} | Human | ${safePrev} | superseded | ${safeNext} |`);
+          writeGate(root, gate);
+          console.log(`superseded spec gate: ${existing.plan} -> ${gate.plan} (${gate.files.length} files, sha256 ${gate.plan_sha256.slice(0, 12)})`);
+          return 0;
+        }
         writeGate(root, gate);
         console.log(`active spec gate: ${gate.plan} -> ${gate.spec} (${gate.files.length} files, sha256 ${gate.plan_sha256.slice(0, 12)})`);
         return 0;
@@ -1765,6 +1932,9 @@ export const main = (argv = process.argv.slice(2), io = {}) => {
       console.log(`active spec gate: ${valid.plan} -> ${valid.spec}`);
       console.log(`  files ${valid.files.length} · allow ${(valid.allow || []).length} · approved_by ${valid.approved_by} @ ${valid.approved_at}`);
       console.log(`  plan ${valid.plan_sha256.slice(0, 12)} · spec ${valid.spec_sha256.slice(0, 12)}`);
+      if (args.plan) {
+        console.log(`  --plan ${args.plan} (status: informational only; ignored)`);
+      }
       return 0;
     }
     if (command === 'verify') {
@@ -1783,20 +1953,73 @@ export const main = (argv = process.argv.slice(2), io = {}) => {
     }
     if (command === 'close') {
       if (args.machine) {
-        const closed = closeMachineGate(root, { check: args.check, critics: args.critics, reversal: args.reversal, envelope: args.envelope });
+        const closed = closeMachineGate(root, { check: args.check, critics: args.critics, reversal: args.reversal, envelope: args.envelope, evidence: args.plan });
         console.log(`closed spec gate (machine): evidence ${closed.evidence} sha256 ${closed.sha256} | check "${closed.check}" exit 0 | critics ${closed.critics} ACCEPT | reversal ${closed.reversal}`);
         return 0;
       }
-      // drift + evidence validation first (reads only, no mutation) — surfaces
-      // drift/evidence errors before the TTY gate, and keeps the marker on refusal.
-      const ready = validateCloseEvidence(root, { skipDrift: true });
+      // evidence validation first (reads only, no mutation) — drift intentionally skipped on human close (skipDrift:true); keeps marker on refusal.
+      const ready = validateCloseEvidence(root, { skipDrift: true, exploratory: args.exploratory, reason: args.reason, evidence: args.plan });
       if (!ready) {
         console.log('no active spec gate');
         return 0;
       }
       humanApproval({ stdinTTY, stdoutTTY });
-      const closed = closeGate(root, { skipDrift: true });
-      console.log(`closed spec gate: evidence ${closed.evidence} sha256 ${closed.sha256}`);
+      const closed = closeGate(root, { skipDrift: true, exploratory: args.exploratory, reason: args.reason, evidence: args.plan });
+      console.log(`closed spec gate: evidence ${closed.evidence} sha256 ${closed.sha256}${args.exploratory ? ' [exploratory]' : ''}`);
+      return 0;
+    }
+    if (command === 'abandon') {
+      const reason = typeof args.reason === 'string' ? args.reason.trim() : '';
+      if (!reason) fail('invalid-args', 'abandon requires --reason <text>');
+      const gate = readGate(root); // unreadable/malformed marker refuses: marker kept
+      if (!gate) {
+        console.log('no active spec gate');
+        return 0;
+      }
+      const at = new Date().toISOString();
+      const safePlan = String(gate.plan).replace(/\r?\n/g, ' ').replace(/\|/g, '\\|').trim();
+      const safeReason = reason.replace(/\r?\n/g, ' ').replace(/\|/g, '\\|').trim();
+      // Ledger first: exactly one abandoned row, then unlink the marker. Any
+      // refusal above throws before either mutation, so the marker survives.
+      appendAuditLedgerRow(root, `| ${at} | Human | ${safePlan} | abandoned | ${safeReason} |`);
+      fs.unlinkSync(gatePath(root));
+      console.log(`abandoned spec gate: ${gate.plan}`);
+      return 0;
+    }
+    if (command === 'amend') {
+      if (!positional) fail('invalid-args', 'amend needs a plan path');
+      const planRel = assertSafeRel(normalizeRel(root, positional), 'plan');
+      if (!planRel.endsWith('.md')) fail('invalid-plan', 'plan must be a Markdown file');
+      const planAbs = path.resolve(root, planRel);
+      assertRegularFile(root, planRel, 'plan');
+      assertContainedReal(root, planAbs, planRel);
+      let text;
+      try { text = fs.readFileSync(planAbs, 'utf8'); } catch (err) {
+        if (err.code === 'ENOENT') fail('missing-plan', `plan not found: ${planRel}`);
+        fail('invalid-plan', `plan is not readable: ${planRel}`);
+      }
+      let hadTable = false;
+      try { parsePlanTasks(text); hadTable = true; } catch (err) {
+        if (!(err instanceof SpecCheckError && err.code === 'missing-task-table')) throw err;
+      }
+      let next = text;
+      if (!hadTable) {
+        const sep = text.endsWith('\n') ? '' : '\n';
+        // Minimal header (#, Task, Verify) + one numeric row. The Verify cell
+        // is a placeholder the author must replace before close.
+        next = `${text}${sep}\n# | Task | Verify\n|---|:---:|---|\n| 1 | | npm run verify |\n`;
+      }
+      // Validate from memory before mutating: parsePlanText (frontmatter),
+      // parsePlanTasks (task table, never silently dropped), and the spec
+      // target exists as a regular file - validated against `next`, not the
+      // stale on-disk plan (the old buildGate preview read disk before the
+      // write and could pass while the in-memory `next` was invalid). No write
+      // on any refusal; malformed tables throw before touching the file.
+      const frontmatter = parsePlanText(next);
+      parsePlanTasks(next);
+      assertRegularFile(root, frontmatter.spec, 'spec');
+      if (next !== text) fs.writeFileSync(planAbs, next);
+      console.log(`amend ${planRel}: ${hadTable ? 'task table present and valid (no change)' : 'minimal task table inserted (task 1); replace the Verify placeholder before close'}`);
       return 0;
     }
     if (command === 'check') {

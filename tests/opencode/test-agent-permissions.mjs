@@ -240,15 +240,54 @@ test('T2 pins: unpinned model (dynamic routing, no static pins)', () => {
     assert.equal(top(yaml, 'model'), null, `${agent}.md: model must be UNPINNED (no model:)`);
     assert.match(yaml, /UNPINNED/, `${agent}.md: UNPINNED marker must be present`);
   }
-  // grep -rn "^model:" .opencode/agents/ must be empty (all agents, incl. orchestrator)
+  // BRAIN + orchestrator stay UNPINNED (no ^model:); MUSCLE execution pins live
+  // only in the allowlisted implementer-free-* files (21 survivors).
+  for (const agent of [...BRAIN, 'orchestrator']) {
+    const { yaml } = frontmatter(`.opencode/agents/${agent}.md`);
+    assert.equal(top(yaml, 'model'), null, `${agent}.md: model must be UNPINNED (no model:)`);
+  }
   const agentsDir = path.join(root, '.opencode', 'agents');
+  const SURVIVING_PINS = [
+    'implementer-free-go-beam.md',
+    'implementer-free-go-hy4-flash.md',
+    'implementer-free-go-iceman-contrib.md',
+    'implementer-free-go-longcat-2-5.md',
+    'implementer-free-oc-beam.md',
+    'implementer-free-oc-deepseek-v4-1-flash.md',
+    'implementer-free-oc-flint-40b.md',
+    'implementer-free-oc-glm-5-3-flash.md',
+    'implementer-free-oc-iceman.md',
+    'implementer-free-oc-longcat-2-5.md',
+    'implementer-free-oc-mimo-v2-6-flash.md',
+    'implementer-free-oc-minimax-m3-1-flash.md',
+    'implementer-free-oc-nemotron-super-vl.md',
+    'implementer-free-or-flint-v1-a.md',
+    'implementer-free-or-flint-v1-b.md',
+    'implementer-free-or-north-mini-code-a.md',
+    'implementer-free-or-north-mini-code-b.md',
+    'implementer-free-or-particle-a.md',
+    'implementer-free-or-particle-b.md',
+    'implementer-free-or-super-vl-a.md',
+    'implementer-free-or-super-vl-b.md',
+  ];
+  const frees = fs
+    .readdirSync(agentsDir)
+    .filter((f) => f.startsWith('implementer-free-') && f.endsWith('.md'))
+    .sort();
+  assert.deepEqual(frees, [...SURVIVING_PINS].sort(), 'implementer-free-* must equal exactly the 21 surviving pins');
+  for (const f of frees) {
+    const { yaml } = frontmatter(`.opencode/agents/${f}`);
+    assert.match(yaml, /^model:\s*\S+/m, `${f}: allowlisted pin must set model:`);
+  }
+  // grep -rn "^model:" .opencode/agents/ must be empty outside the allowlist
   for (const f of fs.readdirSync(agentsDir)) {
     if (!f.endsWith('.md')) continue;
+    if (f.startsWith('implementer-free-')) continue;
     const text = fs.readFileSync(path.join(agentsDir, f), 'utf8');
     const fm = text.match(/^---\r?\n([\s\S]*?)\r?\n---/);
     assert.ok(fm, `${f}: missing frontmatter`);
     for (const line of fm[1].split(/\r?\n/)) {
-      assert.ok(!/^model:/.test(line), `${f}: static model pin forbidden (grep ^model: must be empty)`);
+      assert.ok(!/^model:/.test(line), `${f}: static model pin forbidden (grep ^model: must be empty outside implementer-free-* allowlist)`);
     }
   }
 });

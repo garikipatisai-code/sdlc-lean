@@ -8,6 +8,8 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, stat, writeFile, lstat, open, realpath } from 'node:fs/promises';
 import { constants } from 'node:fs';
+import fsSync from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 
 export const LEDGER_SCHEMA = 'sdlc-lean/phase-ledger@1';
@@ -1308,14 +1310,322 @@ export const resolveQuotaFallback = (sessionModel, account) => {
 export const resolveDynamicQuotaFallback = resolveQuotaFallback;
 
 /**
+ * File-based cooldown store + dispatch ledger (Task 2 mirror, fail-open).
+ * Quota-named primaries; plain aliases for plugin parity. Caps mirror plugin
+ * host-evidence: 0700 dir / 0600 file, 500-row / 2MB cap, symlink-safe,
+ * append-only, hash-only rows (no raw commands/outputs). Ledger rows carry
+ * model + account + effort + thinking only. Corrupt/absent → fail-open [].
+ * Billing codes never trigger (caller gates via 429/provider-error only).
+ * Resolver consults the store when opts.stateDir/storeDir/cooldownDir/root/
+ * cooldownFile/cooldowns is supplied; null→escalate preserved. No network.
+ * Ledger/dispatch/phase logic untouched.
+ */
+export const QUOTA_COOLDOWN_MAX_ROWS = 500;
+export const QUOTA_COOLDOWN_MAX_BYTES = 2 * 1024 * 1024;
+export const QUOTA_LEDGER_MAX_ROWS = 500;
+export const QUOTA_LEDGER_MAX_BYTES = 2 * 1024 * 1024;
+export const COOLDOWN_MAX_ROWS = QUOTA_COOLDOWN_MAX_ROWS;
+export const COOLDOWN_MAX_BYTES = QUOTA_COOLDOWN_MAX_BYTES;
+export const LEDGER_MAX_ROWS = QUOTA_LEDGER_MAX_ROWS;
+export const LEDGER_MAX_BYTES = QUOTA_LEDGER_MAX_BYTES;
+
+export const quotaCooldownPath = (stateDir) => path.join(String(stateDir), 'cooldown.jsonl');
+export const quotaLedgerPath = (stateDir) => path.join(String(stateDir), 'dispatch-ledger.jsonl');
+export const cooldownPath = quotaCooldownPath;
+export const dispatchLedgerPath = quotaLedgerPath;
+
+const _quotaDefaultDir = () => {
+  try {
+    const base = process.env.XDG_STATE_HOME || path.join(os.homedir(), '.local', 'state');
+    return path.join(base, 'sdlc-lean');
+  } catch {
+    return null;
+  }
+};
+
+const _quotaStoreCounts = new Map();
+const _quotaCountRows = (file) => {
+  let st;
+  try {
+    st = fsSync.lstatSync(file);
+  } catch (err) {
+    if (err && err.code === 'ENOENT') return 0;
+    throw err;
+  }
+  if (st.isSymbolicLink() || !st.isFile()) return QUOTA_COOLDOWN_MAX_ROWS;
+  if (st.size >= QUOTA_COOLDOWN_MAX_BYTES) return QUOTA_COOLDOWN_MAX_ROWS;
+  try {
+    const text = fsSync.readFileSync(file, 'utf8');
+    return text.split('\n').filter((line) => line.trim() !== '').length;
+  } catch {
+    return QUOTA_COOLDOWN_MAX_ROWS;
+  }
+};
+
+const _quotaAppendJsonl = (dir, file, row, maxRows, maxBytes) => {
+  if (typeof dir !== 'string' || !dir) return false;
+  try {
+    fsSync.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const dirStat = fsSync.lstatSync(dir);
+    if (dirStat.isSymbolicLink() || !dirStat.isDirectory()) return false;
+    try { fsSync.chmodSync(dir, 0o700); } catch { /* best effort */ }
+    let state = _quotaStoreCounts.get(file);
+    if (!state) {
+      state = { count: _quotaCountRows(file) };
+      _quotaStoreCounts.set(file, state);
+    } else {
+      let st = null;
+      try {
+        st = fsSync.lstatSync(file);
+      } catch (err) {
+        if (!err || err.code !== 'ENOENT') return false;
+      }
+      if (st && (st.isSymbolicLink() || !st.isFile())) return false;
+      if (st && st.size >= maxBytes) return false;
+    }
+    if (state.count >= maxRows) return false;
+    let logStat = null;
+    try {
+      logStat = fsSync.lstatSync(file);
+    } catch (err) {
+      if (!err || err.code !== 'ENOENT') return false;
+    }
+    if (logStat && (logStat.isSymbolicLink() || !logStat.isFile())) return false;
+    const fd = fsSync.openSync(
+      file,
+      constants.O_APPEND | constants.O_CREAT | constants.O_WRONLY | (constants.O_NOFOLLOW ?? 0),
+      0o600,
+    );
+    try {
+      const openStat = fsSync.fstatSync(fd);
+      if (!openStat.isFile()) return false;
+      fsSync.fchmodSync(fd, 0o600);
+      fsSync.writeSync(fd, `${JSON.stringify(row)}\n`);
+      state.count += 1;
+      return true;
+    } finally {
+      fsSync.closeSync(fd);
+    }
+  } catch {
+    return false;
+  }
+};
+
+const _quotaNormalizeDirRow = (first, second) => {
+  if (typeof first === 'string' && second && typeof second === 'object' && !Array.isArray(second)) {
+    return { dir: first, row: second };
+  }
+  if (first && typeof first === 'object' && !Array.isArray(first)) {
+    const o = first;
+    const dir = typeof o.stateDir === 'string' ? o.stateDir
+      : (typeof o.dir === 'string' ? o.dir
+        : (typeof o.storeDir === 'string' ? o.storeDir
+          : (typeof o.root === 'string' ? o.root : null)));
+    const { stateDir: _sd, dir: _d, storeDir: _std, root: _r, ...row } = o;
+    return { dir: dir || _quotaDefaultDir(), row: (second && typeof second === 'object' ? { ...row, ...second } : row) };
+  }
+  return { dir: _quotaDefaultDir(), row: {} };
+};
+
+const _quotaIsSecretLike = (value) => {
+  try {
+    return typeof value === 'string' && SECRET_VALUE_RES.some((re) => re.test(value));
+  } catch {
+    return false;
+  }
+};
+
+const _quotaIsValidCooldownUntil = (value) =>
+  typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value) && !Number.isNaN(Date.parse(value));
+
+export const readQuotaCooldowns = (stateDir, nowMs) => {
+  try {
+    if (typeof stateDir !== 'string' || !stateDir) return [];
+    const file = quotaCooldownPath(stateDir);
+    let st;
+    try {
+      st = fsSync.lstatSync(file);
+    } catch {
+      return [];
+    }
+    if (st.isSymbolicLink() || !st.isFile()) return [];
+    if (st.size >= QUOTA_COOLDOWN_MAX_BYTES) return [];
+    let text;
+    try {
+      text = fsSync.readFileSync(file, 'utf8');
+    } catch {
+      return [];
+    }
+    const out = [];
+    for (const line of text.split('\n')) {
+      if (!line.trim()) continue;
+      let r;
+      try {
+        r = JSON.parse(line);
+      } catch {
+        continue;
+      }
+      if (!r || typeof r !== 'object' || Array.isArray(r)) continue;
+      if (r.type !== 'cooldown') continue;
+      if (!_quotaIsValidCooldownUntil(r.cooldown_until)) continue;
+      if (typeof r.circuit !== 'string' || QUOTA_CIRCUIT_STATES.indexOf(r.circuit) === -1) continue;
+      out.push(r);
+    }
+    void nowMs;
+    return out;
+  } catch {
+    return [];
+  }
+};
+export const readCooldowns = readQuotaCooldowns;
+
+export const isQuotaCoolingDown = (id, stateDir, nowMs) => {
+  try {
+    if (typeof id !== 'string' || !id) return false;
+    if (typeof stateDir !== 'string' || !stateDir) return false;
+    const now = typeof nowMs === 'number' && Number.isFinite(nowMs) ? nowMs : Date.now();
+    for (const r of readQuotaCooldowns(stateDir)) {
+      try {
+        if (r.model !== id) continue;
+        const exp = Date.parse(r.cooldown_until);
+        if (Number.isFinite(exp) && exp > now) return true;
+      } catch { /* skip */ }
+    }
+    return false;
+  } catch {
+    return false;
+  }
+};
+export const isCoolingDownId = isQuotaCoolingDown;
+
+export const appendQuotaCooldown = (first, second) => {
+  try {
+    const { dir, row } = _quotaNormalizeDirRow(first, second);
+    if (!dir) return false;
+    const r = row && typeof row === 'object' && !Array.isArray(row) ? row : {};
+    let cooldownUntil = r.cooldown_until ?? r.cooldownUntil ?? r.cooldown_until_utc;
+    if (typeof cooldownUntil !== 'string' || !_quotaIsValidCooldownUntil(cooldownUntil)) {
+      let ms = r.cooldownMs ?? r.cooldown_ms ?? r.cooldownDurationMs;
+      if (typeof r.cooldownMinutes === 'number' && Number.isFinite(r.cooldownMinutes)) ms = r.cooldownMinutes * 60_000;
+      if (typeof ms !== 'number' || !Number.isFinite(ms) || ms < 0) ms = 5 * 60_000;
+      cooldownUntil = new Date(Date.now() + ms).toISOString();
+      if (!_quotaIsValidCooldownUntil(cooldownUntil)) return false;
+    }
+    const circuit = typeof r.circuit === 'string' && QUOTA_CIRCUIT_STATES.indexOf(r.circuit) !== -1 ? r.circuit : 'OPEN';
+    const clean = { type: 'cooldown', cooldown_until: cooldownUntil, circuit };
+    if (typeof r.model === 'string' && r.model.trim() !== '') {
+      if (_quotaIsSecretLike(r.model)) return false;
+      clean.model = r.model;
+    }
+    if (typeof r.account === 'string' && r.account.trim() !== '') {
+      if (_quotaIsSecretLike(r.account)) return false;
+      clean.account = r.account;
+    }
+    if (typeof r.at === 'string' && r.at.trim() !== '') clean.at = r.at;
+    return _quotaAppendJsonl(dir, quotaCooldownPath(dir), clean, QUOTA_COOLDOWN_MAX_ROWS, QUOTA_COOLDOWN_MAX_BYTES);
+  } catch {
+    return false;
+  }
+};
+export const appendCooldown = appendQuotaCooldown;
+
+export const appendQuotaLedger = (first, second) => {
+  try {
+    const { dir, row } = _quotaNormalizeDirRow(first, second);
+    if (!dir) return false;
+    const r = row && typeof row === 'object' && !Array.isArray(row) ? row : {};
+    const model = typeof r.model === 'string' ? r.model.trim() : '';
+    const account = typeof r.account === 'string' ? r.account.trim() : '';
+    const effort = typeof r.effort === 'string' ? r.effort.trim() : '';
+    if (!model || !account || !effort) return false;
+    if (_quotaIsSecretLike(model) || _quotaIsSecretLike(account) || _quotaIsSecretLike(effort)) return false;
+    if (typeof r.thinking === 'string' && r.thinking && _quotaIsSecretLike(r.thinking)) return false;
+    if (typeof r.outcome === 'string' && r.outcome && _quotaIsSecretLike(r.outcome)) return false;
+    const clean = { type: 'ledger', model, account, effort };
+    if (typeof r.thinking === 'string' && r.thinking.trim() !== '') clean.thinking = r.thinking.trim();
+    clean.outcome = typeof r.outcome === 'string' && r.outcome.trim() !== '' ? r.outcome.trim() : 'dispatch';
+    clean.at = typeof r.at === 'string' && r.at.trim() !== '' ? r.at.trim() : new Date().toISOString();
+    return _quotaAppendJsonl(dir, quotaLedgerPath(dir), clean, QUOTA_LEDGER_MAX_ROWS, QUOTA_LEDGER_MAX_BYTES);
+  } catch {
+    return false;
+  }
+};
+export const appendLedger = appendQuotaLedger;
+export const appendDispatchLedger = appendQuotaLedger;
+export const appendQuotaDispatchLedger = appendQuotaLedger;
+
+// Hook helper mirror: 429/provider-error only → cooldown + ledger, fail-open.
+export const recordQuotaCooldownOnFailure = (event, root) => {
+  try {
+    if (!event || typeof event !== 'object' || Array.isArray(event)) return { handled: false };
+    const err = event.error ?? event.err ?? event.failure
+      ?? (event.result && typeof event.result === 'object' ? (event.result.error ?? event.result.err) : null)
+      ?? (event.metadata && typeof event.metadata === 'object' ? event.metadata.error : null)
+      ?? event.outputError ?? null;
+    const candidate = err ?? event;
+    const isQuotaErr = (e) => {
+      if (!e || typeof e !== 'object' || Array.isArray(e)) return false;
+      if (e.status === 429) return true;
+      if (e.code === 'provider-error') return true;
+      return false;
+    };
+    if (!isQuotaErr(candidate) && !isQuotaErr(err)) return { handled: false };
+    const input = event.input && typeof event.input === 'object' ? event.input : {};
+    const result = event.result && typeof event.result === 'object' ? event.result : {};
+    const model = event.model ?? input.model ?? result.model ?? null;
+    const account = event.account ?? input.account ?? result.account
+      ?? (typeof model === 'string' ? model.slice(0, model.indexOf('/')) : null);
+    const effort = event.effort ?? input.effort ?? result.effort ?? 'medium';
+    const thinking = event.thinking ?? input.thinking ?? result.thinking ?? null;
+    if (typeof model === 'string' && model && _quotaIsSecretLike(model)) return { handled: false };
+    let safeModel = null;
+    if (typeof model === 'string' && model.trim() !== '') {
+      try {
+        if (isSafeQuotaModel(model)) safeModel = model;
+        else return { handled: false };
+      } catch {
+        return { handled: false };
+      }
+    }
+    let safeAccount = null;
+    if (typeof account === 'string' && account.trim() !== '') {
+      const a = account.trim();
+      if (QUOTA_ALLOWED_ACCOUNTS.indexOf(a) !== -1) safeAccount = a;
+      else if (safeModel) safeAccount = safeModel.slice(0, safeModel.indexOf('/'));
+    } else if (safeModel) {
+      safeAccount = safeModel.slice(0, safeModel.indexOf('/'));
+    }
+    const dir = typeof root === 'string' && root ? path.join(root, '.sdlc') : _quotaDefaultDir();
+    if (!dir) return { handled: false };
+    const cooldownUntil = new Date(Date.now() + 5 * 60_000).toISOString();
+    const coolRow = { type: 'cooldown', cooldown_until: cooldownUntil, circuit: 'OPEN' };
+    if (safeModel) coolRow.model = safeModel;
+    if (safeAccount) coolRow.account = safeAccount;
+    appendQuotaCooldown(dir, coolRow);
+    if (safeModel && safeAccount) {
+      const ledgerRow = { model: safeModel, account: safeAccount, effort: String(effort || 'medium') };
+      if (typeof thinking === 'string' && thinking.trim() !== '') ledgerRow.thinking = thinking.trim();
+      ledgerRow.outcome = 'cooldown';
+      appendQuotaLedger(dir, ledgerRow);
+    }
+    return { handled: true, cooledUntil: cooldownUntil, escalated: true };
+  } catch {
+    return { handled: false };
+  }
+};
+export const recordCooldownOnFailure = recordQuotaCooldownOnFailure;
+
+/**
  * Explicit failover selector (pure, unwired, orchestrator-called only):
  * mirrors plugin `resolveNextFreeLink`. Returns the next eligible pool id
  * in pool order, or null; never throws (invalid input fails open to null;
  * a throwing predicate skips that candidate). Defaults reuse
  * `isDeniedQuotaModel`, the secret-value guard, and `isSafeQuotaModel`
- * revalidation; no cooldown store exists so the cooling default is a plain
- * false and the caller injects the `isCoolingDown` predicate. Capability-
- * driven: object entries must also pass `isFreeQuotaCapable` (live
+ * revalidation; the file cooldown store is consulted when
+ * opts.stateDir/storeDir/cooldownDir/root/cooldownFile/cooldowns is supplied
+ * (fail-open: corrupt/absent → allow), otherwise the cooling default is a
+ * plain false and the caller injects the `isCoolingDown` predicate.
+ * Capability-driven: object entries must also pass `isFreeQuotaCapable` (live
  * admission); string entries keep the `isSafeQuotaModel` string-path (old
  * graders pin it). Per-source caps are check-before-dispatch and fail-open:
  * opts.usage (map id→{settled, outstanding, next} or single usage for the
@@ -1338,6 +1648,33 @@ export const resolveNextFreeLink = (pool, failedId, predicates) => {
         : (typeof opts.isSafeQuotaModel === 'function' ? opts.isSafeQuotaModel : isSafeQuotaModel));
     const isCoolingDown = typeof opts.isCoolingDown === 'function' ? opts.isCoolingDown
       : (typeof opts.isCooling === 'function' ? opts.isCooling : () => false);
+    const fileCooled = new Set();
+    try {
+      let dir = typeof opts.stateDir === 'string' ? opts.stateDir
+        : (typeof opts.storeDir === 'string' ? opts.storeDir
+          : (typeof opts.cooldownDir === 'string' ? opts.cooldownDir : null));
+      if (!dir && typeof opts.root === 'string' && opts.root) dir = path.join(opts.root, '.sdlc');
+      if (!dir && typeof opts.cooldownFile === 'string' && opts.cooldownFile) {
+        dir = path.dirname(opts.cooldownFile);
+      }
+      const extra = opts.cooldowns ?? opts.cooldown ?? opts.cool ?? opts.cooling ?? null;
+      if (Array.isArray(extra)) {
+        for (const id of extra) if (typeof id === 'string' && id) fileCooled.add(id);
+      } else if (extra instanceof Set) {
+        for (const id of extra) if (typeof id === 'string' && id) fileCooled.add(id);
+      }
+      if (dir) {
+        const nowOpt = opts.now ?? opts.nowMs ?? undefined;
+        const now = typeof nowOpt === 'number' && Number.isFinite(nowOpt) ? nowOpt : Date.now();
+        for (const r of readQuotaCooldowns(dir)) {
+          try {
+            if (typeof r.model !== 'string' || !r.model) continue;
+            const exp = Date.parse(r.cooldown_until);
+            if (Number.isFinite(exp) && exp > now) fileCooled.add(r.model);
+          } catch { /* skip row */ }
+        }
+      }
+    } catch { /* fail-open */ }
     const isOverCap = typeof opts.isOverCap === 'function' ? opts.isOverCap
       : (typeof opts.isCapped === 'function' ? opts.isCapped
         : (typeof opts.isCappedOut === 'function' ? opts.isCappedOut : null));
@@ -1369,6 +1706,7 @@ export const resolveNextFreeLink = (pool, failedId, predicates) => {
       let cooling;
       try { cooling = isCoolingDown(id); } catch { continue; }
       if (cooling) continue;
+      if (fileCooled.has(id)) continue;
       // Per-source cap check (check-before-dispatch, fail-open on unobservable).
       if (typeof isOverCap === 'function') {
         let capped = false;

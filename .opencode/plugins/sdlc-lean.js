@@ -2353,13 +2353,307 @@ export const transitionCircuit = (current, event = {}) => {
 export const circuitTransition = transitionCircuit;
 export const nextCircuitState = transitionCircuit;
 
+// --- File-based cooldown store + dispatch ledger (Task 2, fail-open) --------
+// V2 execute.after writes, V1 orchestrator-file fallback reads. Caps mirror
+// host-evidence: 0700 dir / 0600 file, 500-row / 2MB cap, symlink-safe,
+// append-only, hash-only rows (no raw commands/outputs). Ledger rows carry
+// model + account + effort + thinking only (metadata, never prompts/outputs).
+// Corrupt/absent store fails open (never blocks dispatch). Billing codes
+// never trigger (classifyQuotaError gate). Exhaustion → null + escalate,
+// never auto-paid.
+export const COOLDOWN_MAX_ROWS = 500;
+export const COOLDOWN_MAX_BYTES = 2 * 1024 * 1024;
+export const LEDGER_MAX_ROWS = 500;
+export const LEDGER_MAX_BYTES = 2 * 1024 * 1024;
+export const QUOTA_COOLDOWN_MAX_ROWS = COOLDOWN_MAX_ROWS;
+export const QUOTA_COOLDOWN_MAX_BYTES = COOLDOWN_MAX_BYTES;
+export const QUOTA_LEDGER_MAX_ROWS = LEDGER_MAX_ROWS;
+export const QUOTA_LEDGER_MAX_BYTES = LEDGER_MAX_BYTES;
+
+export const cooldownPath = (stateDir) => path.join(String(stateDir), 'cooldown.jsonl');
+export const dispatchLedgerPath = (stateDir) => path.join(String(stateDir), 'dispatch-ledger.jsonl');
+export const quotaCooldownPath = cooldownPath;
+export const quotaLedgerPath = dispatchLedgerPath;
+
+const _defaultCooldownDir = () => {
+  try {
+    const base = process.env.XDG_STATE_HOME || path.join(os.homedir(), '.local', 'state');
+    return path.join(base, 'sdlc-lean');
+  } catch {
+    return null;
+  }
+};
+
+const _storeCounts = new Map();
+const _countStoreRows = (file) => {
+  let st;
+  try {
+    st = fs.lstatSync(file);
+  } catch (err) {
+    if (err && err.code === 'ENOENT') return 0;
+    throw err;
+  }
+  if (st.isSymbolicLink() || !st.isFile()) return COOLDOWN_MAX_ROWS;
+  if (st.size >= COOLDOWN_MAX_BYTES) return COOLDOWN_MAX_ROWS;
+  try {
+    const text = fs.readFileSync(file, 'utf8');
+    return text.split('\n').filter((line) => line.trim() !== '').length;
+  } catch {
+    return COOLDOWN_MAX_ROWS;
+  }
+};
+
+const _appendStoreJsonl = (dir, file, row, maxRows, maxBytes) => {
+  if (typeof dir !== 'string' || !dir) return false;
+  try {
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const dirStat = fs.lstatSync(dir);
+    if (dirStat.isSymbolicLink() || !dirStat.isDirectory()) return false;
+    try { fs.chmodSync(dir, 0o700); } catch { /* best effort */ }
+    let state = _storeCounts.get(file);
+    if (!state) {
+      state = { count: _countStoreRows(file) };
+      _storeCounts.set(file, state);
+    } else {
+      let st = null;
+      try {
+        st = fs.lstatSync(file);
+      } catch (err) {
+        if (!err || err.code !== 'ENOENT') return false;
+      }
+      if (st && (st.isSymbolicLink() || !st.isFile())) return false;
+      if (st && st.size >= maxBytes) return false;
+    }
+    if (state.count >= maxRows) return false;
+    let logStat = null;
+    try {
+      logStat = fs.lstatSync(file);
+    } catch (err) {
+      if (!err || err.code !== 'ENOENT') return false;
+    }
+    if (logStat && (logStat.isSymbolicLink() || !logStat.isFile())) return false;
+    const fd = fs.openSync(
+      file,
+      fs.constants.O_APPEND | fs.constants.O_CREAT | fs.constants.O_WRONLY | fs.constants.O_NOFOLLOW,
+      0o600,
+    );
+    try {
+      const openStat = fs.fstatSync(fd);
+      if (!openStat.isFile()) return false;
+      fs.fchmodSync(fd, 0o600);
+      fs.writeSync(fd, `${JSON.stringify(row)}\n`);
+      state.count += 1;
+      return true;
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch {
+    return false;
+  }
+};
+
+const _normalizeStoreDirAndRow = (first, second) => {
+  if (typeof first === 'string' && second && typeof second === 'object' && !Array.isArray(second)) {
+    return { dir: first, row: second };
+  }
+  if (first && typeof first === 'object' && !Array.isArray(first)) {
+    const o = first;
+    const dir = typeof o.stateDir === 'string' ? o.stateDir
+      : (typeof o.dir === 'string' ? o.dir
+        : (typeof o.storeDir === 'string' ? o.storeDir
+          : (typeof o.root === 'string' ? o.root : null)));
+    const { stateDir: _sd, dir: _d, storeDir: _std, root: _r, ...row } = o;
+    return { dir: dir || _defaultCooldownDir(), row: (second && typeof second === 'object' ? { ...row, ...second } : row) };
+  }
+  return { dir: _defaultCooldownDir(), row: {} };
+};
+
+export const readCooldowns = (stateDir, nowMs) => {
+  try {
+    if (typeof stateDir !== 'string' || !stateDir) return [];
+    const file = cooldownPath(stateDir);
+    let st;
+    try {
+      st = fs.lstatSync(file);
+    } catch (err) {
+      return []; // absent → fail-open
+    }
+    if (st.isSymbolicLink() || !st.isFile()) return [];
+    if (st.size >= COOLDOWN_MAX_BYTES) return [];
+    let text;
+    try {
+      text = fs.readFileSync(file, 'utf8');
+    } catch {
+      return [];
+    }
+    const out = [];
+    for (const line of text.split('\n')) {
+      if (!line.trim()) continue;
+      let r;
+      try {
+        r = JSON.parse(line);
+      } catch {
+        continue; // corrupt line skipped, fail-open
+      }
+      if (!r || typeof r !== 'object' || Array.isArray(r)) continue;
+      if (r.type !== 'cooldown') continue;
+      if (!isValidCooldownUntil(r.cooldown_until)) continue;
+      if (typeof r.circuit !== 'string' || CIRCUIT_STATES.indexOf(r.circuit) === -1) continue;
+      out.push(r);
+    }
+    void nowMs;
+    return out;
+  } catch {
+    return [];
+  }
+};
+export const readQuotaCooldowns = readCooldowns;
+
+export const isCoolingDownId = (id, stateDir, nowMs) => {
+  try {
+    if (typeof id !== 'string' || !id) return false;
+    if (typeof stateDir !== 'string' || !stateDir) return false;
+    let now = typeof nowMs === 'number' && Number.isFinite(nowMs) ? nowMs : Date.now();
+    const rows = readCooldowns(stateDir);
+    for (const r of rows) {
+      try {
+        if (r.model !== id) continue;
+        const exp = Date.parse(r.cooldown_until);
+        if (Number.isFinite(exp) && exp > now) return true;
+      } catch { /* skip row */ }
+    }
+    return false;
+  } catch {
+    return false;
+  }
+};
+export const isQuotaCoolingDown = isCoolingDownId;
+
+export const appendCooldown = (first, second) => {
+  try {
+    const { dir, row } = _normalizeStoreDirAndRow(first, second);
+    if (!dir) return false;
+    const r = row && typeof row === 'object' && !Array.isArray(row) ? row : {};
+    let cooldownUntil = r.cooldown_until ?? r.cooldownUntil ?? r.cooldown_until_utc;
+    if (typeof cooldownUntil !== 'string' || !isValidCooldownUntil(cooldownUntil)) {
+      let ms = r.cooldownMs ?? r.cooldown_ms ?? r.cooldownDurationMs;
+      if (typeof r.cooldownMinutes === 'number' && Number.isFinite(r.cooldownMinutes)) ms = r.cooldownMinutes * 60_000;
+      if (typeof ms !== 'number' || !Number.isFinite(ms) || ms < 0) ms = 5 * 60_000;
+      cooldownUntil = new Date(Date.now() + ms).toISOString();
+      if (!isValidCooldownUntil(cooldownUntil)) return false;
+    }
+    const circuit = typeof r.circuit === 'string' && CIRCUIT_STATES.indexOf(r.circuit) !== -1 ? r.circuit : 'OPEN';
+    const clean = { type: 'cooldown', cooldown_until: cooldownUntil, circuit };
+    if (typeof r.model === 'string' && r.model.trim() !== '') {
+      if (isSecretLike(r.model)) return false;
+      clean.model = r.model;
+    }
+    if (typeof r.account === 'string' && r.account.trim() !== '') {
+      if (isSecretLike(r.account)) return false;
+      clean.account = r.account;
+    }
+    if (typeof r.at === 'string' && r.at.trim() !== '') clean.at = r.at;
+    return _appendStoreJsonl(dir, cooldownPath(dir), clean, COOLDOWN_MAX_ROWS, COOLDOWN_MAX_BYTES);
+  } catch {
+    return false;
+  }
+};
+export const appendQuotaCooldown = appendCooldown;
+
+export const appendLedger = (first, second) => {
+  try {
+    const { dir, row } = _normalizeStoreDirAndRow(first, second);
+    if (!dir) return false;
+    const r = row && typeof row === 'object' && !Array.isArray(row) ? row : {};
+    const model = typeof r.model === 'string' ? r.model.trim() : '';
+    const account = typeof r.account === 'string' ? r.account.trim() : '';
+    const effort = typeof r.effort === 'string' ? r.effort.trim() : '';
+    if (!model || !account || !effort) return false;
+    if (isSecretLike(model) || isSecretLike(account) || isSecretLike(effort)) return false;
+    if (typeof r.thinking === 'string' && r.thinking && isSecretLike(r.thinking)) return false;
+    if (typeof r.outcome === 'string' && r.outcome && isSecretLike(r.outcome)) return false;
+    const clean = { type: 'ledger', model, account, effort };
+    if (typeof r.thinking === 'string' && r.thinking.trim() !== '') clean.thinking = r.thinking.trim();
+    clean.outcome = typeof r.outcome === 'string' && r.outcome.trim() !== '' ? r.outcome.trim() : 'dispatch';
+    clean.at = typeof r.at === 'string' && r.at.trim() !== '' ? r.at.trim() : new Date().toISOString();
+    return _appendStoreJsonl(dir, dispatchLedgerPath(dir), clean, LEDGER_MAX_ROWS, LEDGER_MAX_BYTES);
+  } catch {
+    return false;
+  }
+};
+export const appendQuotaLedger = appendLedger;
+export const appendDispatchLedger = appendLedger;
+
+// Hook helper: 429/provider-error only → cooldown + ledger, fail-open.
+// Billing codes never trigger. Never throws.
+export const recordCooldownOnFailure = (event, root) => {
+  try {
+    if (!event || typeof event !== 'object' || Array.isArray(event)) return { handled: false };
+    const err = event.error ?? event.err ?? event.failure
+      ?? (event.result && typeof event.result === 'object' ? (event.result.error ?? event.result.err) : null)
+      ?? (event.metadata && typeof event.metadata === 'object' ? event.metadata.error : null)
+      ?? event.outputError ?? null;
+    // Also support direct {status:429}/{code} shaped events.
+    const candidate = err ?? event;
+    if (!classifyQuotaError(candidate)) {
+      // Fallback: check nested error shapes explicitly (billing → false).
+      if (!classifyQuotaError(err)) return { handled: false };
+    }
+    const input = event.input && typeof event.input === 'object' ? event.input : {};
+    const result = event.result && typeof event.result === 'object' ? event.result : {};
+    const model = event.model ?? input.model ?? result.model ?? event.modelId ?? input.modelId ?? null;
+    const account = event.account ?? input.account ?? result.account ?? (typeof model === 'string' ? model.slice(0, model.indexOf('/')) : null);
+    const effort = event.effort ?? input.effort ?? result.effort ?? 'medium';
+    const thinking = event.thinking ?? input.thinking ?? result.thinking ?? null;
+    if (typeof model === 'string' && model && (isSecretLike(model) || isDeniedModel(model))) return { handled: false };
+    // Validate model when present: unsafe non-pool ids are still recorded
+    // only if they pass the safe gate; otherwise record account-only row.
+    let safeModel = null;
+    if (typeof model === 'string' && model.trim() !== '') {
+      try {
+        if (isSafeModel(model)) safeModel = model;
+        else return { handled: false };
+      } catch {
+        return { handled: false };
+      }
+    }
+    let safeAccount = null;
+    if (typeof account === 'string' && account.trim() !== '') {
+      const a = account.trim();
+      if (ACCOUNTS.indexOf(a) !== -1) safeAccount = a;
+      else if (safeModel) safeAccount = safeModel.slice(0, safeModel.indexOf('/'));
+    } else if (safeModel) {
+      safeAccount = safeModel.slice(0, safeModel.indexOf('/'));
+    }
+    const dir = typeof root === 'string' && root ? path.join(root, '.sdlc') : _defaultCooldownDir();
+    if (!dir) return { handled: false };
+    const cooldownUntil = new Date(Date.now() + 5 * 60_000).toISOString();
+    const coolRow = { type: 'cooldown', cooldown_until: cooldownUntil, circuit: 'OPEN' };
+    if (safeModel) coolRow.model = safeModel;
+    if (safeAccount) coolRow.account = safeAccount;
+    appendCooldown(dir, coolRow);
+    if (safeModel && safeAccount) {
+      const ledgerRow = { model: safeModel, account: safeAccount, effort: String(effort || 'medium') };
+      if (typeof thinking === 'string' && thinking.trim() !== '') ledgerRow.thinking = thinking.trim();
+      ledgerRow.outcome = 'cooldown';
+      appendLedger(dir, ledgerRow);
+    }
+    return { handled: true, cooledUntil: cooldownUntil, escalated: true };
+  } catch {
+    return { handled: false };
+  }
+};
+export const recordQuotaCooldownOnFailure = recordCooldownOnFailure;
+
 // Explicit failover selector (pure, unwired, orchestrator-called only):
 // resolveNextFreeLink(pool, failedId, { isDenied, isSecretLike, isCoolingDown })
 // returns the next eligible pool id in pool order, or null. It never throws:
 // invalid pool/predicates fail open to null; a throwing predicate skips
-// that candidate. Defaults reuse isDeniedModel/isSecretLike/isSafeModel; no
-// cooldown store exists so the cooling default is a plain false and the
-// caller injects the isCoolingDown predicate. Capability-driven: object
+// that candidate. Defaults reuse isDeniedModel/isSecretLike/isSafeModel; the
+// file cooldown store is consulted when opts.stateDir/storeDir/cooldownDir/
+// root/cooldownFile/cooldowns is supplied (fail-open: corrupt/absent → allow);
+// otherwise the cooling default is a plain false and the caller injects the
+// isCoolingDown predicate. Capability-driven: object
 // entries must also pass isFreeCapable (live admission); string entries keep
 // the isSafeModel string-path (old graders pin it). Per-source caps are
 // check-before-dispatch and fail-open: opts.usage (map id→{settled,
@@ -2381,6 +2675,35 @@ export const resolveNextFreeLink = (pool, failedId, predicates) => {
         : (typeof opts.isSafeQuotaModel === 'function' ? opts.isSafeQuotaModel : isSafeModel));
     const isCoolingDown = typeof opts.isCoolingDown === 'function' ? opts.isCoolingDown
       : (typeof opts.isCooling === 'function' ? opts.isCooling : () => false);
+    // File-store cooling (fail-open): V1 orchestrator-file fallback + V2 hook
+    // share the same JSONL. Corrupt/absent/oversize → empty (allow dispatch).
+    const fileCooled = new Set();
+    try {
+      let dir = typeof opts.stateDir === 'string' ? opts.stateDir
+        : (typeof opts.storeDir === 'string' ? opts.storeDir
+          : (typeof opts.cooldownDir === 'string' ? opts.cooldownDir : null));
+      if (!dir && typeof opts.root === 'string' && opts.root) dir = path.join(opts.root, '.sdlc');
+      if (!dir && typeof opts.cooldownFile === 'string' && opts.cooldownFile) {
+        dir = path.dirname(opts.cooldownFile);
+      }
+      const extra = opts.cooldowns ?? opts.cooldown ?? opts.cool ?? opts.cooling ?? null;
+      if (Array.isArray(extra)) {
+        for (const id of extra) if (typeof id === 'string' && id) fileCooled.add(id);
+      } else if (extra instanceof Set) {
+        for (const id of extra) if (typeof id === 'string' && id) fileCooled.add(id);
+      }
+      if (dir) {
+        const nowOpt = opts.now ?? opts.nowMs ?? undefined;
+        const now = typeof nowOpt === 'number' && Number.isFinite(nowOpt) ? nowOpt : Date.now();
+        for (const r of readCooldowns(dir)) {
+          try {
+            if (typeof r.model !== 'string' || !r.model) continue;
+            const exp = Date.parse(r.cooldown_until);
+            if (Number.isFinite(exp) && exp > now) fileCooled.add(r.model);
+          } catch { /* skip row */ }
+        }
+      }
+    } catch { /* fail-open: file store never blocks */ }
     const isOverCap = typeof opts.isOverCap === 'function' ? opts.isOverCap
       : (typeof opts.isCapped === 'function' ? opts.isCapped
         : (typeof opts.isCappedOut === 'function' ? opts.isCappedOut : null));
@@ -2412,6 +2735,7 @@ export const resolveNextFreeLink = (pool, failedId, predicates) => {
       let cooling;
       try { cooling = isCoolingDown(id); } catch { continue; }
       if (cooling) continue;
+      if (fileCooled.has(id)) continue;
       // Per-source cap check (check-before-dispatch, fail-open on unobservable).
       if (typeof isOverCap === 'function') {
         let capped = false;
@@ -2467,13 +2791,24 @@ export const onWorkerQuotaError = (pool, failedId, opts = {}) => {
     }
     const next = resolveNextFreeLink(pool, failedId, {
       isDenied: options.isDenied,
+      isDeniedModel: options.isDeniedModel,
+      isDeniedQuotaModel: options.isDeniedQuotaModel,
       isSecretLike: options.isSecretLike,
+      isSafe: options.isSafe,
+      isSafeModel: options.isSafeModel,
+      isSafeQuotaModel: options.isSafeQuotaModel,
       isCoolingDown: options.isCoolingDown,
+      isCooling: options.isCooling,
       isCapped: options.isCapped,
       isOverCap: options.isOverCap,
       usage: options.usage,
       capOpts: options.capOpts ?? options.capOptions,
-      now: options.now,
+      now: options.now ?? options.nowMs,
+      nowMs: options.nowMs ?? options.now,
+      stateDir: options.stateDir ?? options.storeDir ?? options.cooldownDir,
+      root: options.root,
+      cooldownFile: options.cooldownFile,
+      cooldowns: options.cooldowns ?? options.cooldown ?? options.cool ?? options.cooling,
     });
     if (typeof next === 'string' && next.trim() !== '') {
       return { nextLink: next, cooledUntil: null, escalated: false };
@@ -3016,6 +3351,11 @@ async function setup(ctx) {
       });
       await ctx.tool.hook('execute.after', async (event) => {
         await recordHostEvidence(event, root);
+        try {
+          recordCooldownOnFailure(event, root);
+        } catch (err) {
+          console.error('[sdlc-lean] cooldown hook failed:', err);
+        }
       });
     }
   } catch (err) {

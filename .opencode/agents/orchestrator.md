@@ -123,8 +123,10 @@ Privacy: secrets NEVER to any free endpoint; non-secret code may use any
 endpoint incl. training (non-ZDR ok).
 
 Denylist (never select): `poolside/laguna` (expired), `inkling` (harness-only),
-`liquid/lfm` (not-for-coding), content-safety no-tools models. Prior
-north-mini-code / gemma pins are retired (historical only).
+`liquid/lfm` (not-for-coding), content-safety no-tools models. Scope
+(2026-11-16 prune): north-mini-code Tier-P on merit (67.6% SWE-bench
+Verified); gemma-4-26b excluded (no coding evidence); flint-v1.0 kept on
+strongest numbers; ling-flash + router dropped (no coding rank).
 
 <a id="model-routing-table"></a>
 ## Model routing table (brain-muscle split)
@@ -138,17 +140,22 @@ Tiers (dispatch-time `model:` + `account:`; no hardcoded spend; cap = ask-to-ext
   security-reviewer.
 - **MUSCLE** — free-first order (thick briefs required; secrets NEVER to any free
   endpoint). Roles: explorer maps, implementer + test-writer execution.
-  1. `console-openrouter/nvidia/nemotron-3.5-super-vl:free` on
-     `console-openrouter` + `console-openrouter2` (round-robin, ledger-tracked;
-     `429` → other account first; blind, no polling).
-  2. On rate-limit on both → `opencode-go` free models discovered as cost
-     `0/0` via models API at dispatch time (denylist excluded; thick briefs
-     required). Known-good examples only: `crouton-alpha-free` /
-     `beam-free` / `iceman-contributor-free` — NOT a frozen requirement;
-     free list may change anytime, always re-discover, never hardcode
-     dispatch to trio.
-  3. All free exhausted → orchestrator's own model (BRAIN fallback only; cap + ask-to-extend) only after :87 admission passes + explicit spend approval + ask-to-extend (fresh, NOT covered by :79); exhaustion with no approval → stop + escalate with cooldown entries, never auto-paid. Secrets NEVER to any free endpoint. North is
-     break-glass outage-only, never normal routing.
+  P (primary): `console-openrouter/nvidia/nemotron-3.5-super-vl:free` +
+  `console-openrouter2/nvidia/nemotron-3.5-super-vl:free` (round-robin,
+  ledger-tracked; `429` → other account first; blind, no polling) →
+  `console-openrouter/cohere/north-mini-code:free` +
+  `console-openrouter2/cohere/north-mini-code:free` (same-model-other-account
+  first) → `opencode-go/beam-free` / `opencode-go/iceman-contributor-free` /
+  `opencode-go/longcat-2.5-free` → `opencode/beam-free` / `opencode/iceman-free`
+  / `opencode/nemotron-3.5-super-vl-free` / `opencode/longcat-2.5-free`.
+  S (secondary): `console-openrouter/particle-ai/particle-1:free` +
+  `console-openrouter2/particle-ai/particle-1:free` →
+  `console-openrouter/recursive/flint-v1.0:free` +
+  `console-openrouter2/recursive/flint-v1.0:free` →
+  `opencode-go/hy4-flash-free` → `opencode/flint-40b-free` /
+  `opencode/minimax-m3.1-flash-free` / `opencode/deepseek-v4.1-flash-free` /
+  `opencode/mimo-v2.6-flash-free` / `opencode/glm-5.3-flash-free`.
+  All free exhausted → orchestrator's own model (BRAIN fallback only; cap + ask-to-extend) only after :87 admission passes + explicit spend approval + ask-to-extend (fresh, NOT covered by :79); exhaustion with no approval → stop + escalate with cooldown entries, never auto-paid. Secrets NEVER to any free endpoint.
 
 | Role | Tier | Model | Brief requirement |
 |---|---|---|---|
@@ -158,9 +165,9 @@ Tiers (dispatch-time `model:` + `account:`; no hardcoded spend; cap = ask-to-ext
 | brainstorming facilitation | BRAIN | orchestrator session model | cap + ask-to-extend; secrets never free |
 | code-reviewer | BRAIN | orchestrator session model | cap + ask-to-extend; secrets never free |
 | security-reviewer | BRAIN | orchestrator session model | cap + ask-to-extend; secrets never free |
-| explorer (maps) | MUSCLE | super-vl:free (both accounts) → opencode-go free models (discovered cost 0/0 at dispatch time) → BRAIN (orchestrator's own model) | thick brief: file:line anchors, verbatim cmds, 3-5 steps, hashes |
-| implementer | MUSCLE | super-vl:free (both accounts) → opencode-go free models (discovered cost 0/0 at dispatch time) → BRAIN (orchestrator's own model) | thick brief: file:line anchors, verbatim cmds, 3-5 steps, hashes |
-| test-writer | MUSCLE | super-vl:free (both accounts) → opencode-go free models (discovered cost 0/0 at dispatch time) → BRAIN (orchestrator's own model) | thick brief: file:line anchors, verbatim cmds, 3-5 steps, hashes |
+| explorer (maps) | MUSCLE | P: super-vl:free (both accounts: console-openrouter + console-openrouter2) → north-mini-code:free (both accounts) → opencode-go free models P (beam-free, iceman-contributor-free, longcat-2.5-free) → opencode P (beam-free, iceman-free, nemotron-3.5-super-vl-free, longcat-2.5-free) → S: particle-1:free + flint-v1.0:free (both accounts) + hy4-flash-free + flint-40b-free + minimax-m3.1-flash-free + deepseek-v4.1-flash-free + mimo-v2.6-flash-free + glm-5.3-flash-free → BRAIN (orchestrator's own model) | thick brief: file:line anchors, verbatim cmds, 3-5 steps, hashes |
+| implementer | MUSCLE | P: super-vl:free (both accounts: console-openrouter + console-openrouter2) → north-mini-code:free (both accounts) → opencode-go free models P (beam-free, iceman-contributor-free, longcat-2.5-free) → opencode P (beam-free, iceman-free, nemotron-3.5-super-vl-free, longcat-2.5-free) → S: particle-1:free + flint-v1.0:free (both accounts) + hy4-flash-free + flint-40b-free + minimax-m3.1-flash-free + deepseek-v4.1-flash-free + mimo-v2.6-flash-free + glm-5.3-flash-free → BRAIN (orchestrator's own model) | thick brief: file:line anchors, verbatim cmds, 3-5 steps, hashes |
+| test-writer | MUSCLE | P: super-vl:free (both accounts: console-openrouter + console-openrouter2) → north-mini-code:free (both accounts) → opencode-go free models P (beam-free, iceman-contributor-free, longcat-2.5-free) → opencode P (beam-free, iceman-free, nemotron-3.5-super-vl-free, longcat-2.5-free) → S: particle-1:free + flint-v1.0:free (both accounts) + hy4-flash-free + flint-40b-free + minimax-m3.1-flash-free + deepseek-v4.1-flash-free + mimo-v2.6-flash-free + glm-5.3-flash-free → BRAIN (orchestrator's own model) | thick brief: file:line anchors, verbatim cmds, 3-5 steps, hashes |
 
 Rule: ambiguous/complex synthesis defaults BRAIN; well-scoped execution defaults
 MUSCLE in the order above with file:line anchors + verbatim cmds + 3-5 steps +

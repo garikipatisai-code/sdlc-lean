@@ -253,23 +253,61 @@ export const clearCapabilities = () => {
 // Best-effort existence check only (statSync, no spawn/install), zero-dep,
 // never throws/blocks. V1+V2 call this at activation for parity.
 export const DEFAULT_MCP_PATH = path.join(os.homedir(), '.local', 'bin', 'notebooklm-mcp');
+export const DEFAULT_GEMINI_MCP_PATH = path.join(os.homedir(), '.local', 'bin', 'gemini-notebook-mcp');
 
-export const autoDetectCapabilities = (binPath = DEFAULT_MCP_PATH) => {
+const _statFile = (p) => {
   try {
+    const st = fs.statSync(p);
+    if (!st || typeof st.isFile !== 'function' || !st.isFile()) return null;
+    return st;
+  } catch {
+    return null;
+  }
+};
+
+export const autoDetectCapabilities = (binPath) => {
+  try {
+    // No argument: probe both default paths independently (V1+V2 activation).
+    if (binPath === undefined) {
+      const geminiSt = _statFile(DEFAULT_GEMINI_MCP_PATH);
+      const legacySt = _statFile(DEFAULT_MCP_PATH);
+      const geminiPresent = !!geminiSt;
+      const legacyPresent = !!legacySt;
+      if (geminiPresent) {
+        registerCapability('mcp:gemini-notebook-mcp', { name: 'mcp:gemini-notebook-mcp', bin: DEFAULT_GEMINI_MCP_PATH });
+      } else {
+        try { _capabilities.delete('mcp:gemini-notebook-mcp'); } catch { /* silent-skip */ }
+      }
+      // gemini-notebook-mcp covers the legacy capability too (dual-name).
+      const legacyBin = legacyPresent ? DEFAULT_MCP_PATH : (geminiPresent ? DEFAULT_GEMINI_MCP_PATH : null);
+      if (legacyBin) {
+        registerCapability('mcp:notebooklm', { name: 'mcp:notebooklm', bin: legacyBin });
+      } else {
+        try { _capabilities.delete('mcp:notebooklm'); } catch { /* silent-skip */ }
+      }
+      return geminiPresent || legacyPresent;
+    }
     if (typeof binPath !== 'string') return false;
     let p = binPath.trim();
     if (!p) return false;
     if (p === '~') p = os.homedir();
     else if (p.startsWith('~/')) p = path.join(os.homedir(), p.slice(2));
-    let st;
-    try {
-      st = fs.statSync(p);
-    } catch {
-      try { _capabilities.delete('mcp:notebooklm'); } catch { /* silent-skip */ }
+    const isGemini = path.basename(p).toLowerCase().includes('gemini');
+    const st = _statFile(p);
+    if (!st) {
+      // miss deletes only its own key (never the sibling)
+      try {
+        _capabilities.delete(isGemini ? 'mcp:gemini-notebook-mcp' : 'mcp:notebooklm');
+      } catch { /* silent-skip */ }
       return false;
     }
-    if (!st || typeof st.isFile !== 'function' || !st.isFile()) return false;
-    registerCapability('mcp:notebooklm', { name: 'mcp:notebooklm', bin: p });
+    if (isGemini) {
+      registerCapability('mcp:gemini-notebook-mcp', { name: 'mcp:gemini-notebook-mcp', bin: p });
+      // gemini binary also satisfies the legacy capability
+      registerCapability('mcp:notebooklm', { name: 'mcp:notebooklm', bin: p });
+    } else {
+      registerCapability('mcp:notebooklm', { name: 'mcp:notebooklm', bin: p });
+    }
     return true;
   } catch {
     return false;

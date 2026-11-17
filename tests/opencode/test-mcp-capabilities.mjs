@@ -111,6 +111,44 @@ test('Task1 auto-detect: present binary → registered, no throw', () => {
   }
 });
 
+// Task 1 (follow-up) — dual-name MCP detect: gemini-notebook-mcp alongside legacy notebooklm.
+test('Task1 dual-detect: present gemini-notebook-mcp -> registered under mcp:gemini-notebook-mcp with bin path', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sdlc-lean-mcp-'));
+  const bin = path.join(dir, 'gemini-notebook-mcp');
+  fs.writeFileSync(bin, '#!/bin/sh\nexit 0\n');
+  try {
+    assert.doesNotThrow(() => plugin.autoDetectCapabilities(bin));
+    assert.equal(plugin.hasCapability('mcp:gemini-notebook-mcp'), true);
+    const adapter = plugin.getCapability('mcp:gemini-notebook-mcp');
+    assert.ok(adapter && typeof adapter === 'object');
+    assert.equal(adapter.bin, bin);
+  } finally {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* best effort */ }
+  }
+});
+
+test('Task1 dual-detect: legacy mcp:notebooklm still true after gemini present', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sdlc-lean-mcp-'));
+  const bin = path.join(dir, 'gemini-notebook-mcp');
+  fs.writeFileSync(bin, '#!/bin/sh\nexit 0\n');
+  try {
+    assert.doesNotThrow(() => plugin.autoDetectCapabilities(bin));
+    assert.equal(plugin.hasCapability('mcp:notebooklm'), true);
+    assert.equal(plugin.getCapability('mcp:notebooklm').bin, bin);
+  } finally {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* best effort */ }
+  }
+});
+
+test('Task1 dual-detect: missing both -> false/null, no throw', () => {
+  const missing = '/nonexistent/__sdlc-lean-nope__/gemini-notebook-mcp-test-missing';
+  assert.doesNotThrow(() => plugin.autoDetectCapabilities(missing));
+  assert.equal(plugin.hasCapability('mcp:gemini-notebook-mcp'), false);
+  assert.equal(plugin.getCapability('mcp:gemini-notebook-mcp'), null);
+  assert.equal(plugin.hasCapability('mcp:notebooklm'), false);
+  assert.equal(plugin.getCapability('mcp:notebooklm'), null);
+});
+
 test('DEFAULT_MCP_PATH resolves under homedir .local/bin', () => {
   assert.equal(DEFAULT_MCP_PATH, path.join(os.homedir(), '.local', 'bin', 'notebooklm-mcp'));
 });

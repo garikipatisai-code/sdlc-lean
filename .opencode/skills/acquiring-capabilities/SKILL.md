@@ -32,6 +32,15 @@ skill for.
 Use `websearch` + `webfetch` + `gh` for the fast path — never crawl blindly.
 Curated source list and install snippets: `references/trusted-sources.md`.
 
+## Grounded store (Gemini Notebook) — optional, web-first
+
+- Detect the grounded store only via the capability contract — `hasCapability('mcp:gemini-notebook-mcp')` / `getCapability('mcp:gemini-notebook-mcp')` — never hardcode a server-qualified tool name; stat-only detection, fail open.
+- Web-first: search the open web (`websearch` + `webfetch` + `gh`) first; the notebook is a grounded store for saved sources, not the search engine.
+- Call `usage_get` (account-scoped read, no profile switch) before heavy chat/Studio work.
+- Auto-create a notebook is allowed only when the user picks/consents; never auto-delete notebooks or sources (explicit confirm required).
+- Never change the default profile; use `profile` switch without `make_default` unless the user asks.
+- Studio bulk generation requires explicit confirm/approval.
+
 Trust tiers (see the reference for the list):
 
 - **Verified** — official/curated (opencode.ai ecosystem, `anthropics/*`, the

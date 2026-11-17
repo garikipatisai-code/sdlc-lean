@@ -49,6 +49,12 @@ ambiguous — otherwise state your interpretation and proceed.
   required; do not multiply perspectives.
 - Reuse `acquiring-capabilities` trust rules: no random blogs, no unsourced
   forums, no AI-generated listicles.
+- Grounded store (optional, web-first): if `hasCapability('mcp:gemini-notebook-mcp')`,
+  persist verified sources/findings in a Gemini Notebook as a grounded store —
+  web search stays first (`websearch` + `webfetch` + `gh`), the notebook is
+  storage, not the search engine. Call `usage_get` before heavy synthesis/Studio
+  work; auto-create only with user pick; no auto-delete; no default-profile
+  change; confirm for studio bulk. Detect via the capability contract only.
 
 ## 3. Assess (`think_tool`)
 

@@ -3,10 +3,12 @@
 // resolveFreeModels(models, opts) -> string[] (new array)
 // getFreeModelsCached(fetcher, { ttlMs, now, ...resolveOpts }) -> Promise<string[]>
 //
-// A model is free iff id starts with 'opencode-go/', cost data is present and
-// all-zero, it is not denylisted, it is not secret-like, and (when required)
-// it advertises tool-call capability. Anything empty/corrupt/throwing falls
-// back to a copy of the default trio.
+// A model is free iff id starts with 'opencode-go/', it is on the free-model
+// allowlist (exact id or prefix on the part after 'opencode-go/'), cost data is
+// present and all-zero, it is not denylisted, it is not secret-like, and (when
+// required) it advertises tool-call capability. Anything empty/corrupt/throwing
+// falls back to a copy of the default trio. Models not on the allowlist are
+// denied (deny-rest-by-default).
 // CROSS-PIN (P0 Task3, QUOTA_VOCAB_PIN@1): FALLBACK_TRIO == POOL tail in
 // .opencode/plugins/sdlc-lean.js (opencode-go 3-tail; crouton-alpha-free,
 // beam-free, iceman-contributor-free) and QUOTA_POOL in
@@ -14,11 +16,97 @@
 export const QUOTA_VOCAB_PIN = '1';
 export const FALLBACK_TRIO = Object.freeze([
   'opencode-go/crouton-alpha-free',
+  // beam-free is an example pin only — re-discover via cost 0/0; it has
+  // vanished from the live catalog before (churn), so never hardcode it
+  // outside this corrupt/empty fallback copy.
   'opencode-go/beam-free',
   'opencode-go/iceman-contributor-free',
 ]);
 
 const SECRET_RE = /secret|key|token/i;
+
+// Allowlist (exact id or prefix, matched on the id suffix after 'opencode-go/').
+// OR (exact, ':free' separator): super-vl:free, north-mini:free, flint-v1.0:free,
+// particle-1:free, inkling-2-small:free
+// Go / OC (prefix): beam, iceman, longcat, hy4, crouton, nemotron, flint-40b,
+// minimax, deepseek, mimo, glm
+// A prefix stem matches ONLY with a -free/:free suffix (beam-free OK,
+// bare stem / beam-evil denied — impl isAllowlisted, lines 94-106). Code is
+// canonical (QUOTA_VOCAB_PIN style): .opencode/agents/orchestrator.md:125-136
+// and docs/AUTONOMY.md:54-61 reference this code; no duplicated allowlist in
+// docs (drift risk). Cost 0/0 + tool_call guards still apply to every
+// allowlisted model.
+// Anything not on this list is denied (deny-rest-by-default -> fallback trio).
+const ALLOW_EXACT = new Set([
+  'super-vl:free',
+  'north-mini:free',
+  'flint-v1.0:free',
+  'particle-1:free',
+  'inkling-2-small:free',
+]);
+const ALLOW_PREFIX = [
+  'beam',
+  'iceman',
+  'longcat',
+  'hy4',
+  'crouton',
+  'nemotron',
+  'flint-40b',
+  'minimax',
+  'deepseek',
+  'mimo',
+  'glm',
+];
+
+// Cost dimensions allowed to carry numeric values; anything else non-zero vetoes
+// the free verdict (F2: unknown cost must not be silently ignored).
+//
+// Debt: hasUnknownNonZero walks the whole model, not just a trivial cost object
+// (only cost/inputCost/outputCost/total/value keys). Narrowing it to cost-object
+// only-if-trivial was deferred because top-level unknown non-zero (e.g.
+// mystery:5 on the model) must still veto; revisit when the cost-shape contract
+// is frozen.
+const KNOWN_COST_KEYS = new Set([
+  'input',
+  'inputCost',
+  'output',
+  'outputCost',
+  'total',
+  'value',
+  'cost',
+]);
+
+function hasUnknownNonZero(value) {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    for (const [k, v] of Object.entries(value)) {
+      if (KNOWN_COST_KEYS.has(k)) {
+        if (hasUnknownNonZero(v)) return true;
+        continue;
+      }
+      if (typeof v === 'number' && v !== 0) return true;
+      if (hasUnknownNonZero(v)) return true;
+    }
+  }
+  return false;
+}
+
+function isAllowlisted(id) {
+  if (!id || typeof id !== 'string') return false;
+  const suffix = id.startsWith('opencode-go/') ? id.slice(12) : id;
+  if (ALLOW_EXACT.has(suffix)) return true;
+  return ALLOW_PREFIX.some((p) => {
+    // REQ-4: stems match only with a -free/:free suffix; bare stem (suffix === p)
+    // is denied so 'beam'/'iceman' without -free/:free cannot squat the prefix.
+    if (
+      !suffix.startsWith(p + '-') &&
+      !suffix.startsWith(p + '/') &&
+      !suffix.startsWith(p + ':')
+    ) {
+      return false;
+    }
+    return suffix.endsWith('-free') || suffix.endsWith(':free');
+  });
+}
 
 // Normalize array/object capability entries: 'tool_call' | 'tool-call' | 'toolCall'
 // Strict allowlist: toolcall/toolcalls/toolcalling only (bare 'tools' is NOT accepted).
@@ -58,6 +146,9 @@ function hasToolCall(model) {
 // Paid leak: when both split numbers are present, any present total/value must
 // also be undefined or 0 (a non-zero total/value vetoes the free verdict).
 function isFree(model) {
+  // F2: an unknown (non-allowlisted) numeric cost dimension that is non-zero
+  // vetoes the free verdict; unknown dimensions are never silently ignored.
+  if (hasUnknownNonZero(model)) return false;
   const cost = model.cost;
   let hasTotal = false;
   let totalZero = false;
@@ -116,11 +207,12 @@ export function resolveFreeModels(models, opts = {}) {
       if (typeof id !== 'string' || !id.startsWith('opencode-go/')) continue;
       if (SECRET_RE.test(id)) continue;
       if (deny.has(id)) continue;
+      if (!isAllowlisted(id)) continue;
       if (!isFree(model)) continue;
       if (toolCallRequired && !hasToolCall(model)) continue;
       out.push(id);
     }
-    return out.length > 0 ? out : fallbackCopy(fallback);
+    return out.length > 0 ? [...out] : fallbackCopy(fallback);
   } catch {
     return fallbackCopy(opts && typeof opts === 'object' ? opts.fallback : undefined);
   }
@@ -153,7 +245,7 @@ export async function getFreeModelsCached(fetcher, opts = {}) {
 
   if (cacheable) {
     const hit = _cache.get(fetcher);
-    if (hit && hit.optsKey === optsKey && nowMs - hit.at < ttlMs) return [...hit.value];
+    if (hit && hit.optsKey === optsKey && ttlMs > 0 && nowMs - hit.at < ttlMs) return [...hit.value];
   }
 
   let value;

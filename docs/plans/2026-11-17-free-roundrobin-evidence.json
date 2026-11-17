@@ -1,0 +1,55 @@
+{
+  "plan": "docs/plans/2026-11-17-free-roundrobin.md",
+  "spec": "docs/specs/2026-11-17-free-roundrobin.md",
+  "status": "complete",
+  "tasks": [
+    {
+      "task": "T5.1",
+      "verify": "node --test tests/eval/free-models.mjs",
+      "exit": 0,
+      "at": "2026-11-17T13:43:54Z",
+      "out": "tests 31, pass 31, fail 0"
+    },
+    {
+      "task": "T5.2",
+      "verify": "node --test tests/opencode/test-free-rotation-cooldown.mjs tests/opencode/test-tiered-reasoning.mjs",
+      "exit": 0,
+      "at": "2026-11-17T13:43:54Z",
+      "out": "tests 28, pass 28, fail 0"
+    },
+    {
+      "task": "T5.3",
+      "verify": "node scripts/validate-skills.mjs",
+      "exit": 0,
+      "at": "2026-11-17T13:43:54Z",
+      "out": "checked 40 skills, 0 failures"
+    },
+    {
+      "task": "T5.4",
+      "verify": "write evidence JSON + echo verified",
+      "exit": 0,
+      "at": "2026-11-17T13:43:54Z",
+      "out": "verified"
+    },
+    {
+      "task": "T5.5",
+      "verify": "final verify allowlist + both-OR (no edits)",
+      "exit": 0,
+      "at": "2026-11-17T14:11:41Z",
+      "raw1": "ℹ pass 31\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 79.106887",
+      "raw2": "ℹ pass 28\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 89.478923",
+      "raw3": "WARN: web-game-development: body 9KB > 5KB\nchecked 40 skills, 0 failures\nverified",
+      "out": "step1 pass 31 fail 0; step2 pass 28 fail 0; step3 checked 40 skills 0 failures verified"
+    }
+  ],
+  "verify": "cat docs/specs/2026-11-17-free-roundrobin.md | head -30 && node --test tests/eval/free-models.mjs 2>&1 | grep -E \"pass|fail\" | tail -3",
+  "step3": {
+    "command": "cat docs/specs/2026-11-17-free-roundrobin.md | head -30 && node --test tests/eval/free-models.mjs 2>&1 | grep -E \"pass|fail\" | tail -3",
+    "exit": 0,
+    "raw": "# Spec — Free-first dynamic round-robin fix (2026-11-17)\n\n**Status**: draft\n**Related plan**: `docs/plans/2026-11-17-free-roundrobin.md`\n**Date**: 2026-11-17\n**Debt**: code-reviewer high — missing spec closeout for the free round-robin fix.\n\n## Goal\n\nClose the free-first routing debt with a dynamic round-robin design: super-VL\nprimary across OpenRouter OR1/OR2, Flint/Particle/North fallback, Go+OC pools,\ndenylist `muse-spark*`+inkling*+laguna+lfm, high effort + thinking, paid fallback\nkept (cap + ask-to-extend). Free-only; never auto-paid; no secrets.\n\n## Non-goals\n\n- No auto-paid dispatch; paid fallback only after admission passes + explicit\n  spend approval + ask-to-extend; exhaustion without approval → stop + escalate.\n- No runtime routing changes beyond the routing table / denylist / pins.\n- No network probes beyond cheap `GET /api/v1/models` + `max_tokens:1` completion.\n- No OpenCode modification.\n\n## Alternatives\n\n| Option | Verdict | Why |\n|---|---|---|\n| A. Ledger-tracked OR1/OR2 round-robin (super-VL primary) | **Chosen** | ~2,000 free req/day pooled; redundancy, no blind keys |\n| B. Blind round-robin (keys hidden) | Rejected | Design 0004; alternation ledger-tracked instead |\n| C. Single account | Rejected | Halves quota, no redundancy |\n| D. Per-dispatch override alternation | Deferred | Unverified in v2.2.6 subagent path; revisit via dashboard activity |\n✔ cached: TTL hit bypassed when resolveOpts differ (denylist/toolCallRequired/fallback) (0.338514ms)\nℹ pass 31\nℹ fail 0"
+  },
+  "echo_verified_exit": 0,
+  "free_only": true,
+  "no_secrets": true,
+  "no_code_edits": true
+}

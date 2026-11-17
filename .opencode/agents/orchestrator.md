@@ -99,18 +99,18 @@ Pool: single source = routing table below (MUSCLE tier) / `POOL` in
 No model pins.
 
 Fallback: orchestrator's own session model (UNPINNED, inherits session — whatever you chose) when free exhausted — only after :87 admission passes + explicit spend approval + ask-to-extend (fresh approval); never auto-paid (cap + ask-to-extend; secrets never free).
-Blocked models (FREE-pool / MUSCLE selection only): deny `opencode-go/muse-spark` family — bare `muse-spark-1.3`, `muse-spark-1.3-contributor`, and any suffixed variant — from free-pool/MUSCLE selection. Never a contributor or paid free-pool fallback. BRAIN roles are always allowed on whichever model the orchestrator session runs (UNPINNED, cap-counted, secrets never free, never free pool). Paid fallback = session model only, explicit spend approval + ask-to-extend (fresh approval, NOT covered by :79). No provider model hardcoded as required BRAIN ID.
+Selection allowlist (deny-rest-by-default): only routing-table IDs are eligible for free-pool/MUSCLE selection; every other model is denied by default — no substring deny can admit or block a model; allowlist = exact IDs + family-prefix stems (stems match only with a -free/:free suffix). Not allowlisted: `muse-spark*` family, `poolside/laguna*` (`laguna`, expired), `liquid/lfm*` (not-for-coding), content-safety no-tools models. `thinkingmachines/inkling-2-small:free` IS allowlisted (OR1/OR2), dispatch-gated: requires `xhigh` effort + thinking AND an agent harness (mini-swe-agent/stirrup); orchestrator must use harness else skip. Never paid/out-of-pool contributor fallback (contributor-free eligible when 0/0, except non-allowlisted families). BRAIN roles are always allowed on whichever model the orchestrator session runs (UNPINNED, cap-counted, secrets never free, never free pool). Paid fallback = session model only, explicit spend approval + ask-to-extend (fresh approval, NOT covered by :79). No provider model hardcoded as required BRAIN ID.
 
 Orchestrator stays UNPINNED (inherits the session model); every worker
 dispatch passes an explicit `model:` + `account:` from the pool (routing table
-below) and records one ledger row per dispatch (model + account).
+below) and records one ledger row per dispatch (model + account + effort + thinking).
 
 Trigger: `429` / `provider-error` only (billing codes never trigger).
-On trigger: call `resolveNextFreeLink(pool, failedId, { isDenied, isSecretLike, isCoolingDown })` explicitly (replaces manual pool walk) — same model on the other account first (super-vl pair), then next re-discovered free model. `null` = exhausted → stop + escalate with cooldown entries, never a paid fallback.
-`429`/`provider-error` is NEVER a stop condition and NEVER needs fresh approval — but ONLY for next-free-link re-dispatch (super-vl other account → re-discovered Go free) inside current authorization, recording model+account ledger row + cooldown entry. This no-fresh-approval scope does NOT extend to any paid/session-model step, which ALWAYS needs fresh approval.
+On trigger: call `resolveNextFreeLink(pool, failedId, { isDenied, isSecretLike, isCoolingDown })` explicitly (replaces manual pool walk) — same model on the other account first (super-vl / inkling-2-small pair), then next re-discovered free model. `null` = exhausted → stop + escalate with cooldown entries, never a paid fallback.
+`429`/`provider-error` is NEVER a stop condition and NEVER needs fresh approval — but ONLY for next-free-link re-dispatch (same model other account first, then next re-discovered Go/OC free) inside current authorization, recording ledger row (model + account + effort + thinking) + cooldown entry. Billing codes never trigger. This no-fresh-approval scope does NOT extend to any paid/session-model step, which ALWAYS needs fresh approval.
 Stop conditions (2 no-progress loops, failure/uncertain outcome, cap) apply to task failures, never to rate-limits. Paid/session fallback (orchestrator's own model) is the ONLY step requiring explicit spend approval + ask-to-extend — and only after admission passes (see :87); exhaustion with no approval → stop + escalate, never auto-paid.
 
-Circuit: `CLOSED` / `OPEN` / `HALF-OPEN`. Cooldown JSONL:
+Circuit: `CLOSED` / `OPEN` / `HALF-OPEN`. Cooldown JSONL (strict schema):
 `{"type":"cooldown","model":"<pool-id>","account":"<account>","cooldown_until":"YYYY-MM-DDTHH:mm:ss.sssZ","circuit":"OPEN"}`.
 Cheap probe only: `GET /api/v1/models`, then tiny completion `max_tokens:1`;
 never a paid probe; probe result moves `OPEN` → `HALF-OPEN` → `CLOSED`.
@@ -122,8 +122,15 @@ Delegation is narrow-only (allowed worker subagents only, no scope spread).
 Privacy: secrets NEVER to any free endpoint; non-secret code may use any
 endpoint incl. training (non-ZDR ok).
 
-Denylist (never select): `poolside/laguna` (expired), `inkling` (harness-only),
-`liquid/lfm` (not-for-coding), content-safety no-tools models. Scope
+Allowlist (canonical, deny-rest-by-default): selectable = routing-table IDs only
+(super-vl + inkling-2-small OR1/OR2, north-mini-code, particle, flint, Go/OC
+free models); everything else is denied by default. `muse-spark*`, `laguna`
+(`poolside/laguna*`, expired), `lfm` (`liquid/lfm*`, not-for-coding), and
+content-safety no-tools models are simply not allowlisted. No substring deny
+(allowlist = exact IDs + family-prefix stems with -free/:free suffix; this
+replaces the earlier `inkling*` substring deny; inkling-2-small is allowlisted
+behind the xhigh + harness gate, dispatch-gated: orchestrator must use harness
+else skip). Scope
 (2026-11-16 prune): north-mini-code Tier-P on merit (67.6% SWE-bench
 Verified); gemma-4-26b excluded (no coding evidence); flint-v1.0 kept on
 strongest numbers; ling-flash + router dropped (no coding rank).
@@ -141,8 +148,12 @@ Tiers (dispatch-time `model:` + `account:`; no hardcoded spend; cap = ask-to-ext
 - **MUSCLE** — free-first order (thick briefs required; secrets NEVER to any free
   endpoint). Roles: explorer maps, implementer + test-writer execution.
   P (primary): `console-openrouter/nvidia/nemotron-3.5-super-vl:free` +
-  `console-openrouter2/nvidia/nemotron-3.5-super-vl:free` (round-robin,
-  ledger-tracked; `429` → other account first; blind, no polling) →
+  `console-openrouter2/nvidia/nemotron-3.5-super-vl:free` <->
+  `console-openrouter/thinkingmachines/inkling-2-small:free` +
+  `console-openrouter2/thinkingmachines/inkling-2-small:free` (round-robin
+  across the four links, ledger-tracked; `429` → same model other account first;
+  blind, no polling; inkling-2-small only with `xhigh` effort + thinking and an
+  agent harness (mini-swe-agent/stirrup) — no harness → skip) →
   `console-openrouter/cohere/north-mini-code:free` +
   `console-openrouter2/cohere/north-mini-code:free` (same-model-other-account
   first) → `opencode-go/beam-free` / `opencode-go/iceman-contributor-free` /
@@ -165,9 +176,9 @@ Tiers (dispatch-time `model:` + `account:`; no hardcoded spend; cap = ask-to-ext
 | brainstorming facilitation | BRAIN | orchestrator session model | cap + ask-to-extend; secrets never free |
 | code-reviewer | BRAIN | orchestrator session model | cap + ask-to-extend; secrets never free |
 | security-reviewer | BRAIN | orchestrator session model | cap + ask-to-extend; secrets never free |
-| explorer (maps) | MUSCLE | P: super-vl:free (both accounts: console-openrouter + console-openrouter2) → north-mini-code:free (both accounts) → opencode-go free models P (beam-free, iceman-contributor-free, longcat-2.5-free) → opencode P (beam-free, iceman-free, nemotron-3.5-super-vl-free, longcat-2.5-free) → S: particle-1:free + flint-v1.0:free (both accounts) + hy4-flash-free + flint-40b-free + minimax-m3.1-flash-free + deepseek-v4.1-flash-free + mimo-v2.6-flash-free + glm-5.3-flash-free → BRAIN (orchestrator's own model) | thick brief: file:line anchors, verbatim cmds, 3-5 steps, hashes |
-| implementer | MUSCLE | P: super-vl:free (both accounts: console-openrouter + console-openrouter2) → north-mini-code:free (both accounts) → opencode-go free models P (beam-free, iceman-contributor-free, longcat-2.5-free) → opencode P (beam-free, iceman-free, nemotron-3.5-super-vl-free, longcat-2.5-free) → S: particle-1:free + flint-v1.0:free (both accounts) + hy4-flash-free + flint-40b-free + minimax-m3.1-flash-free + deepseek-v4.1-flash-free + mimo-v2.6-flash-free + glm-5.3-flash-free → BRAIN (orchestrator's own model) | thick brief: file:line anchors, verbatim cmds, 3-5 steps, hashes |
-| test-writer | MUSCLE | P: super-vl:free (both accounts: console-openrouter + console-openrouter2) → north-mini-code:free (both accounts) → opencode-go free models P (beam-free, iceman-contributor-free, longcat-2.5-free) → opencode P (beam-free, iceman-free, nemotron-3.5-super-vl-free, longcat-2.5-free) → S: particle-1:free + flint-v1.0:free (both accounts) + hy4-flash-free + flint-40b-free + minimax-m3.1-flash-free + deepseek-v4.1-flash-free + mimo-v2.6-flash-free + glm-5.3-flash-free → BRAIN (orchestrator's own model) | thick brief: file:line anchors, verbatim cmds, 3-5 steps, hashes |
+| explorer (maps) | MUSCLE | P: super-vl:free OR1/OR2 <-> inkling-2-small:free OR1/OR2 (ledger-tracked round-robin; inkling needs xhigh + thinking + harness, no harness → skip) → north-mini-code:free (both accounts) → opencode-go free models P (beam-free, iceman-contributor-free, longcat-2.5-free) → opencode P (beam-free, iceman-free, nemotron-3.5-super-vl-free, longcat-2.5-free) → S: particle-1:free + flint-v1.0:free (both accounts) + hy4-flash-free + flint-40b-free + minimax-m3.1-flash-free + deepseek-v4.1-flash-free + mimo-v2.6-flash-free + glm-5.3-flash-free → BRAIN (orchestrator's own model) | thick brief: file:line anchors, verbatim cmds, 3-5 steps, hashes |
+| implementer | MUSCLE | P: super-vl:free OR1/OR2 <-> inkling-2-small:free OR1/OR2 (ledger-tracked round-robin; inkling needs xhigh + thinking + harness, no harness → skip) → north-mini-code:free (both accounts) → opencode-go free models P (beam-free, iceman-contributor-free, longcat-2.5-free) → opencode P (beam-free, iceman-free, nemotron-3.5-super-vl-free, longcat-2.5-free) → S: particle-1:free + flint-v1.0:free (both accounts) + hy4-flash-free + flint-40b-free + minimax-m3.1-flash-free + deepseek-v4.1-flash-free + mimo-v2.6-flash-free + glm-5.3-flash-free → BRAIN (orchestrator's own model) | thick brief: file:line anchors, verbatim cmds, 3-5 steps, hashes |
+| test-writer | MUSCLE | P: super-vl:free OR1/OR2 <-> inkling-2-small:free OR1/OR2 (ledger-tracked round-robin; inkling needs xhigh + thinking + harness, no harness → skip) → north-mini-code:free (both accounts) → opencode-go free models P (beam-free, iceman-contributor-free, longcat-2.5-free) → opencode P (beam-free, iceman-free, nemotron-3.5-super-vl-free, longcat-2.5-free) → S: particle-1:free + flint-v1.0:free (both accounts) + hy4-flash-free + flint-40b-free + minimax-m3.1-flash-free + deepseek-v4.1-flash-free + mimo-v2.6-flash-free + glm-5.3-flash-free → BRAIN (orchestrator's own model) | thick brief: file:line anchors, verbatim cmds, 3-5 steps, hashes |
 
 Rule: ambiguous/complex synthesis defaults BRAIN; well-scoped execution defaults
 MUSCLE in the order above with file:line anchors + verbatim cmds + 3-5 steps +
@@ -178,12 +189,14 @@ auto-spend. Secrets never to any free endpoint.
 ## Reasoning-effort defaults (per tier)
 
 Reasoning effort is set per dispatch via the model's reasoning knob; never max by default (429 risk).
-Hardship/rework escalates +1 effort capped at `high` (MUSCLE max); medium remains the default; never max-by-default.
+Hardship/rework escalates +1 effort capped at `high` (MUSCLE max); inkling-2-small is the one exception (`xhigh` + thinking + harness required); medium remains the default; never max-by-default.
 
 - **MUSCLE** — `medium` reasoning effort (beam); thinking *on where valuable* for super-vl:free (dense exploration/map steps), off for short retrieval.
+- **inkling-2-small** — `xhigh` effort + thinking, only inside an agent harness (mini-swe-agent/stirrup); without the harness skip the model, never lower the effort to force it through.
+- **Top-coding (super-VL dense)** — the most capable free models may run `high` effort + thinking where valuable (dense exploration/map steps); `medium` stays the default; never max-by-default.
 - **BRAIN** — `high` reasoning effort (orchestrator session model).
 - **longcat/iceman-free** — exempt: no effort knob set, never force thinking or max effort (carry no per-request reasoning control).
-- **Never max-by-default** — `high` only for BRAIN; MUSCLE stays `medium`; free workers never request max effort to avoid 429/provider backoff.
+- **Never max-by-default** — `high` only for BRAIN and top-coding dense steps, plus the explicit inkling-2-small `xhigh` harness exception; MUSCLE defaults to `medium`; free workers never request max effort to avoid 429/provider backoff.
 
 <a id="delegation-quality-checklist"></a>
 ## Delegation Quality checklist

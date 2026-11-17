@@ -47,27 +47,27 @@ Human verify-both-IDs steps (already live — confirmation, not setup):
 ## Quota-aware routing (dynamic free-first pool)
 
 Dynamic pool (re-discovered at dispatch; no frozen IDs):
-- `console-openrouter/nvidia/nemotron-3.5-super-vl:free` on
-  `console-openrouter` + `console-openrouter2/nvidia/nemotron-3.5-super-vl:free`
-  on `console-openrouter2` (round-robin, ledger-tracked; `429` → other account first).
-- then `opencode-go` models discovered as cost `0/0` via models API at dispatch
-  (denylist excluded; thick briefs required). Known-good examples only:
-  `opencode-go/crouton-alpha-free` / `opencode-go/beam-free` /
-  `opencode-go/iceman-contributor-free` — examples, NOT a frozen requirement;
-  free list may change anytime, always re-discover.
-- then orchestrator's own session model (BRAIN fallback; cap + ask-to-extend;
-  secrets never free).
+- P: `console-openrouter/nvidia/nemotron-3.5-super-vl:free` (OR1) <-> `console-openrouter2/nvidia/nemotron-3.5-super-vl:free` (OR2) <-> `console-openrouter/thinkingmachines/inkling-2-small:free` (OR1) <-> `console-openrouter2/thinkingmachines/inkling-2-small:free` (OR2) (round-robin, ledger-tracked; `429` → same model other account first; inkling-2-small only with `xhigh` effort + thinking + agent harness (mini-swe-agent/stirrup), no harness → skip) → `console-openrouter/cohere/north-mini-code:free` (OR1) / `console-openrouter2/cohere/north-mini-code:free` (OR2) → re-discovered `opencode-go` / `opencode` free P models (cost `0/0`, allowlist-only).
+- S: `console-openrouter/particle-ai/particle-1:free` + `console-openrouter2/particle-ai/particle-1:free` → `console-openrouter/recursive/flint-v1.0:free` + `console-openrouter2/recursive/flint-v1.0:free` → re-discovered Go/OC free S models.
+- then orchestrator's own session model (BRAIN fallback; cap + ask-to-extend; secrets never free). Known-good examples only (not frozen): `opencode-go/crouton-alpha-free` / `beam-free` / `iceman-contributor-free`; always re-discover.
 
-Fallback: orchestrator's session model (inherits session; contributor-grade required where paid) — blocked models: reject `opencode-go/muse-spark-1.3` and paid `openai/gpt-oss-120b`.
+Selection is allowlist-only, deny-rest-by-default: only IDs explicitly listed in
+this pool/routing table are selectable; every other model is denied — allowlist =
+exact IDs + family-prefix stems (stems match only with a `-free`/`:free`
+suffix); No substring deny. `muse-spark*`, `laguna` (`poolside/laguna*`,
+expired), `lfm` (`liquid/lfm*`, not-for-coding), and content-safety no-tools
+models are not allowlisted. `thinkingmachines/inkling-2-small:free` is
+allowlisted (OR1/OR2) behind the `xhigh` + thinking + agent-harness gate
+(dispatch-gated: orchestrator must use harness else skip).
+
+Fallback: orchestrator's session model (inherits session; contributor-grade required where paid) — allowlist-only selection; non-allowlisted families rejected (deny-rest-by-default; No substring deny; family-prefix stems require -free/:free suffix), plus paid `openai/gpt-oss-120b`. Never paid/out-of-pool contributor fallback (contributor-free eligible when 0/0, except non-allowlisted families).
 Orchestrator stays UNPINNED; every worker dispatch passes explicit
-`model:` + `account:` and records one ledger row per dispatch (model + account).
+`model:` + `account:` and records one ledger row per dispatch (model + account + effort + thinking).
 Delegation is narrow-only (allowed worker subagents only).
 
 Trigger: `429` / `provider-error` only (billing codes never trigger).
-Retry order: super-vl same-model other-account, then next re-discovered free model,
-then orchestrator model fallback.
-Circuit: `CLOSED` / `OPEN` / `HALF-OPEN`. Cooldown JSONL:
-`{"type":"cooldown","model":"<pool-id>","account":"<account>","cooldown_until":"YYYY-MM-DDTHH:mm:ss.sssZ","circuit":"OPEN"}` (strict `YYYY-MM-DDTHH:mm:ss.sssZ`).
+Retry order: same model other account first (super-vl / inkling-2-small pair OR1<->OR2, north OR1/OR2), then next re-discovered Go/OC free model, then orchestrator model fallback (explicit spend approval + ask-to-extend).
+Circuit: `CLOSED` / `OPEN` / `HALF-OPEN`. Cooldown JSONL (strict schema): `{"type":"cooldown","model":"<pool-id>","account":"<account>","cooldown_until":"YYYY-MM-DDTHH:mm:ss.sssZ","circuit":"OPEN"}` (strict `YYYY-MM-DDTHH:mm:ss.sssZ`).
 Cheap probe only: `GET /api/v1/models`, then tiny completion `max_tokens:1`;
 never a paid probe. Exhaustion → stop + escalate.
 
@@ -76,7 +76,22 @@ an extension, escalate — never auto-extend and never auto-spend.
 Privacy: secrets NEVER to any free endpoint.
 
 Resolver: `eval/lib/free-models.mjs` (filter: `opencode-go/` prefix, cost `0/0`,
-denylist, secrets-never-free, tool_call required; 30/30 tests).
+denylist, secrets-never-free, tool_call required; 31/31 tests).
+
+## Reasoning effort (per tier; per dispatch)
+
+- **MUSCLE** (free pool) — `medium` default; top-coding dense steps on the most
+  capable free models (super-VL) may raise to `high` effort + thinking where
+  valuable; never max-by-default (429/provider backoff risk).
+- **inkling-2-small** — `xhigh` effort + thinking, only inside an agent harness
+  (mini-swe-agent/stirrup); no harness → skip, never downgrade effort to force it.
+- **BRAIN** (orchestrator session model) — `high`.
+- **longcat/iceman-free** — exempt: no effort knob, never force thinking or max.
+- Hardship/rework → +1 effort, capped at `high` for MUSCLE (inkling-2-small's
+  required `xhigh` is the only exception).
+- Paid session fallback is kept: cap + ask-to-extend (fresh approval), never
+  auto-paid; exhaustion → stop + escalate.
+
 ## Full-ID mapping table (dynamic free-first; re-probe via catalog)
 Train route is routing policy, not a model rename: customer-code payloads
 use the no-train route only; non-sensitive payloads use the provider
@@ -90,8 +105,9 @@ default. Expiry is per-catalog `expiration_date` — re-probe, never hardcode
 | Pool (example) | `opencode-go/crouton-alpha-free` | provider default | example only; re-discover via cost `0/0`; `expiration_date` via re-probe |
 | Pool (example) | `opencode-go/beam-free` | provider default | example only; re-discover via cost `0/0`; `expiration_date` via re-probe |
 | Pool (example) | `opencode-go/iceman-contributor-free` | provider default | example only; re-discover via cost `0/0`; `expiration_date` via re-probe |
-| Fallback | orchestrator session model | provider default | contributor-grade required where paid; blocked models: reject `opencode-go/muse-spark-1.3` and `openai/gpt-oss-120b` |
-| Fallback (dynamic) | orchestrator session model | provider default | cap + ask-to-extend; secrets never free || Denylist — never selected | `poolside/laguna*` | never (excluded) | excluded by mapping |
-| Denylist — never selected | `thinkingmachines/inkling*` | never (excluded) | excluded by mapping |
-| Denylist — never selected | `liquid/lfm-2.5*` | never (excluded) | excluded by mapping |
-| Denylist — never selected | `nemotron-3.5-content-safety*` | never (excluded — safety) | excluded by mapping |
+| Fallback | orchestrator session model | provider default | contributor-grade required where paid; allowlist-only: non-listed = denied (deny-rest-by-default; No substring deny; family-prefix stems require -free/:free suffix), paid `openai/gpt-oss-120b` |
+| Pool (harness-gated) | `console-openrouter/thinkingmachines/inkling-2-small:free` (OR1) / `console-openrouter2/thinkingmachines/inkling-2-small:free` (OR2) | provider default | allowlisted; `xhigh` effort + thinking + agent harness (mini-swe-agent/stirrup) required — no harness → skip; `expiration_date` via re-probe |
+| Fallback (dynamic) | orchestrator session model | provider default | cap + ask-to-extend; secrets never free |
+| Not allowlisted — denied by default | `poolside/laguna*` | never (excluded) | excluded by allowlist (expired) |
+| Not allowlisted — denied by default | `liquid/lfm-2.5*` | never (excluded) | excluded by allowlist (not-for-coding) |
+| Not allowlisted — denied by default | `nemotron-3.5-content-safety*` | never (excluded — safety) | excluded by allowlist |

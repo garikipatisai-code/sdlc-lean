@@ -6,17 +6,16 @@ description: Use when a question needs external evidence rather than local code 
 # Deep Research
 
 Evidence over vibes. Plan → parallel search → assess gaps → cite → synthesize.
-Adapted from dzhng/deep-research, open_deep_research, and gpt-researcher.
 
 ```mermaid
 flowchart LR
-    S[Scope: 1 question + 3-5 sub-questions] --> P[Plan depth mode]
-    P --> B[Breadth-first search, parallel subagents]
-    B --> A{think: what is missing or contested?}
-    A -- gaps and budget left --> B
-    A -- done --> C[Compress: dedupe, keep cited claims]
+    S[Scope: 1 Q + 3-5 sub-Q] --> P[Plan depth mode]
+    P --> B[Parallel subagent search]
+    B --> A{think: gaps/contested?}
+    A -- gaps + budget left --> B
+    A -- done --> C[Compress: dedupe, cited claims]
     C --> R[Synthesize report]
-    R --> V[Entailment: each claim checked on its fetched page]
+    R --> V[Entailment: claim checked on fetched page]
 ```
 
 ## Depth modes (pick one, announce it, never ask the user to choose)
@@ -29,80 +28,40 @@ flowchart LR
 
 ## 1. Scope
 
-Turn the request into **one explicit research question**; list **3–5
-non-overlapping sub-questions**; state in-scope and out-of-scope in one line.
-Ask at most **one** clarifying question, and only if the goal is genuinely
-ambiguous — otherwise state your interpretation and proceed.
+Turn the request into **one explicit research question**; list **3–5 non-overlapping sub-questions**; state in-scope and out-of-scope in one line. Ask at most **one** clarifying question, only if the goal is genuinely ambiguous — otherwise state your interpretation and proceed.
 
 ## 2. Search (start wide, then narrow)
 
 - 2–3 keyword variants per sub-question; broaden first, then drill in.
-- Enforce **diversity** (independent domains/types, no single-domain stack) + **freshness** (date-check, prefer recent in fast-moving topics) and dedupe by **canonical URL** — stdlib URL rules, no deps — see `references/retrieval-quality.md`.
-- **Prefer primary/authoritative sources** over aggregators and SEO content:
-  official docs, papers, filings, first-party sites, maintainers' own pages.
-  See `references/source-quality.md` (evidence hierarchy + SIFT + red flags).
-- For independent sub-questions, dispatch the `researcher` subagent — **all in
-  one message** so they run in parallel (fan-out; contract in
-  `dispatching-parallel-agents`). Give each: objective, output schema, source
-  boundary, and search budget. Subagents return distilled findings, **never
-  raw pages** (keeps context small). Extra personas are optional — never
-  required; do not multiply perspectives.
-- Reuse `acquiring-capabilities` trust rules: no random blogs, no unsourced
-  forums, no AI-generated listicles.
-- Grounded store (optional, web-first): if `hasCapability('mcp:gemini-notebook-mcp')`,
-  persist verified sources/findings in a Gemini Notebook as a grounded store —
-  web search stays first (`websearch` + `webfetch` + `gh`), the notebook is
-  storage, not the search engine. Call `usage_get` before heavy synthesis/Studio
-  work; auto-create only with user pick; no auto-delete; no default-profile
-  change; confirm for studio bulk. Detect via the capability contract only.
+- Enforce **diversity** (independent domains/types, no single-domain stack) + **freshness** (date-check, prefer recent in fast-moving topics); dedupe by **canonical URL** — stdlib URL rules, no deps — see `references/retrieval-quality.md`.
+- **Prefer primary/authoritative sources** over aggregators and SEO content: official docs, papers, filings, first-party sites, maintainers' own pages. See `references/source-quality.md` (evidence hierarchy + SIFT + red flags).
+- Dispatch independent sub-questions via the `researcher` subagent — **all in one message** so they run in parallel (fan-out; contract in `dispatching-parallel-agents`). Give each: objective, output schema, source boundary, search budget. Subagents return distilled findings, never raw pages. Extra personas are optional — never required; do not multiply perspectives.
+- Reuse `acquiring-capabilities` trust rules: no random blogs, no unsourced forums, no AI-generated listicles.
+- Grounded store (optional, web-first): if `hasCapability('mcp:gemini-notebook-mcp')`, persist verified sources/findings in a Gemini Notebook — web search stays first (`websearch` + `webfetch` + `gh`), notebook is storage not the search engine. Call `usage_get` before heavy synthesis/Studio work; auto-create only with user pick; no auto-delete; no default-profile change; confirm for studio bulk. Detect via the capability contract only.
 
 ## 3. Assess (`think_tool`)
 
-After each round, write one short gap analysis: what is now supported, what is
-missing, what conflicts. **Close the loop**: each round's queries derive from
-what was just read; a round that does not change the next query ends the loop.
-Use **angles, not synonyms**; shrink breadth as depth increases.
+After each round, write one short gap analysis: what is supported, missing, conflicting. **Close the loop**: each round's queries derive from what was just read; a round that changes nothing ends the loop. Use **angles, not synonyms**; shrink breadth as depth increases.
 
 ## 4. Compress (fan-in)
 
-Dedupe by canonical URL; merge duplicate facts; keep only claims that carry a citation;
-preserve citation numbers; never drop a source that supports a kept claim. At
-fan-in **one writer** merges: parallel section writers produce disjoint
-reports, so style and citations stay consistent. Resolve conflicts per
-`dispatching-parallel-agents`; list what remains unanswered.
+Dedupe by canonical URL; merge duplicate facts; keep only claims carrying a citation; preserve citation numbers; never drop a source supporting a kept claim. At fan-in **one writer** merges: parallel section writers produce disjoint reports, so style and citations stay consistent. Resolve conflicts per `dispatching-parallel-agents`; list what remains unanswered.
 
 ## 5. Synthesize + verify
 
-- Output per `references/report-format.md` and `communicating-concisely`:
-  executive summary first, then themed sections (mermaid/table where it
-  clarifies). Long reports go to a file; return summary + path +
-  `sources_reviewed: N`.
-- **Per-claim entailment**: every citation `[n]` points to a page you actually
-  fetched and read — never the search engine, never a snippet-only hit, never
-  an invented URL. Compare each claim against that page
-  (`references/citation-check.md`): supported → keep, partial → qualify,
-  unsupported → cut or mark "unverified". Count citation accuracy
-  (supported ÷ checked) in the report.
-- End with confidence labels, unresolved conflicts, and open questions.
-- When the report compares options, end with a decision: hand off to
-  `option-selection` (matrix → pick → record). A comparison with no choice is
-  an unfinished report. BrowseComp is a single-short-answer benchmark; do not
-  optimize for it.
+- Output per `references/report-format.md` and `communicating-concisely`: executive summary first, then themed sections (mermaid/table where clarifying). Long reports go to a file; return summary + path + `sources_reviewed: N`.
+- **Per-claim entailment**: every `[n]` points to a page you fetched and read — never the search engine, a snippet-only hit, or an invented URL. Compare each claim against that page (`references/citation-check.md`): supported → keep, partial → qualify, unsupported → cut or mark "unverified". Count citation accuracy (supported ÷ checked) in the report.
+- End with confidence labels, unresolved conflicts, and open questions. When the report compares options, end with a decision: hand off to `option-selection` (matrix → pick → record). A comparison with no choice is an unfinished report. BrowseComp is a single-short-answer benchmark; do not optimize for it.
 
 ## Citation discipline
 
-- Every substantive claim carries an inline `[n]`; `## Sources` lists them
-  sequentially with no gaps.
-- Label confidence: **high** (3+ independent sources agree), **medium** (2),
-  **low** (1 source, or sources conflict).
-- Single-source claims are marked "unverified". Separate fact / estimate /
-  opinion. If evidence is missing, write "insufficient data found" — never pad.
+- Every substantive claim carries an inline `[n]`; `## Sources` lists them sequentially with no gaps.
+- Label confidence: **high** (3+ independent sources agree), **medium** (2), **low** (1 source, or sources conflict).
+- Single-source claims are marked "unverified". Separate fact / estimate / opinion. If evidence is missing, write "insufficient data found" — never pad.
 
 ## Hard budgets (stop even if not done)
 
-Per subagent: 3–5 searches. Global: the mode's source target. Stop when 3+
-independent sources agree, a round adds no new material, or the last two
-searches return the same information. Report what remains unanswered.
+Per subagent: 3–5 searches. Global: the mode's source target. Stop when 3+ independent sources agree, a round adds no new material, or the last two searches return the same information. Report what remains unanswered.
 
 ## Anti-patterns
 
